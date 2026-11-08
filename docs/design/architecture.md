@@ -41,14 +41,14 @@
 | JDK | Eclipse Temurin | 21 LTS |
 | 框架 | Spring Boot | 3.5.x |
 | 微服务 | Spring Cloud | 2025.0.x（须与 Boot 精确对齐） |
-| 注册/配置 | Nacos | **3.0.x**（SCA 2025.0.0.0 的 nacos-client 为 3.0.3，Server 必须同代） |
+| 注册/配置 | Nacos | **server 3.0.3**（与 SCA 2025.0.0.0 的 nacos-client 3.0.3 同代） |
 | 网关 | Spring Cloud Gateway（`spring-cloud-starter-gateway-server-webflux`） | 4.3.x（随 SC 2025.0） |
 | RPC | OpenFeign + LoadBalancer | 随 SC |
 | 限流熔断 | Sentinel | 1.8.9（规则持久化到 Nacos） |
-| 消息 | RocketMQ | 5.3.x，client 5.3.1；**只用 Remoting，不用 Proxy** |
+| 消息 | RocketMQ | server 5.3.4 / client 5.3.1；**只用 Remoting，不用 Proxy** |
 | ORM | MyBatis-Plus | 3.5.x |
-| 数据库 | MySQL | 8.4 LTS（一主一从） |
-| 缓存 | Redis | 7.4.x |
+| 数据库 | MySQL | 8.4.13（一主一从） |
+| 缓存 | Redis | 7.4.12 |
 | 搜索 | Elasticsearch + IK | 8.x |
 | 链路追踪 | SkyWalking | 10.x（**存储用内置 BanyanDB，不占用 ES**） |
 | 指标 | Prometheus + Grafana | 最新 |
@@ -228,6 +228,18 @@
 2. **RocketMQ commitlog 按 1GB 预分配**，需监控 store 目录并按 `fileReservedTime` 清理。
 3. **MySQL `expire_logs_days` 显式设为 7**，主从两份 binlog 会长期占用。
 4. **ES 磁盘 85% 会把索引自动设为 read-only**，是功能失效而非降速——整盘水位保持 70% 以下。
+
+### 已踩过的坑（实测，勿重复踩）
+
+| # | 现象 | 根因 | 解法 |
+|---|---|---|---|
+| 1 | Nacos 容器反复重启，`exit 255`，日志 `env NACOS_AUTH_TOKEN must be set with Base64 String` | Nacos 3.0 的 `docker-startup.sh` **强校验** `NACOS_AUTH_TOKEN` / `IDENTITY_KEY` / `IDENTITY_VALUE`，即使 `NACOS_AUTH_ENABLE=false` | 三个变量必填，token 为 Base64 且解码后 ≥32 字节 |
+| 2 | Nacos 容器 `Up (unhealthy)`，healthcheck 报 `410 Gone` | Nacos 3.0 **移除了** `v1/console/health/{liveness,readiness}` | 改用 `/nacos/v1/ns/service/list?pageNo=1&pageSize=1`，它同时证明进程存活与存储可读写 |
+| 3 | RocketMQ broker 反复重启，`exit 253`，日志只有 logback 输出 | 镜像内以 **uid 3000** 运行，且 entrypoint **不改属主**；bind mount 目录属主是 root 时无法写 store/logs | 宿主机目录 `chown -R 3000:3000`，并在 compose 里显式写 `user: "3000:3000"` |
+| 4 | `up.sh` 的等待循环永远报 `missing` | compose 生成的容器名带 `-1` 后缀（`kuaikan-mysql-1`），不能拼 `kuaikan-<service>` | 用 `docker compose ps -q <service>` 反查容器 ID |
+| 5 | `gen-env.sh` 偶发 `exit 141` | `tr -dc ... </dev/urandom \| head -c N` 中 `head` 提前退出使 `tr` 收到 SIGPIPE，`set -o pipefail` 下变成失败 | 改用 `openssl rand`，长度确定，无管道截断 |
+
+调试容器时的配套纪律：`docker run` 诊断用完立刻 `docker rm -f`，否则带 `--rm` 的容器在客户端被 kill 后会继续驻留并吃内存。
 
 Nginx 需为 SSE 端点关闭 `proxy_buffering`，并把网关与 Nginx 的超时都设到大于心跳间隔（心跳 15s）。
 

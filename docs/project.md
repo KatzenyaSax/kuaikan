@@ -103,6 +103,35 @@
 | nginx | 1.24.0（Ubuntu） |
 | certbot | 2.9.0 |
 
+## 已运行的中间件（core profile）
+
+| 组件 | 镜像 | 容器状态 | 内存 |
+|---|---|---|---|
+| MySQL | `mysql:8.4.13` | healthy | 451 MB |
+| Redis | `redis:7.4.12-alpine` | healthy | 3 MB |
+| Nacos | `nacos/nacos-server:v3.0.3` | healthy | 680 MB |
+| RocketMQ NameServer | `apache/rocketmq:5.3.4` | healthy | 226 MB |
+| RocketMQ Broker | `apache/rocketmq:5.3.4` | healthy | 730 MB |
+
+合计常驻约 **2.1 GB**，磁盘占用 15 GB / 79 GB（20%）。
+
+关键配置（已实测生效）：
+
+| 项 | 值 |
+|---|---|
+| MySQL 字符集 / 时区 | `utf8mb4` / `+08:00` |
+| MySQL binlog 保留 | 7 天 |
+| MySQL buffer pool / 最大连接 | 512 MB / 300 |
+| MySQL schema | `kuaikan_user` `kuaikan_community` `kuaikan_content` `kuaikan_interaction` `kuaikan_notification` |
+| MySQL 账号 | 每 schema 一个受限账号，**跨库访问实测被拒绝**（ADR 0006 生效） |
+| Redis 持久化 / 淘汰策略 | AOF `everysec` + RDB / `noeviction`（禁止淘汰） |
+| Redis 认证 | `requirepass`，未认证连接实测被拒 |
+| Nacos 模式 | `standalone`，服务端认证关闭（内网） |
+| RocketMQ 集群 | `KuaikanCluster` / `broker-a`，单 Master 异步刷盘，brokerIP1 `172.30.10.14` |
+| RocketMQ commitlog 单文件 | 128 MB（非默认 1 GB） |
+| 网络 | `kuaikan` bridge，`172.30.10.0/24`，中间件 IP 钉死 |
+| 端口发布 | **core 全部端口未发布到宿主** |
+
 ## 服务器已生效的基线配置
 
 - `/etc/docker/daemon.json`：日志轮转 `50m × 3`、`live-restore`、地址池 `172.30.0.0/16`
@@ -129,6 +158,10 @@
 
 | 组件 | 实测版本 | 来源 |
 |---|---|---|
+| MySQL Server | **8.4.13** | 镜像 `mysql:8.4.13` |
+| Redis Server | **7.4.12** | 镜像 `redis:7.4.12-alpine` |
+| Nacos Server | **3.0.3** | 镜像 `nacos/nacos-server:v3.0.3` |
+| RocketMQ Server | **5.3.4** | 镜像 `apache/rocketmq:5.3.4` |
 | Spring Boot | **3.5.16** | parent pom 显式指定 |
 | Spring Cloud | **2025.0.3** | parent pom 显式指定 |
 | → spring-cloud-commons / openfeign / loadbalancer | 4.3.3 | BOM 传递 |
@@ -144,8 +177,7 @@
 | 待验证项 | 计划步骤 | 已知信息 |
 |---|---|---|
 | Sentinel | 第 4 步 | SCA 2025.0.0.0 声明 1.8.9 |
-| RocketMQ client / server | 第 4 步 | client 5.3.1；server 用 5.3.x，接入方式只用 Remoting |
-| Nacos Server 镜像 tag | 第 2 步 | 需与 client 3.0.3 对齐 |
+| RocketMQ 客户端接入 | 第 4 步 | client 5.3.1，server 5.3.4；只用 Remoting |
 | Gateway 配置前缀 | 第 3 步 | 现按 `spring.cloud.gateway.server.webflux.*` 编写，未验证 |
 | MyBatis-Plus | P3 | 待定 |
 
