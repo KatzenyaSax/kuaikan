@@ -179,7 +179,25 @@
 
 ## 12. 部署
 
-见 ADR 0007。阶段一：单台 8C16G 境外机器 + Docker Compose（profile 分 `core` / `observe` / `extra`），8 个 Java 服务在 IDE 运行。阶段二：上线前迁单节点 k3s + Helm。
+见 ADR 0007。**8 个 Java 服务与全部中间件一律容器化**，不存在宿主机/容器混合形态。
+
+### 阶段一：单台 8C16G 境外机器 + Docker Compose
+
+- **单一 Compose 网络**，所有进程同一地址空间；**仅 Nginx 映射宿主机 443**，其余端口一律不映射（ADR 0003 硬约束）。
+- **profile 分组**：`core`（MySQL / Redis / RocketMQ / Nacos）、`app`（8 个 Java 服务 + Nginx）、`observe`（Prometheus / Grafana / Loki / SkyWalking）、`extra`（ES / MinIO）。
+- **多阶段 Dockerfile**：`maven:3.9-eclipse-temurin-21` 构建 → `eclipse-temurin:21-jre` 运行；依赖层与 jar 层分离，命中构建缓存。
+- **健康检查**统一用 `/actuator/health/readiness`，Compose 以 `depends_on: condition: service_healthy` 控制启动顺序。
+- **JVM 参数**统一 `-XX:MaxRAMPercentage=70`，并在 Compose 里用 `deploy.resources.limits.memory` 设硬上限；不显式限制会按宿主机内存算堆导致 OOMKilled。
+- **开发期热更新**：挂载 `target/classes` + Spring Boot DevTools，或 `docker compose watch`；断点调试用 5005 远程调试端口（仅开发 profile 映射）。
+- **本地机器内存不足时**，只起 `core` profile + 在改的那 1~2 个服务；全量 `app` profile 留给集成验证与服务器。
+
+### 阶段二：上线前迁单节点 k3s + Helm
+
+### 容器化的三个已知坑（P0 就会碰到）
+
+1. **Nacos 注册的是容器 IP**，跨 Compose 网络不可达——所有服务必须在同一网络内。
+2. **JVM 不显式限堆会看宿主内存**——必须同时设 `MaxRAMPercentage` 与容器内存上限。
+3. **启动顺序**——Nacos / RocketMQ 未就绪时服务注册会失败并刷屏重试，必须靠 healthcheck + `service_healthy` 挡住。
 
 Nginx 需为 SSE 端点关闭 `proxy_buffering`，并把网关与 Nginx 的超时都设到大于心跳间隔（心跳 15s）。
 

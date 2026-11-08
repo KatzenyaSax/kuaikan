@@ -51,7 +51,12 @@
 | 服务器 | 境外（待采购），8C16G，月预算 ≈ ¥300 档 |
 | 域名 | 待定（免 ICP 备案） |
 | 公网暴露 | 仅 443（Nginx） |
+| 部署形态 | **全组件容器化**（8 个 Java 服务 + 全部中间件），无宿主机/容器混合 |
 | 编排 | 阶段一 Docker Compose，阶段二单节点 k3s（ADR 0007） |
+| Compose profile | `core` / `app` / `observe` / `extra` |
+| 容器网络 | 单一 Compose 网络，仅 Nginx 映射宿主 443 |
+| 服务健康检查 | `/actuator/health/readiness` |
+| JVM 内存约束 | `-XX:MaxRAMPercentage=70` + Compose `limits.memory` |
 | 网关路由前缀 | `/api/**`（`/internal/**` 不经网关） |
 | 心跳间隔 | SSE 心跳 15s，网关与 Nginx 超时 > 30s |
 

@@ -10,7 +10,7 @@
 - **搜索**：Elasticsearch 8 + IK
 - **可观测性**：SkyWalking / Prometheus + Grafana / Loki
 - **前端**：React 19 + TypeScript + Vite + TanStack Query
-- **入口与部署**：Nginx / Docker Compose → 单节点 k3s
+- **入口与部署**：Nginx / 全组件 Docker（8 个 Java 服务 + 全部中间件）/ Docker Compose → 单节点 k3s
 
 ## 架构形态
 

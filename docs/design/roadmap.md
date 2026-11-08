@@ -6,7 +6,7 @@
 
 | 阶段 | 内容 | 位置理由 | 验收标准 |
 |---|---|---|---|
-| **P0 版本矩阵 spike** | 骨架 → Nacos 注册 → 网关路由 → Feign 调用 → Sentinel 规则 → RocketMQ 收发 → MyBatis-Plus → Redis | 版本兼容是全项目最大未知数，必须在写业务前清零 | `React → Nginx → 网关 → user-service` 的 `/ping`（匿名放行）打通；**实际版本号回写 `docs/project.md`** |
+| **P0 版本矩阵 spike** | 骨架 → 多阶段 Dockerfile → Compose 编排（core + app）→ Nacos 注册 → 网关路由 → Feign 调用 → Sentinel 规则 → RocketMQ 收发 → MyBatis-Plus → Redis | 版本兼容是全项目最大未知数，必须在写业务前清零 | `React → Nginx → 网关 → user-service` 的 `/ping`（匿名放行）打通，**且全部进程以容器运行、按 healthcheck 顺序启动**；实际版本号回写 `docs/project.md` |
 | **P1 身份切片** | 邮箱验证码注册、登录、JWT + JWKS、Redis 白名单、网关验签与注入身份头、前端登录态 | 所有后续功能都依赖身份；一次验证网关/用户/前端/Redis 四条线 | 登出立刻失效；踢下线立刻生效；后端服务端口对公网不可达 |
 | **P2 内容读路径** | 建社群、加入社群、发帖、社群帖列表、帖子详情（游客可读） | 最薄的一条完整读路径，先把"前端并行 + 计数快照"的形态定下来 | 游客能浏览；登录能发帖；**此阶段刻意不含评论与计数** |
 | **P3 评论 + 互动（风险核心）** | 评论（存储任意深度/展示两级、游标分页）、点赞、收藏、outbox、RocketMQ、content 消费事件更新计数 | 整个架构的验证点：第一次真跑"写事实 → 发事件 → 改冗余" | 点赞后计数 5 秒内变化；**kill 掉 content-service 再点赞，重启后对账任务把计数修回** |
