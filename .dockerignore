@@ -1,0 +1,29 @@
+# 镜像构建上下文只需要 services/ 下的源码与 pom。
+# 不加这个文件，构建上下文会把 target/（约 410MB 编译产物）和 .git 一起传进去，
+# 既慢又会让 COPY 层的缓存完全失效。
+
+.git
+.gitignore
+.gitattributes
+
+# 编译产物
+**/target/
+
+# 文档与仓库元信息（不进镜像）
+docs/
+CONTEXT.md
+README.md
+AGENTS.md
+deploy/bin/
+deploy/nginx/
+
+# 前端
+node_modules/
+**/node_modules/
+web/dist/
+
+# IDE / 系统
+.idea/
+.vscode/
+*.iml
+.DS_Store
