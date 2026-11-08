@@ -17,8 +17,12 @@ POLL="${POLL_INTERVAL:-5}"
 
 [ -f "$ENV_FILE" ] || { echo "缺少 $ENV_FILE，先跑 deploy/bin/gen-env.sh" >&2; exit 1; }
 
+# 始终同时启用 core 与 app 两个 profile。
+# 原因：app 里的服务 depends_on 指向 core 里的 nacos/redis，
+# 若只传 --profile app，compose 会报 "depends on undefined service"。
+# 启用 profile 不等于启动服务 —— 启动谁由命令行里显式的服务名决定。
 compose() {
-  docker compose --env-file "$ENV_FILE" -f "$COMPOSE" "$@"
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE" --profile core --profile app "$@"
 }
 
 # 等待一批服务 healthy。
@@ -138,25 +142,25 @@ APP="gateway user-service community-service content-service interaction-service 
 case "$TARGET" in
   core)
     echo "==> 启动 core"
-    compose --profile core up -d
+    compose up -d $CORE
     wait_healthy $CORE
     ;;
   app)
     echo "==> 构建并启动 app"
-    compose --profile app up -d --build
+    compose up -d --build $APP
     wait_healthy $APP
     ;;
   all)
     echo "==> 启动 core"
-    compose --profile core up -d
+    compose up -d $CORE
     wait_healthy $CORE
     echo "==> 构建并启动 app"
-    compose --profile app up -d --build
+    compose up -d --build $APP
     wait_healthy $APP
     ;;
   *)
     echo "==> 重建单个服务：$TARGET"
-    compose --profile app up -d --build "$TARGET"
+    compose up -d --build "$TARGET"
     wait_healthy "$TARGET"
     ;;
 esac
