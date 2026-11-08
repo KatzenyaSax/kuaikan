@@ -90,7 +90,7 @@
 
 **收藏不产生消息**，也不发事件——收藏是用户的私密行为，只有计数变化（由 interaction 与 content 之间的内部接口或事件处理，见 §7）。
 
-**契约演进规则**：topic 命名 `kuaikan.{domain}.{event}`；事件体固定携带 `eventId` / `version` / `occurredAt`；**只允许追加可选字段，禁止修改字段语义、禁止删除字段**；破坏性变更必须换新 topic 名并双写过渡。
+**契约演进规则**：topic 命名 `kuaikan_{domain}_{event}`（**必须用下划线**——RocketMQ 的 topic 校验正则为 `^[%|a-zA-Z0-9_-]+$`，含点号会直接抛 `MQClientException: contains illegal characters`）；事件体固定携带 `eventId` / `version` / `occurredAt`；**只允许追加可选字段，禁止修改字段语义、禁止删除字段**；破坏性变更必须换新 topic 名并双写过渡。
 
 **消费幂等三件套**（优先级从高到低）：写事实用 `INSERT IGNORE` + 唯一索引看 affected rows → 消费侧 `t_consume_log(event_id, consumer)` 唯一索引 → 一切计数都有对账任务兜底。
 
@@ -243,6 +243,7 @@
 
 | 6 | compose 报 `service X depends on undefined service nacos` | app 服务 `depends_on` 指向 core 里的服务，只传 `--profile app` 时该服务不在模型里 | 始终同时启用 `--profile core --profile app`；**启用 profile ≠ 启动服务**，启动范围由命令行里显式的服务名决定 |
 | 7 | 构建上下文传输约 410 MB | 没有 `.dockerignore`，`target/` 与 `.git` 全被送进构建上下文 | 仓库根加 `.dockerignore` 排除 `**/target/`、`.git`、`docs/` |
+| 8 | 发消息报 `MQClientException: The specified topic[...] contains illegal characters` | **RocketMQ 的 topic 只允许 `^[%|a-zA-Z0-9_-]+$`，不容忍点号**；而原文档把命名规则写成了 `kuaikan.{domain}.{event}` | topic 一律用下划线：`kuaikan_{domain}_{event}`；文档同步修正 |
 
 **已知无害噪音**：nacos-client 3.0.3 在应用优雅关闭时会打 4~5 行 `ERROR ... NotifyCenter : Event listener exception : java.lang.InterruptedException`。这是客户端 `DefaultPublisher` 线程被 interrupt 的正常现象，**不是故障**——判断依据是时间戳精确对应重启时刻，且服务随后能重新注册并恢复健康。不要为此调高/关闭 `com.alibaba.nacos.common.notify` 的日志级别，那会把真正的问题一起藏掉。
 
