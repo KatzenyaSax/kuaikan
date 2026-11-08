@@ -41,11 +41,11 @@
 | JDK | Eclipse Temurin | 21 LTS |
 | 框架 | Spring Boot | 3.5.x |
 | 微服务 | Spring Cloud | 2025.0.x（须与 Boot 精确对齐） |
-| 注册/配置 | Nacos | 2.4.x（Server 与 SCA 客户端对齐） |
-| 网关 | Spring Cloud Gateway | 随 SC |
+| 注册/配置 | Nacos | **3.0.x**（SCA 2025.0.0.0 的 nacos-client 为 3.0.3，Server 必须同代） |
+| 网关 | Spring Cloud Gateway（`spring-cloud-starter-gateway-server-webflux`） | 4.3.x（随 SC 2025.0） |
 | RPC | OpenFeign + LoadBalancer | 随 SC |
-| 限流熔断 | Sentinel | 1.8.x（规则持久化到 Nacos） |
-| 消息 | RocketMQ | 5.3.x（Proxy 与 Remoting 二选一，不混用） |
+| 限流熔断 | Sentinel | 1.8.9（规则持久化到 Nacos） |
+| 消息 | RocketMQ | 5.3.x，client 5.3.1；**只用 Remoting，不用 Proxy** |
 | ORM | MyBatis-Plus | 3.5.x |
 | 数据库 | MySQL | 8.4 LTS（一主一从） |
 | 缓存 | Redis | 7.4.x |

@@ -113,8 +113,39 @@
 
 ## 已锁定的版本
 
-**待 P0 spike 实测后回填。** 在此之前任何版本号都是假设，不得写入代码注释或文档作为结论。系列约束见 `docs/design/architecture.md` §3。
+由 `deploy/bin/check.sh` 在服务器上实测得出（P0 第 1 步，2026-11-08）。**不采信任何博客与记忆。**
 
-| 组件 | 实测版本 | 实测日期 |
+### 构建与运行时
+
+| 组件 | 实测版本 | 说明 |
 |---|---|---|
-| _（待填）_ | | |
+| JDK（构建） | 21.0.12.1 Temurin | `maven:3.9-eclipse-temurin-21` 内 |
+| JDK（运行） | 21.0.13 Temurin | `eclipse-temurin:21-jre` 内 |
+| Maven | 3.9.16 | 构建镜像内 |
+| 构建镜像 | `maven@sha256:99e61abcff91…` | |
+| 运行镜像 | `eclipse-temurin:21-jre@sha256:0b99b3376fbb…` | |
+
+### 框架与中间件客户端
+
+| 组件 | 实测版本 | 来源 |
+|---|---|---|
+| Spring Boot | **3.5.16** | parent pom 显式指定 |
+| Spring Cloud | **2025.0.3** | parent pom 显式指定 |
+| → spring-cloud-commons / openfeign / loadbalancer | 4.3.3 | BOM 传递 |
+| Spring Cloud Alibaba | **2025.0.0.0** | parent pom 显式指定 |
+| → nacos-client | **3.0.3** | SCA 传递 → **Nacos Server 必须用 3.0.x** |
+| feign-core | 13.6.1 | 传递 |
+| spring-webmvc | 6.2.19 | Boot 3.5.16 传递 |
+| jackson-databind | 2.21.4 | Boot 3.5.16 传递 |
+| Gateway starter | `spring-cloud-starter-gateway-server-webflux` | **新 artifact 名**，旧名 `-starter-gateway` 已废弃 |
+
+### 尚未验证（P0 后续步骤回填）
+
+| 待验证项 | 计划步骤 | 已知信息 |
+|---|---|---|
+| Sentinel | 第 4 步 | SCA 2025.0.0.0 声明 1.8.9 |
+| RocketMQ client / server | 第 4 步 | client 5.3.1；server 用 5.3.x，接入方式只用 Remoting |
+| Nacos Server 镜像 tag | 第 2 步 | 需与 client 3.0.3 对齐 |
+| Gateway 配置前缀 | 第 3 步 | 现按 `spring.cloud.gateway.server.webflux.*` 编写，未验证 |
+| MyBatis-Plus | P3 | 待定 |
+
