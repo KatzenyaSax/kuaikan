@@ -37,9 +37,23 @@
 | [`docs/design/roadmap.md`](./docs/design/roadmap.md) | P0–P7 交付顺序与各阶段验收标准 |
 | [`docs/adr/`](./docs/adr/) | 不可回退的架构决策记录 |
 
+## 当前进度
+
+**P0 已完成**：8 个服务 + 5 个中间件共 13 个容器在单台服务器上运行，
+`deploy/bin/verify.sh` 的 16 条断言全绿，冷启动 120 秒。
+
+```bash
+./deploy/bin/check.sh     # 只编译不建镜像，15~30 秒（本地无编译器，编译在服务器容器内）
+./deploy/bin/up.sh all    # pull → build → up → 等 healthcheck
+./deploy/bin/verify.sh    # P0 验收，退出码 0 即通过
+./deploy/bin/versions.sh  # 采集实测版本
+```
+
+冒烟控制台：https://www.katzenyasax.top/test/
+
 ## 待办
 
-- **P0 版本矩阵 spike**：跑通 Nacos 注册 → 网关路由 → Feign → Sentinel → RocketMQ → MyBatis-Plus → Redis，把实测版本号回填 `docs/project.md`。
+- **P1 身份切片**：注册登录、JWT + JWKS、网关验签、Redis 白名单、前端登录态。
 
 ## 仓库约定
 

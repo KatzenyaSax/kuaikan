@@ -231,12 +231,63 @@ P1 引入鉴权后，`/ping/**` 与 `/test/` 一并纳入保护或在网关下�
 | jackson-databind | 2.21.4 | Boot 3.5.16 传递 |
 | Gateway starter | `spring-cloud-starter-gateway-server-webflux` | **新 artifact 名**，旧名 `-starter-gateway` 已废弃 |
 
-### 尚未验证（P0 后续步骤回填）
+### 已实测的依赖版本（`deploy/bin/versions.sh` 输出）
 
-| 待验证项 | 计划步骤 | 已知信息 |
+| 组件 | 版本 |
+|---|---|
+| spring-boot-starter-web | 3.5.16 |
+| spring-cloud-commons / openfeign / loadbalancer | 4.3.3 |
+| spring-cloud-starter-alibaba-nacos-discovery | 2025.0.0.0 |
+| spring-cloud-starter-alibaba-sentinel | 2025.0.0.0 |
+| nacos-client | 3.0.3 |
+| rocketmq-client | 5.3.1 |
+| sentinel-core | 1.8.9 |
+| feign-core | 13.6.1 |
+| jackson-databind | 2.21.4 |
+| spring-webmvc | 6.2.19 |
+
+## P0 验收（已完成）
+
+**判定方式不是文字描述，而是可执行脚本**：`deploy/bin/verify.sh`，退出码 0 即通过。
+
+```bash
+./deploy/bin/verify.sh              # 常规验收（含重启自愈）
+./deploy/bin/verify.sh --no-restart # 跳过重启
+./deploy/bin/verify.sh --cold       # 先 down 再 up all，含冷启动计时
+```
+
+16 条断言全部覆盖：边缘存活 / 13 容器健康 / 8 服务注册 / 7 条网关路由 / Feign 服务发现 /
+RocketMQ 端到端 / Sentinel 限流 / Actuator readiness / 端口收敛 / 重启自愈 / 日志无异常 / 公网全链路。
+
+### P0 实测指标
+
+| 指标 | 实测值 |
+|---|---|
+| 验收断言 | **16 通过 / 0 失败** |
+| 冷启动（down → up all → 全绿） | **120 秒** |
+| 单服务重启自愈 | **16~17 秒** |
+| 全量构建 8 个镜像 | 约 16~110 秒（BuildKit 缓存命中时 16 秒） |
+| RocketMQ 稳态端到端 | **0~1 秒** |
+| RocketMQ 首条消息（消费组刚启动，含 rebalance） | 8~15 秒 |
+| Sentinel（QPS=2） | 放行 2 次 / 限流 8 次，429 + `code 42900` |
+| 全栈常驻内存（13 容器） | 5.8 GB / 15 GB |
+| 磁盘 | 24 GB / 79 GB（31%） |
+
+### 镜像体积
+
+| 镜像 | 体积 | 说明 |
 |---|---|---|
-| Sentinel | 第 4 步 | SCA 2025.0.0.0 声明 1.8.9 |
-| RocketMQ 客户端接入 | 第 4 步 | client 5.3.1，server 5.3.4；只用 Remoting |
-| ~~Gateway 配置前缀~~ | ✅ 第 3 步已验证 | `spring.cloud.gateway.server.webflux.routes` 生效，7 条路由全部绑定（网关 4.3.5） |
-| MyBatis-Plus | P3 | 待定 |
+| 基础 `eclipse-temurin:21-jre` | 456 MB | 不可压缩部分，已自带 curl |
+| content / interaction / notification / search / rank | **558 MB** | 基础 + 51 MB jar |
+| gateway | 562 MB | 基础 + 54 MB jar |
+| community / user | **688 / 694 MB** | jar 115/118 MB（含 rocketmq-client + sentinel 依赖） |
 
+镜像构建的两条教训（已写入 Dockerfile 注释）：
+
+1. **`COPY` 之后再 `RUN chown` 会触发 copy-up**，把 51 MB 的 jar 复制成第二个层，每个镜像白占约 53 MB。
+   必须用 `COPY --chown=app:app`。
+2. **`eclipse-temurin:21-jre` 已自带 curl 8.18.0**，运行阶段不需要 `apt-get install curl`；
+   那一层既是白做的，又引入了构建期对 apt 源的依赖。
+
+BuildKit 缓存 8.5 GB（其中 Maven 依赖约 1 GB）**属于基础设施，不要 `docker builder prune`**，
+否则下次构建要重下约 1 GB 依赖。
