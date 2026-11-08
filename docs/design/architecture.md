@@ -163,6 +163,7 @@
 11. **列表分页一律游标**，禁止 `offset` 深分页。
 12. **游客可读的接口必须在网关放行名单中显式声明**，不得靠"忘记加鉴权"实现。
 13. **事件契约只允许追加可选字段**，破坏性变更换 topic 名（见 §6）。
+14. **单环境纪律**：数据库变更必须向后兼容，每次发布保留上一版镜像 tag 可回滚（→ ADR 0007）。
 
 ## 11. 定时任务（XXL-Job 统一调度）
 
@@ -179,25 +180,51 @@
 
 ## 12. 部署
 
-见 ADR 0007。**8 个 Java 服务与全部中间件一律容器化**，不存在宿主机/容器混合形态。
+见 ADR 0007。**8 个 Java 服务与全部中间件一律容器化，全部运行在同一台境外云服务器上。只有一套环境，没有本地环境、没有预发环境。**
 
-### 阶段一：单台 8C16G 境外机器 + Docker Compose
+### 单一环境
 
 - **单一 Compose 网络**，所有进程同一地址空间；**仅 Nginx 映射宿主机 443**，其余端口一律不映射（ADR 0003 硬约束）。
 - **profile 分组**：`core`（MySQL / Redis / RocketMQ / Nacos）、`app`（8 个 Java 服务 + Nginx）、`observe`（Prometheus / Grafana / Loki / SkyWalking）、`extra`（ES / MinIO）。
-- **多阶段 Dockerfile**：`maven:3.9-eclipse-temurin-21` 构建 → `eclipse-temurin:21-jre` 运行；依赖层与 jar 层分离，命中构建缓存。
+- **多阶段 Dockerfile**：`maven:3.9-eclipse-temurin-21` 构建 → `eclipse-temurin:21-jre` 运行；依赖层与 jar 层分离，并用 BuildKit `--mount=type=cache,target=/root/.m2` 持久化 Maven 依赖。
+- **构建只能在服务器（x86_64）或 CI 上做**。开发机是 Apple Silicon，本地构建的镜像在服务器上会 `exec format error`。
 - **健康检查**统一用 `/actuator/health/readiness`，Compose 以 `depends_on: condition: service_healthy` 控制启动顺序。
 - **JVM 参数**统一 `-XX:MaxRAMPercentage=70`，并在 Compose 里用 `deploy.resources.limits.memory` 设硬上限；不显式限制会按宿主机内存算堆导致 OOMKilled。
-- **开发期热更新**：挂载 `target/classes` + Spring Boot DevTools，或 `docker compose watch`；断点调试用 5005 远程调试端口（仅开发 profile 映射）。
-- **本地机器内存不足时**，只起 `core` profile + 在改的那 1~2 个服务；全量 `app` profile 留给集成验证与服务器。
 
-### 阶段二：上线前迁单节点 k3s + Helm
+### 迭代与回滚
+
+- 迭代粒度是**单个服务**：`docker compose up -d --build <service>`。首次构建 5~8 分钟，之后 30~90 秒。
+- **每次发布保留上一版镜像 tag**（`content-service:20250101-a1b2c3`），回滚＝改 tag 后 `up -d`。这是单环境唯一的兜底手段。
+- **数据库变更必须向后兼容**：先加列、后使用、不删列。单环境没有预发环境可试错，破坏性迁移等于直接故障。
 
 ### 容器化的三个已知坑（P0 就会碰到）
 
 1. **Nacos 注册的是容器 IP**，跨 Compose 网络不可达——所有服务必须在同一网络内。
 2. **JVM 不显式限堆会看宿主内存**——必须同时设 `MaxRAMPercentage` 与容器内存上限。
 3. **启动顺序**——Nacos / RocketMQ 未就绪时服务注册会失败并刷屏重试，必须靠 healthcheck + `service_healthy` 挡住。
+
+### 磁盘预算（80GB）
+
+| 项 | 估算 |
+|---|---|
+| OS | 8 GB |
+| 中间件镜像 | 7 GB |
+| 8 个服务镜像 | 2 GB |
+| Maven 构建缓存 | 4 GB |
+| MySQL 数据 + binlog（一主一从） | 4 GB |
+| RocketMQ 存储 | 3 GB |
+| ES 索引 + 固定开销 | 3 GB |
+| Redis RDB/AOF | 1 GB |
+| 日志（容器 + Loki） | 5 GB |
+| 本地备份副本 | 5 GB |
+| **合计占用** | **≈ 42 GB（余 38 GB）** |
+
+**四条必须配置的约束**，否则会爆盘：
+
+1. **容器日志必须轮转**：每个服务 `logging.options.max-size: 50m` + `max-file: "3"`，Docker 默认无上限。
+2. **RocketMQ commitlog 按 1GB 预分配**，需监控 store 目录并按 `fileReservedTime` 清理。
+3. **MySQL `expire_logs_days` 显式设为 7**，主从两份 binlog 会长期占用。
+4. **ES 磁盘 85% 会把索引自动设为 read-only**，是功能失效而非降速——整盘水位保持 70% 以下。
 
 Nginx 需为 SSE 端点关闭 `proxy_buffering`，并把网关与 Nginx 的超时都设到大于心跳间隔（心跳 15s）。
 
@@ -211,3 +238,4 @@ Nginx 需为 SSE 端点关闭 `proxy_buffering`，并把网关与 Nginx 的超�
 | ES 与 SkyWalking 内存 | 已定 | ES heap 固定 512M；SkyWalking 用内置 BanyanDB，不占 ES |
 | 邮件服务商 | **开放** | P1 实施时选型（SMTP 自建 / 第三方 API 二选一） |
 | 搜索可见性 | 已消解 | 社群全程公开，全部帖子入索引 |
+| 开发机与服务器 CPU 架构不一致 | 已定 | 只在服务器/CI 构建镜像，禁止 Mac 本地构建后推送 |
