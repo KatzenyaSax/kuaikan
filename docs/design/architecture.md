@@ -42,7 +42,7 @@
 | 框架 | Spring Boot | 3.5.x |
 | 微服务 | Spring Cloud | 2025.0.x（须与 Boot 精确对齐） |
 | 注册/配置 | Nacos | **server 3.0.3**（与 SCA 2025.0.0.0 的 nacos-client 3.0.3 同代） |
-| 网关 | Spring Cloud Gateway（`spring-cloud-starter-gateway-server-webflux`） | 4.3.x（随 SC 2025.0） |
+| 网关 | Spring Cloud Gateway（`spring-cloud-starter-gateway-server-webflux`） | 4.3.5；配置前缀 `spring.cloud.gateway.server.webflux.*`（实测生效） |
 | RPC | OpenFeign + LoadBalancer | 随 SC |
 | 限流熔断 | Sentinel | 1.8.9（规则持久化到 Nacos） |
 | 消息 | RocketMQ | server 5.3.4 / client 5.3.1；**只用 Remoting，不用 Proxy** |
@@ -61,6 +61,8 @@
 **已明确排除**：Dubbo（ADR 0002）、BFF（ADR 0005）、**Seata**（本地消息表已取代全部分布式事务场景，见 ADR 0004）、分库分表、多可用区、RocketMQ 事务消息（ADR 0004）、Spring Authorization Server / Keycloak、私密社群与加入审批、一期图片上传（P7 才接 MinIO）。
 
 ## 4. 请求链路
+
+**路由约定**：`/api/{service}/**` → `lb://{service}`，过滤 `StripPrefix=2`。前端请求 `/api/content/posts/1`，content-service 实际收到 `/posts/1`。
 
 **A. 游客读**：浏览器 → Nginx（命中 `proxy_cache`）→ 网关（放行名单）→ 服务 → 返回。响应中不得包含任何用户相关字段。
 
@@ -238,6 +240,11 @@
 | 3 | RocketMQ broker 反复重启，`exit 253`，日志只有 logback 输出 | 镜像内以 **uid 3000** 运行，且 entrypoint **不改属主**；bind mount 目录属主是 root 时无法写 store/logs | 宿主机目录 `chown -R 3000:3000`，并在 compose 里显式写 `user: "3000:3000"` |
 | 4 | `up.sh` 的等待循环永远报 `missing` | compose 生成的容器名带 `-1` 后缀（`kuaikan-mysql-1`），不能拼 `kuaikan-<service>` | 用 `docker compose ps -q <service>` 反查容器 ID |
 | 5 | `gen-env.sh` 偶发 `exit 141` | `tr -dc ... </dev/urandom \| head -c N` 中 `head` 提前退出使 `tr` 收到 SIGPIPE，`set -o pipefail` 下变成失败 | 改用 `openssl rand`，长度确定，无管道截断 |
+
+| 6 | compose 报 `service X depends on undefined service nacos` | app 服务 `depends_on` 指向 core 里的服务，只传 `--profile app` 时该服务不在模型里 | 始终同时启用 `--profile core --profile app`；**启用 profile ≠ 启动服务**，启动范围由命令行里显式的服务名决定 |
+| 7 | 构建上下文传输约 410 MB | 没有 `.dockerignore`，`target/` 与 `.git` 全被送进构建上下文 | 仓库根加 `.dockerignore` 排除 `**/target/`、`.git`、`docs/` |
+
+**已知无害噪音**：nacos-client 3.0.3 在应用优雅关闭时会打 4~5 行 `ERROR ... NotifyCenter : Event listener exception : java.lang.InterruptedException`。这是客户端 `DefaultPublisher` 线程被 interrupt 的正常现象，**不是故障**——判断依据是时间戳精确对应重启时刻，且服务随后能重新注册并恢复健康。不要为此调高/关闭 `com.alibaba.nacos.common.notify` 的日志级别，那会把真正的问题一起藏掉。
 
 调试容器时的配套纪律：`docker run` 诊断用完立刻 `docker rm -f`，否则带 `--rm` 的容器在客户端被 kill 后会继续驻留并吃内存。
 

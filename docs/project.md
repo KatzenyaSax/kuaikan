@@ -132,6 +132,36 @@
 | 网络 | `kuaikan` bridge，`172.30.10.0/24`，中间件 IP 钉死 |
 | 端口发布 | **core 全部端口未发布到宿主** |
 
+## 已运行的业务服务（app profile）
+
+| 服务 | 镜像 | 端口（容器内） | 常驻内存 |
+|---|---|---|---|
+| gateway | `kuaikan/gateway:dev` | 8080（**唯一映射宿主 `127.0.0.1:8080`**） | 376 MB |
+| user-service | `kuaikan/user-service:dev` | 8081 | 274 MB |
+| community-service | `kuaikan/community-service:dev` | 8082 | 370 MB |
+| content-service | `kuaikan/content-service:dev` | 8083 | 295 MB |
+| interaction-service | `kuaikan/interaction-service:dev` | 8084 | 307 MB |
+| notification-service | `kuaikan/notification-service:dev` | 8085 | 305 MB |
+| search-service | `kuaikan/search-service:dev` | 8086 | 314 MB |
+| rank-service | `kuaikan/rank-service:dev` | 8087 | 315 MB |
+
+全栈（core 5 + app 8 = 13 个容器）常驻内存约 **5.5 GB**，磁盘 19 GB / 79 GB（25%）。
+构建：`docker compose build` 单服务约 30~45 秒（Maven 依赖命中 BuildKit 缓存），8 个服务全量构建 + 启动约 **1 分 50 秒**。
+
+### 网关路由约定
+
+`/api/{service}/**` → `lb://{service}`，`StripPrefix=2`。即前端请求 `/api/user/ping`，user-service 实际收到 `/ping`。
+
+| 对外路径 | 目标服务 |
+|---|---|
+| `/api/user/**` | user-service |
+| `/api/community/**` | community-service |
+| `/api/content/**` | content-service |
+| `/api/interaction/**` | interaction-service |
+| `/api/notification/**` | notification-service |
+| `/api/search/**` | search-service |
+| `/api/rank/**` | rank-service |
+
 ## 服务器已生效的基线配置
 
 - `/etc/docker/daemon.json`：日志轮转 `50m × 3`、`live-restore`、地址池 `172.30.0.0/16`
@@ -178,6 +208,6 @@
 |---|---|---|
 | Sentinel | 第 4 步 | SCA 2025.0.0.0 声明 1.8.9 |
 | RocketMQ 客户端接入 | 第 4 步 | client 5.3.1，server 5.3.4；只用 Remoting |
-| Gateway 配置前缀 | 第 3 步 | 现按 `spring.cloud.gateway.server.webflux.*` 编写，未验证 |
+| ~~Gateway 配置前缀~~ | ✅ 第 3 步已验证 | `spring.cloud.gateway.server.webflux.routes` 生效，7 条路由全部绑定（网关 4.3.5） |
 | MyBatis-Plus | P3 | 待定 |
 
