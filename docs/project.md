@@ -55,7 +55,8 @@
 | 边缘代理 | **宿主机 nginx 1.24**（ADR 0007 显式例外），配置源自 `deploy/nginx/` |
 | 公网端口 | 仅 22 / 80 / 443（UFW + 云安全组） |
 | 上游 | 网关容器只绑 `127.0.0.1:8080`，nginx `/api/` 反代至此 |
-| 前端产物目录 | `/opt/kuaikan/frontend/dist` |
+| 静态站点 | `/` 根占位页；`/test/` 冒烟控制台（源码在 `deploy/status/`，`deploy/bin/install-status.sh` 发布） |
+| 前端产物目录 | `/opt/kuaikan/frontend/dist`（真实前端）与 `/opt/kuaikan/frontend/test`（冒烟台） |
 | 部署根目录 | `/opt/kuaikan/{deploy,data,logs,backup}` |
 | 部署形态 | **全组件容器化**（8 个 Java 服务 + 全部中间件），nginx 除外 |
 | 环境数量 | **1 套**（无本地环境、无预发环境） |
@@ -177,6 +178,18 @@
 | `/api/notification/**` | notification-service |
 | `/api/search/**` | search-service |
 | `/api/rank/**` | rank-service |
+
+### P0 期间已知的公开面（P1 收口）
+
+以下端点当前**无需认证即可调用**，是 P0 为验收刻意保留的：
+
+| 端点 | 风险 |
+|---|---|
+| `POST /api/user/ping/mq` | 任何人可写入消息，量大时会吃 broker 磁盘 |
+| `GET /api/user/ping/sentinel` | 任何人可触发限流 |
+| `GET /test/` | 暴露服务名、容器主机名、端口、耗时（不含配置与密钥） |
+
+P1 引入鉴权后，`/ping/**` 与 `/test/` 一并纳入保护或在网关下线。
 
 ## 服务器已生效的基线配置
 
