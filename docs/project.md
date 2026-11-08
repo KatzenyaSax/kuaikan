@@ -65,6 +65,34 @@
 | 交换分区 | 4.4 GB（`/swap.img` 1.4G + `/swapfile` 3G） |
 | 时区 | Asia/Shanghai，NTP 已同步 |
 
+## 本机开发环境（实测）
+
+**本机只做编辑与 git，不承担后端构建。** 后端编译与镜像构建全部在服务器容器内完成。
+
+| 工具 | 状态 | 用途 |
+|---|---|---|
+| macOS | 27.0，arm64 | — |
+| Node | **22.23.4**（`~/.local/node/current`，PATH 优先） | 前端本地开发、HMR、构建 |
+| npm | 10.9.9 | 包管理，**不使用 pnpm / yarn** |
+| Homebrew | 5.1.11 | |
+| Homebrew 的 node | 25.8.0（未删除，`brew link node` 可切回） | 仅作备用 |
+| git / ssh / rsync | 有 | 代码同步与运维 |
+| **Java** | ❌ 无（仅系统自带 17，非 21） | 不用于本项目 |
+| **Maven / Gradle** | ❌ 无 | 编译在服务器容器内 |
+| **Docker** | ❌ 无 | 镜像构建在服务器 |
+
+### Node 版本的由来
+
+本机原为 Homebrew 的 Node 25.8.0（奇数版、非 LTS）。因 **Homebrew 5.1.11 不认识 macOS 27.0**，`brew install node@22` 会报 `Error: unknown or unsupported macOS version: :dunno`（依赖已装齐，失败发生在 bottle 选择阶段）。故改用 **nodejs.org 官方 tarball**（SHA256 已校验）安装到 `~/.local/node/node-v22.23.4-darwin-arm64`，由 `~/.zshrc` 中的 PATH 前置生效。
+
+### 前后端两条回路
+
+| | 回路 | 耗时 |
+|---|---|---|
+| **后端** | 本地编辑 → commit + push → 服务器 `git pull` → `docker compose up -d --build <service>` | 单服务 30~90 秒 |
+| **前端** | 本地 `npm run dev`（Vite HMR，`server.proxy` 把 `/api` 指向 `https://www.katzenyasax.top`） | 秒级 |
+| 前端发布 | 本地 `npm run build` → 产物同步到服务器 `/opt/kuaikan/frontend/dist` | — |
+
 ## 已装软件（服务器实测）
 
 | 组件 | 版本 |

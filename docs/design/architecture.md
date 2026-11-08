@@ -194,7 +194,9 @@
 
 ### 迭代与回滚
 
-- 迭代粒度是**单个服务**：`docker compose up -d --build <service>`。首次构建 5~8 分钟，之后 30~90 秒。
+- 后端迭代粒度是**单个服务**：`docker compose up -d --build <service>`。首次构建 5~8 分钟，之后 30~90 秒。
+- **本地无 JDK / Maven / Docker**，编译结果只能由服务器给出。改完先跑 `deploy/bin/check.sh`（只编译、不建镜像，15~30 秒）确认编过，再 `deploy/bin/up.sh`。
+- **前端不走镜像**：本地 `npm run dev` 用 Vite HMR 开发，`proxy` 指向 `https://www.katzenyasax.top`；发布时本地 `npm run build`，产物同步到 `/opt/kuaikan/frontend/dist`。
 - **每次发布保留上一版镜像 tag**（`content-service:20250101-a1b2c3`），回滚＝改 tag 后 `up -d`。这是单环境唯一的兜底手段。
 - **数据库变更必须向后兼容**：先加列、后使用、不删列。单环境没有预发环境可试错，破坏性迁移等于直接故障。
 
