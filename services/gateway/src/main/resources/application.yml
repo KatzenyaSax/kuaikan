@@ -24,17 +24,56 @@ spring:
                 - Path=/api/user/**
               filters:
                 - StripPrefix=2
+            - id: community-service
+              uri: lb://community-service
+              predicates:
+                - Path=/api/community/**
+              filters:
+                - StripPrefix=2
+            - id: content-service
+              uri: lb://content-service
+              predicates:
+                - Path=/api/content/**
+              filters:
+                - StripPrefix=2
+            - id: interaction-service
+              uri: lb://interaction-service
+              predicates:
+                - Path=/api/interaction/**
+              filters:
+                - StripPrefix=2
+            - id: notification-service
+              uri: lb://notification-service
+              predicates:
+                - Path=/api/notification/**
+              filters:
+                - StripPrefix=2
+            - id: search-service
+              uri: lb://search-service
+              predicates:
+                - Path=/api/search/**
+              filters:
+                - StripPrefix=2
+            - id: rank-service
+              uri: lb://rank-service
+              predicates:
+                - Path=/api/rank/**
+              filters:
+                - StripPrefix=2
 
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,prometheus
+        # gateway 端点用于确认路由是否真的被绑定（P0 验收）
+        include: health,info,metrics,prometheus,gateway
   endpoint:
     health:
       show-details: always
       probes:
         enabled: true
+    gateway:
+      access: read_only
   health:
     livenessstate:
       enabled: true
@@ -52,3 +91,4 @@ info:
 logging:
   level:
     root: INFO
+    org.springframework.cloud.gateway: INFO
