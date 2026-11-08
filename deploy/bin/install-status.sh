@@ -9,6 +9,7 @@ set -euo pipefail
 
 REPO="${REPO:-/opt/kuaikan/repo}"
 DEST="${DEST:-/opt/kuaikan/frontend}"
+FORCE="${FORCE:-0}"   # FORCE=1 时强制覆盖根路径
 
 SRC_ROOT="$REPO/deploy/status/root/index.html"
 SRC_TEST="$REPO/deploy/status/test/index.html"
@@ -18,8 +19,8 @@ SRC_TEST="$REPO/deploy/status/test/index.html"
 
 mkdir -p "$DEST/dist" "$DEST/test"
 
-# 根路径占位页：不覆盖已存在的真实前端产物
-if [ -f "$DEST/dist/index.html" ] && ! grep -q "前端尚未构建" "$DEST/dist/index.html" 2>/dev/null; then
+# 根路径占位页：不覆盖已存在的真实前端产物（用 FORCE=1 强制覆盖）
+if [ "$FORCE" != "1" ] && [ -f "$DEST/dist/index.html" ] && ! grep -q "前端尚未构建" "$DEST/dist/index.html" 2>/dev/null; then
   echo "跳过根路径：$DEST/dist/index.html 已存在且不是占位页（可能是真实前端构建产物）"
 else
   install -m 0644 "$SRC_ROOT" "$DEST/dist/index.html"
