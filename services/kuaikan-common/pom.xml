@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>top.katzenyasax.kuaikan</groupId>
+        <artifactId>kuaikan-services</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>kuaikan-common</artifactId>
+    <name>kuaikan-common</name>
+    <description>
+        唯一共享模块。纪律见 docs/design/architecture.md §10 不变量 8：
+        只允许放通用响应体、错误契约、身份上下文、常量。
+        禁止放任何实体类、业务 DTO、Service、Repository。
+        因此本模块刻意不引入任何 Spring 依赖，避免向 gateway（WebFlux）泄漏 Web 栈。
+    </description>
+</project>
