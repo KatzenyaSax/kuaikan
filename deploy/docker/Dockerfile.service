@@ -1,0 +1,59 @@
+# syntax=docker/dockerfile:1.7
+#
+# 8 个服务共用的多阶段 Dockerfile，通过 MODULE 参数区分。
+#
+#   docker build -f deploy/docker/Dockerfile.service \
+#     --build-arg MODULE=user-service -t kuaikan/user-service:dev /opt/kuaikan/repo
+#
+# 构建上下文必须是仓库根目录（需要 COPY services/）。
+#
+# 关键约束：
+#   1. 本地是 arm64，服务器是 x86_64 —— 镜像只能在服务器或 CI 上构建（ADR 0007）。
+#   2. Maven 依赖走 BuildKit cache mount，持久化在 BuildKit 缓存里。
+#      不要执行 docker builder prune，否则下次要重下约 1GB。
+#   3. 运行阶段用非 root 用户，并显式限制堆：容器内 JVM 会按宿主机内存算堆。
+
+ARG MODULE=user-service
+
+# ---------- 构建阶段 ----------
+FROM maven:3.9-eclipse-temurin-21 AS build
+ARG MODULE
+WORKDIR /src/services
+
+COPY services/ /src/services/
+
+RUN --mount=type=cache,target=/root/.m2 \
+    mvn -B -DskipTests -pl "${MODULE}" -am package
+
+# ---------- 运行阶段 ----------
+FROM eclipse-temurin:21-jre AS runtime
+ARG MODULE
+
+ENV TZ=Asia/Shanghai \
+    LANG=C.UTF-8
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl tzdata \
+ && rm -rf /var/lib/apt/lists/* \
+ && groupadd --gid 10001 app \
+ && useradd --uid 10001 --gid app --shell /usr/sbin/nologin --create-home app
+
+WORKDIR /app
+
+# *.jar 不会匹配 spring-boot 留下的 *.jar.original
+COPY --from=build /src/services/${MODULE}/target/*.jar /app/app.jar
+
+RUN chown -R app:app /app
+
+USER app
+
+EXPOSE 8080
+
+ENTRYPOINT ["java", \
+  "-XX:MaxRAMPercentage=70", \
+  "-XX:+ExitOnOutOfMemoryError", \
+  "-XX:+HeapDumpOnOutOfMemoryError", \
+  "-XX:HeapDumpPath=/app/heapdump.hprof", \
+  "-Djava.security.egd=file:/dev/./urandom", \
+  "-Duser.timezone=Asia/Shanghai", \
+  "-jar", "/app/app.jar"]

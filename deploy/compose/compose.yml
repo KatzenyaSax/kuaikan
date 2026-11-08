@@ -1,0 +1,353 @@
+# kuaikan 中间件 / 服务编排
+#
+#   core : MySQL 8.4 + Redis 7.4 + Nacos 3.0.3 + RocketMQ 5.3.4
+#   app  : 网关 + 7 个服务
+#   observe / extra : 可观测性与可选组件（P0 不启用，留位）
+#
+# 纪律（见 ADR 0003 / 0006 / 0007）：
+#   - 除 gateway 映射到 127.0.0.1:8080 外，任何服务都不向宿主发布端口。
+#     "只开 443" 靠的是这里不写 ports，而不是 UFW —— Docker 会绕过 UFW。
+#   - 数据卷全部落在 /opt/kuaikan/data 下，便于备份与迁移。
+#   - 所有服务带 healthcheck，app 用 service_healthy 控制启动顺序。
+#
+# 用法：
+#   docker compose --env-file /opt/kuaikan/env/kuaikan.env \
+#     -f deploy/compose/compose.yml --profile core --profile app up -d
+
+name: kuaikan
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "3"
+
+networks:
+  kuaikan:
+    name: kuaikan
+    driver: bridge
+    ipam:
+      config:
+        # 避开常见的 172.17/172.18，避免与其它 docker 网络冲突
+        - subnet: 172.30.10.0/24
+
+services:
+  # ============================================================
+  # core
+  # ============================================================
+  mysql:
+    image: mysql:8.4.13
+    profiles: ["core"]
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      TZ: Asia/Shanghai
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?}
+      MYSQL_INITDB_SKIP_TZINFO: "1"
+      # 供 init 脚本创建各服务的库账号（ADR 0006：库权限配置死，不靠自觉）
+      MYSQL_PWD_USER: ${MYSQL_PWD_USER:?}
+      MYSQL_PWD_COMMUNITY: ${MYSQL_PWD_COMMUNITY:?}
+      MYSQL_PWD_CONTENT: ${MYSQL_PWD_CONTENT:?}
+      MYSQL_PWD_INTERACTION: ${MYSQL_PWD_INTERACTION:?}
+      MYSQL_PWD_NOTIFICATION: ${MYSQL_PWD_NOTIFICATION:?}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+08:00
+      # binlog 只保留 7 天，否则主从两份 binlog 会长期吃盘
+      - --binlog_expire_logs_seconds=604800
+      - --innodb-buffer-pool-size=512M
+      - --max-connections=300
+      - --skip-name-resolve
+    volumes:
+      - /opt/kuaikan/data/mysql:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      kuaikan:
+        ipv4_address: 172.30.10.10
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 60s
+
+  redis:
+    image: redis:7.4.12-alpine
+    profiles: ["core"]
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      TZ: Asia/Shanghai
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?}
+    command:
+      - sh
+      - -c
+      - exec redis-server /usr/local/etc/redis/redis.conf --requirepass "$$REDIS_PASSWORD"
+    volumes:
+      - /opt/kuaikan/data/redis:/data
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    networks:
+      kuaikan:
+        ipv4_address: 172.30.10.11
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  nacos:
+    image: nacos/nacos-server:v3.0.3
+    profiles: ["core"]
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      TZ: Asia/Shanghai
+      MODE: standalone
+      # 内网单机，P0 不开认证；对外端口一律不发布
+      NACOS_AUTH_ENABLE: "false"
+      JVM_XMS: 256m
+      JVM_XMX: 512m
+      JVM_XMN: 128m
+    volumes:
+      - /opt/kuaikan/data/nacos/logs:/home/nacos/logs
+    networks:
+      kuaikan:
+        ipv4_address: 172.30.10.12
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS 'http://127.0.0.1:8848/nacos/v1/console/health/readiness' >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+
+  rmq-namesrv:
+    image: apache/rocketmq:5.3.4
+    profiles: ["core"]
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      TZ: Asia/Shanghai
+      JAVA_OPT_EXT: "-Xms256m -Xmx256m -Xmn128m"
+    command: ["nameserver"]
+    volumes:
+      - /opt/kuaikan/data/rocketmq/namesrv/logs:/home/rocketmq/logs
+    networks:
+      kuaikan:
+        ipv4_address: 172.30.10.13
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/9876' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
+  rmq-broker:
+    image: apache/rocketmq:5.3.4
+    profiles: ["core"]
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      TZ: Asia/Shanghai
+      JAVA_OPT_EXT: "-Xms512m -Xmx512m -Xmn256m"
+    command: ["broker", "-c", "/home/rocketmq/conf/broker.conf"]
+    volumes:
+      - ./rocketmq/broker.conf:/home/rocketmq/conf/broker.conf:ro
+      - /opt/kuaikan/data/rocketmq/broker/store:/home/rocketmq/store
+      - /opt/kuaikan/data/rocketmq/broker/logs:/home/rocketmq/logs
+    depends_on:
+      rmq-namesrv:
+        condition: service_healthy
+    networks:
+      kuaikan:
+        ipv4_address: 172.30.10.14
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/10911' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 40s
+
+  # ============================================================
+  # app（8 个 Java 服务，共用 deploy/docker/Dockerfile.service）
+  # ============================================================
+  gateway:
+    profiles: ["app"]
+    build: &default-build
+      context: ../../
+      dockerfile: deploy/docker/Dockerfile.service
+      args:
+        MODULE: gateway
+    image: kuaikan/gateway:${APP_TAG:-dev}
+    restart: unless-stopped
+    logging: *default-logging
+    environment: &default-app-env
+      TZ: Asia/Shanghai
+      NACOS_ADDR: nacos:8848
+      APP_VERSION: ${APP_TAG:-dev}
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70"
+    depends_on: &default-app-depends
+      nacos:
+        condition: service_healthy
+    networks:
+      - kuaikan
+    ports:
+      # 唯一的对外发布：只绑回环，由宿主机 nginx 反代（ADR 0007）
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/actuator/health/readiness || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  user-service:
+    profiles: ["app"]
+    build:
+      <<: *default-build
+      args:
+        MODULE: user-service
+    image: kuaikan/user-service:${APP_TAG:-dev}
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      <<: *default-app-env
+    depends_on: *default-app-depends
+    networks:
+      - kuaikan
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8081/actuator/health/readiness || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  community-service:
+    profiles: ["app"]
+    build:
+      <<: *default-build
+      args:
+        MODULE: community-service
+    image: kuaikan/community-service:${APP_TAG:-dev}
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      <<: *default-app-env
+    depends_on: *default-app-depends
+    networks:
+      - kuaikan
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8082/actuator/health/readiness || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  content-service:
+    profiles: ["app"]
+    build:
+      <<: *default-build
+      args:
+        MODULE: content-service
+    image: kuaikan/content-service:${APP_TAG:-dev}
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      <<: *default-app-env
+    depends_on: *default-app-depends
+    networks:
+      - kuaikan
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8083/actuator/health/readiness || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  interaction-service:
+    profiles: ["app"]
+    build:
+      <<: *default-build
+      args:
+        MODULE: interaction-service
+    image: kuaikan/interaction-service:${APP_TAG:-dev}
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      <<: *default-app-env
+    depends_on: *default-app-depends
+    networks:
+      - kuaikan
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8084/actuator/health/readiness || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  notification-service:
+    profiles: ["app"]
+    build:
+      <<: *default-build
+      args:
+        MODULE: notification-service
+    image: kuaikan/notification-service:${APP_TAG:-dev}
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      <<: *default-app-env
+    depends_on: *default-app-depends
+    networks:
+      - kuaikan
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8085/actuator/health/readiness || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  search-service:
+    profiles: ["app"]
+    build:
+      <<: *default-build
+      args:
+        MODULE: search-service
+    image: kuaikan/search-service:${APP_TAG:-dev}
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      <<: *default-app-env
+    depends_on: *default-app-depends
+    networks:
+      - kuaikan
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8086/actuator/health/readiness || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  rank-service:
+    profiles: ["app"]
+    build:
+      <<: *default-build
+      args:
+        MODULE: rank-service
+    image: kuaikan/rank-service:${APP_TAG:-dev}
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      <<: *default-app-env
+    depends_on:
+      <<: *default-app-depends
+      redis:
+        condition: service_healthy
+    networks:
+      - kuaikan
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8087/actuator/health/readiness || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
