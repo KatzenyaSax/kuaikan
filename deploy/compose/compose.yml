@@ -105,8 +105,11 @@ services:
     environment:
       TZ: Asia/Shanghai
       MODE: standalone
-      # 内网单机，P0 不开认证；对外端口一律不发布
+      # 内网单机，P0 不开服务端认证；但 Nacos 3.0 的启动脚本强制要求下列变量存在
       NACOS_AUTH_ENABLE: "false"
+      NACOS_AUTH_TOKEN: ${NACOS_AUTH_TOKEN:?}
+      NACOS_AUTH_IDENTITY_KEY: ${NACOS_AUTH_IDENTITY_KEY:?}
+      NACOS_AUTH_IDENTITY_VALUE: ${NACOS_AUTH_IDENTITY_VALUE:?}
       JVM_XMS: 256m
       JVM_XMX: 512m
       JVM_XMN: 128m
@@ -127,6 +130,8 @@ services:
     profiles: ["core"]
     restart: unless-stopped
     logging: *default-logging
+    # 镜像内以 uid 3000(rocketmq) 运行，宿主机挂载目录必须同属主
+    user: "3000:3000"
     environment:
       TZ: Asia/Shanghai
       JAVA_OPT_EXT: "-Xms256m -Xmx256m -Xmn128m"
@@ -148,6 +153,7 @@ services:
     profiles: ["core"]
     restart: unless-stopped
     logging: *default-logging
+    user: "3000:3000"
     environment:
       TZ: Asia/Shanghai
       JAVA_OPT_EXT: "-Xms512m -Xmx512m -Xmn256m"

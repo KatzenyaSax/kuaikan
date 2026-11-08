@@ -25,8 +25,14 @@ wait_healthy() {
   while :; do
     local bad=""
     for n in $names; do
-      local s
-      s=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}nohealth{{end}}' "kuaikan-$n" 2>/dev/null || echo "missing")
+      # 容器名由 compose 生成（kuaikan-xxx-1），必须按服务名反查 ID，不能拼名字
+      local cid s
+      cid=$(compose ps -q "$n" 2>/dev/null || true)
+      if [ -z "$cid" ]; then
+        s="missing"
+      else
+        s=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}nohealth{{end}}' "$cid" 2>/dev/null || echo unknown)
+      fi
       [ "$s" = "healthy" ] || bad="$bad $n($s)"
     done
     [ -z "$bad" ] && { echo "==> 全部 healthy：$names"; return 0; }
