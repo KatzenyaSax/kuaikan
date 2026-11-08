@@ -48,11 +48,27 @@ echo "### Java 依赖（user-service 实际解析结果）"
 echo
 echo "| 组件 | 版本 |"
 echo "|---|---|"
-docker run --rm -v "$REPO":/src -v "$CACHE_VOL":/root/.m2 -w /src/services "$MVN_IMAGE" \
-  mvn -B -pl user-service dependency:tree 2>/dev/null \
-  | grep -E '^\[INFO\] [+\\|]' \
-  | grep -oE '(spring-boot-starter-web|spring-cloud-starter-alibaba-nacos-discovery|nacos-client|spring-cloud-starter-openfeign|spring-cloud-commons|spring-cloud-starter-loadbalancer|spring-cloud-starter-gateway-server-webflux|rocketmq-client|sentinel-core|spring-cloud-starter-alibaba-sentinel|feign-core):jar:[^:]+' \
-  | sed 's/:jar:/|/' | sort -u | awk -F'|' '{printf "| %s | %s |\n", $1, $2}'
+TREE=$(docker run --rm -v "$REPO":/src -v "$CACHE_VOL":/root/.m2 -w /src/services "$MVN_IMAGE" \
+  mvn -B -pl user-service dependency:tree 2>/dev/null)
+
+# 按 group:artifact 精确匹配，避免 feign-core 同时命中 spring-cloud-openfeign-core
+while IFS='|' read -r coord label; do
+  [ -z "$coord" ] && continue
+  v=$(printf '%s' "$TREE" | grep -oE "${coord}:jar:[^:]+" | head -1 | sed 's/.*:jar://')
+  [ -n "$v" ] && echo "| $label | $v |"
+done <<'COORDS'
+org.springframework.boot:spring-boot-starter-web|spring-boot-starter-web
+org.springframework.cloud:spring-cloud-starter-openfeign|spring-cloud-starter-openfeign
+org.springframework.cloud:spring-cloud-commons|spring-cloud-commons
+org.springframework.cloud:spring-cloud-starter-loadbalancer|spring-cloud-starter-loadbalancer
+com.alibaba.cloud:spring-cloud-starter-alibaba-nacos-discovery|spring-cloud-starter-alibaba-nacos-discovery
+com.alibaba.cloud:spring-cloud-starter-alibaba-sentinel|spring-cloud-starter-alibaba-sentinel
+com.alibaba.nacos:nacos-client|nacos-client
+org.apache.rocketmq:rocketmq-client|rocketmq-client
+com.alibaba.csp:sentinel-core|sentinel-core
+io.github.openfeign:feign-core|feign-core
+COORDS
+
 echo
 
 echo "### 应用镜像"

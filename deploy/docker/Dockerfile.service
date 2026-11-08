@@ -5,13 +5,16 @@
 #   docker build -f deploy/docker/Dockerfile.service \
 #     --build-arg MODULE=user-service -t kuaikan/user-service:dev /opt/kuaikan/repo
 #
-# 构建上下文必须是仓库根目录（需要 COPY services/）。
+# 构建上下文必须是仓库根目录（需要 COPY services/），并由 .dockerignore 排除 target/。
 #
 # 关键约束：
 #   1. 本地是 arm64，服务器是 x86_64 —— 镜像只能在服务器或 CI 上构建（ADR 0007）。
 #   2. Maven 依赖走 BuildKit cache mount，持久化在 BuildKit 缓存里。
 #      不要执行 docker builder prune，否则下次要重下约 1GB。
 #   3. 运行阶段用非 root 用户，并显式限制堆：容器内 JVM 会按宿主机内存算堆。
+#   4. 不要写 `COPY ...` 之后再 `RUN chown`：chown 会触发 copy-up，
+#      把 50MB+ 的 jar 复制成第二个层，每个镜像白占 50MB。必须用 --chown。
+#   5. 不要在运行阶段 apt-get install curl：eclipse-temurin:21-jre 已自带 curl 8.18。
 
 ARG MODULE=user-service
 
@@ -32,18 +35,13 @@ ARG MODULE
 ENV TZ=Asia/Shanghai \
     LANG=C.UTF-8
 
-RUN apt-get update \
- && apt-get install -y --no-install-recommends curl tzdata \
- && rm -rf /var/lib/apt/lists/* \
- && groupadd --gid 10001 app \
+RUN groupadd --gid 10001 app \
  && useradd --uid 10001 --gid app --shell /usr/sbin/nologin --create-home app
 
 WORKDIR /app
 
 # *.jar 不会匹配 spring-boot 留下的 *.jar.original
-COPY --from=build /src/services/${MODULE}/target/*.jar /app/app.jar
-
-RUN chown -R app:app /app
+COPY --chown=app:app --from=build /src/services/${MODULE}/target/*.jar /app/app.jar
 
 USER app
 
