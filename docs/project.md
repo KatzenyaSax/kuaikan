@@ -148,6 +148,22 @@
 全栈（core 5 + app 8 = 13 个容器）常驻内存约 **5.5 GB**，磁盘 19 GB / 79 GB（25%）。
 构建：`docker compose build` 单服务约 30~45 秒（Maven 依赖命中 BuildKit 缓存），8 个服务全量构建 + 启动约 **1 分 50 秒**。
 
+### P0 冒烟链路（第 4 步）
+
+| 链路 | 端点 | 实测结果 |
+|---|---|---|
+| RocketMQ 发送 | `POST /api/user/ping/mq` | `SEND_OK`，返回 traceId / msgId / queue |
+| RocketMQ 消费 | `GET /api/user/ping/mq/{traceId}` | 经 Feign 回查 community-service 内存台账，`received=true` |
+| Sentinel 限流 | `GET /api/user/ping/sentinel` | 阈值 QPS=2，超出返回 **HTTP 429 + `{"code":42900,"message":"请求过于频繁"}`** |
+
+| 指标 | 实测值 |
+|---|---|
+| MQ 首条消息端到端（消费组刚启动，含 rebalance） | 约 8 秒 |
+| MQ 稳态端到端 | **372~386 ms** |
+| Sentinel 规则 | 代码内 `FlowRuleManager.loadRules`，resource `p0Sentinel`，QPS 2 |
+| RocketMQ topic | `kuaikan_p0_smoke`（**下划线，RocketMQ 不允许点号**） |
+| 消费台账 | community-service 内存 `ConcurrentHashMap`，上限 1 万条，**重启即清空，不是去重表** |
+
 ### 网关路由约定
 
 `/api/{service}/**` → `lb://{service}`，`StripPrefix=2`。即前端请求 `/api/user/ping`，user-service 实际收到 `/ping`。

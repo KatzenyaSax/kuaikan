@@ -47,6 +47,8 @@
   }
   pre b{color:var(--fg);font-weight:500}
   .hl{color:var(--accent)}
+  .btns{display:flex;gap:10px;margin-bottom:12px}
+  .btns button{padding:6px 14px;font-size:13px}
   .note{max-width:1120px;margin:28px auto 0;font-size:12px;color:var(--dim);line-height:1.9}
   .note code{color:var(--fg);background:var(--panel);padding:1px 5px;border-radius:4px}
 </style>
@@ -71,6 +73,14 @@
 
   <h2>网关路由（需要网关 → 服务真实转发才会返回数据）</h2>
   <pre id="routes">请求中…</pre>
+
+  <h2>RocketMQ 端到端（user-service 发 → broker → community-service 收 → Feign 回查）</h2>
+  <div class="btns"><button id="mqbtn">发一条消息并追踪</button></div>
+  <pre id="mqout">尚未发送</pre>
+
+  <h2>Sentinel 限流（阈值 QPS = 2，写在 P0SentinelConfig 里）</h2>
+  <div class="btns"><button id="sentbtn">连打 6 次</button></div>
+  <pre id="sentout">尚未测试</pre>
 </main>
 
 <p class="note">
@@ -187,6 +197,70 @@ async function refresh() {
   ]);
 }
 
+const mqout = document.getElementById('mqout');
+const sentout = document.getElementById('sentout');
+
+async function mqTrace() {
+  const t0 = performance.now();
+  mqout.textContent = '发送中…';
+  try {
+    const res = await fetch('/api/user/ping/mq', { method:'POST' });
+    const body = await res.json();
+    const tid = body.data && body.data.traceId;
+    const lines = [
+      `POST /api/user/ping/mq  →  HTTP ${res.status}`,
+      `traceId    = ${tid}`,
+      `sendStatus = ${body.data && body.data.sendStatus}`,
+      `msgId      = ${body.data && body.data.msgId}`,
+      '',
+      '轮询消费结果（Feign 回查 community-service 台账）：',
+    ];
+    mqout.textContent = lines.join('\n');
+
+    for (let i = 1; i <= 40; i++) {
+      await new Promise(r => setTimeout(r, 300));
+      const q = await fetch('/api/user/ping/mq/' + tid + '?t=' + Date.now(), { cache:'no-store' });
+      const qb = await q.json();
+      const c = (qb.data && qb.data.consumer) || {};
+      lines.push(`  [${String(i).padStart(2)}] received=${c.received}  ledgerSize=${c.ledgerSize ?? '-'}`);
+      mqout.textContent = lines.join('\n');
+      if (c.received) {
+        lines.push('', `✓ 端到端耗时 ${Math.round(performance.now() - t0)} ms`);
+        mqout.textContent = lines.join('\n');
+        return;
+      }
+    }
+    lines.push('', '✗ 10 秒内未被消费');
+    mqout.textContent = lines.join('\n');
+  } catch (e) {
+    mqout.textContent = '失败：' + e.name + ' ' + e.message;
+  }
+}
+
+async function sentinelBurst() {
+  const lines = ['连打 6 次 /api/user/ping/sentinel：', ''];
+  let blocked = 0;
+  sentout.textContent = lines.join('\n');
+  for (let i = 1; i <= 6; i++) {
+    const t0 = performance.now();
+    const res = await fetch('/api/user/ping/sentinel?t=' + Date.now(), { cache:'no-store' });
+    const ms = Math.round(performance.now() - t0);
+    let limit = false;
+    try {
+      const b = await res.json();
+      limit = b.code === 42900;
+    } catch (_) {}
+    if (limit || res.status === 429) blocked++;
+    lines.push(`  ${i}   HTTP ${res.status}   ${limit ? '限流' : '放行'}   ${ms} ms`);
+    sentout.textContent = lines.join('\n');
+    await new Promise(r => setTimeout(r, 60));
+  }
+  lines.push('', `→ 放行 ${6 - blocked} 次，限流 ${blocked} 次（阈值 QPS=2/秒）`);
+  sentout.textContent = lines.join('\n');
+}
+
+document.getElementById('mqbtn').addEventListener('click', mqTrace);
+document.getElementById('sentbtn').addEventListener('click', sentinelBurst);
 document.getElementById('btn').addEventListener('click', refresh);
 refresh();
 setInterval(refresh, 5000);
