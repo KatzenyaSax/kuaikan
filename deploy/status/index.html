@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kuaikan · P0 冒烟控制台</title>
+<style>
+  :root{
+    --bg:#0b0d11; --panel:#14171d; --line:#232833; --fg:#e8eaed; --dim:#8b93a1;
+    --ok:#3fb950; --bad:#f85149; --warn:#d29922; --accent:#58a6ff;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;padding:32px 24px 64px;background:var(--bg);color:var(--fg);
+    font:14px/1.6 ui-monospace,SFMono-Regular,Menlo,Consolas,"PingFang SC",monospace;
+  }
+  header{max-width:1120px;margin:0 auto 28px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+  h1{font-size:20px;margin:0;letter-spacing:.06em;font-weight:600}
+  .tag{font-size:11px;padding:2px 8px;border:1px solid var(--line);border-radius:999px;color:var(--dim)}
+  .meta{margin-left:auto;font-size:12px;color:var(--dim);display:flex;gap:16px;align-items:center}
+  button{
+    background:var(--panel);color:var(--fg);border:1px solid var(--line);
+    padding:4px 12px;border-radius:6px;cursor:pointer;font:inherit;font-size:12px;
+  }
+  button:hover{border-color:var(--accent)}
+  main{max-width:1120px;margin:0 auto}
+  .grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(248px,1fr))}
+  .card{
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:14px 16px;position:relative;overflow:hidden;
+  }
+  .card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--line)}
+  .card.ok::before{background:var(--ok)}
+  .card.bad::before{background:var(--bad)}
+  .card.pending::before{background:var(--warn)}
+  .name{font-size:13px;font-weight:600;letter-spacing:.02em}
+  .row{display:flex;justify-content:space-between;font-size:12px;color:var(--dim);margin-top:6px}
+  .row b{color:var(--fg);font-weight:500}
+  .status{font-size:12px;margin-top:10px;display:flex;align-items:center;gap:6px}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--warn);display:inline-block}
+  .ok .dot{background:var(--ok)} .bad .dot{background:var(--bad)}
+  .status.ok{color:var(--ok)} .status.bad{color:var(--bad)}
+  h2{font-size:13px;color:var(--dim);font-weight:500;margin:32px 0 12px;letter-spacing:.08em}
+  pre{
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:14px 16px;margin:0;overflow:auto;font-size:12px;color:var(--dim);max-height:340px;
+  }
+  pre b{color:var(--fg);font-weight:500}
+  .hl{color:var(--accent)}
+  .note{max-width:1120px;margin:28px auto 0;font-size:12px;color:var(--dim);line-height:1.9}
+  .note code{color:var(--fg);background:var(--panel);padding:1px 5px;border-radius:4px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>kuaikan</h1>
+  <span class="tag">P0 冒烟控制台</span>
+  <div class="meta">
+    <span id="clock">—</span>
+    <button id="btn">立即刷新</button>
+  </div>
+</header>
+
+<main>
+  <h2>服务直连（nginx → 网关 → 各服务）</h2>
+  <div class="grid" id="cards"></div>
+
+  <h2>Feign 调用链（user-service → community-service，走 Nacos 服务发现）</h2>
+  <pre id="feign">请求中…</pre>
+
+  <h2>网关路由（需要网关 → 服务真实转发才会返回数据）</h2>
+  <pre id="routes">请求中…</pre>
+</main>
+
+<p class="note">
+  这是 P0 阶段的临时探活页，用于验证「nginx → 网关 → 服务 → 中间件」整条链路，<b>不是产品前端</b>，后续会被真正的 React 应用替换。<br>
+  每 5 秒自动刷新。<code>host</code> 是服务自报的容器主机名 —— 与网关无关，只可能是服务自己报出来的。
+</p>
+
+<script>
+const SERVICES = [
+  { key:'user-service',          path:'/api/user/ping' },
+  { key:'community-service',     path:'/api/community/ping' },
+  { key:'content-service',       path:'/api/content/ping' },
+  { key:'interaction-service',   path:'/api/interaction/ping' },
+  { key:'notification-service',  path:'/api/notification/ping' },
+  { key:'search-service',        path:'/api/search/ping' },
+  { key:'rank-service',          path:'/api/rank/ping' },
+];
+
+const cardsEl = document.getElementById('cards');
+const feignEl = document.getElementById('feign');
+const routesEl = document.getElementById('routes');
+const clockEl = document.getElementById('clock');
+
+const els = {};
+for (const s of SERVICES) {
+  const d = document.createElement('div');
+  d.className = 'card pending';
+  d.innerHTML = `<div class="name">${s.key}</div>
+    <div class="row"><span>状态</span><b class="st">—</b></div>
+    <div class="row"><span>延迟</span><b class="lat">—</b></div>
+    <div class="row"><span>host</span><b class="host">—</b></div>
+    <div class="row"><span>port</span><b class="port">—</b></div>
+    <div class="status"><span class="dot"></span><span class="msg">等待…</span></div>`;
+  cardsEl.appendChild(d);
+  els[s.key] = {
+    card: d,
+    st: d.querySelector('.st'), lat: d.querySelector('.lat'),
+    host: d.querySelector('.host'), port: d.querySelector('.port'),
+    msg: d.querySelector('.msg'),
+  };
+}
+
+async function probe(svc) {
+  const el = els[svc.key];
+  const t0 = performance.now();
+  try {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 6000);
+    const res = await fetch(svc.path + '?t=' + Date.now(), { signal: ctl.signal, cache: 'no-store' });
+    clearTimeout(timer);
+    const ms = Math.round(performance.now() - t0);
+    const body = await res.json();
+    const data = body.data || {};
+    el.card.className = 'card ' + (res.ok ? 'ok' : 'bad');
+    el.st.textContent = res.status;
+    el.lat.textContent = ms + ' ms';
+    el.host.textContent = data.host || '—';
+    el.port.textContent = data.port || '—';
+    el.msg.textContent = res.ok ? 'UP' : (body.message || 'FAIL');
+    return { ok: res.ok, data };
+  } catch (e) {
+    const ms = Math.round(performance.now() - t0);
+    el.card.className = 'card bad';
+    el.st.textContent = 'ERR';
+    el.lat.textContent = ms + ' ms';
+    el.host.textContent = '—';
+    el.port.textContent = '—';
+    el.msg.textContent = e.name === 'AbortError' ? '超时' : '不可达';
+    return { ok: false };
+  }
+}
+
+async function probeFeign() {
+  const t0 = performance.now();
+  try {
+    const res = await fetch('/api/user/ping/feign?t=' + Date.now(), { cache:'no-store' });
+    const ms = Math.round(performance.now() - t0);
+    const body = await res.json();
+    const callee = body.data?.callee || {};
+    feignEl.innerHTML =
+      `<b>user-service</b>  →  <span class="hl">Feign</span>  →  <b>${callee.service || '?'}</b>   ` +
+      `<span style="color:var(--ok)">✓ ${res.status}</span>  ${ms} ms\n\n` +
+      `callee.host = <b>${callee.host || '—'}</b>\n` +
+      `callee.port = <b>${callee.port || '—'}</b>\n\n` +
+      JSON.stringify(body, null, 2);
+  } catch (e) {
+    feignEl.textContent = 'Feign 调用失败：' + e.name;
+  }
+}
+
+async function probeRoutes() {
+  const rows = [];
+  for (const s of SERVICES) {
+    const t0 = performance.now();
+    try {
+      const res = await fetch(s.path + '?t=' + Date.now(), { cache:'no-store' });
+      const ms = Math.round(performance.now() - t0);
+      const ok = res.ok;
+      rows.push(`  ${ok ? '✓' : '✗'}  ${s.path.padEnd(28)} → ${res.status}  ${ms} ms`);
+    } catch {
+      rows.push(`  ✗  ${s.path.padEnd(28)} → 不可达`);
+    }
+  }
+  routesEl.textContent =
+    '前端路径经「/api/{service}/** + StripPrefix=2」映射到各服务：\n\n' + rows.join('\n');
+}
+
+async function refresh() {
+  clockEl.textContent = new Date().toLocaleTimeString('zh-CN', { hour12:false });
+  await Promise.allSettled([
+    ...SERVICES.map(probe),
+    probeFeign(),
+    probeRoutes(),
+  ]);
+}
+
+document.getElementById('btn').addEventListener('click', refresh);
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>
