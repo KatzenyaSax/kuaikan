@@ -119,7 +119,9 @@ services:
       kuaikan:
         ipv4_address: 172.30.10.12
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS 'http://127.0.0.1:8848/nacos/v1/console/health/readiness' >/dev/null || exit 1"]
+      # Nacos 3.0 已移除 v1/console/health/* 探活端点（返回 410 Gone）。
+      # 改用 naming 模块的服务列表接口：它同时证明「进程活着」和「存储可读写」。
+      test: ["CMD-SHELL", "curl -fsS 'http://127.0.0.1:8848/nacos/v1/ns/service/list?pageNo=1&pageSize=1' >/dev/null || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 20
