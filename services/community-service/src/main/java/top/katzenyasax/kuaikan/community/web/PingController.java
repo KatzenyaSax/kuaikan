@@ -2,9 +2,11 @@ package top.katzenyasax.kuaikan.community.web;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import top.katzenyasax.kuaikan.common.api.Result;
+import top.katzenyasax.kuaikan.community.mq.P0MqLedger;
 
 import java.net.InetAddress;
 import java.time.OffsetDateTime;
@@ -21,6 +23,12 @@ public class PingController {
     @Value("${server.port}")
     private String port;
 
+    private final P0MqLedger ledger;
+
+    public PingController(P0MqLedger ledger) {
+        this.ledger = ledger;
+    }
+
     @GetMapping
     public Result<Map<String, Object>> ping() throws Exception {
         Map<String, Object> body = new LinkedHashMap<>();
@@ -30,5 +38,11 @@ public class PingController {
         body.put("java", System.getProperty("java.version"));
         body.put("time", OffsetDateTime.now().toString());
         return Result.ok(body);
+    }
+
+    /** P0 冒烟：回查某条消息是否被本服务消费 */
+    @GetMapping("/mq/{traceId}")
+    public Result<Map<String, Object>> mqStatus(@PathVariable("traceId") String traceId) {
+        return Result.ok(ledger.snapshot(traceId));
     }
 }

@@ -40,3 +40,8 @@ info:
 logging:
   level:
     root: INFO
+
+kuaikan:
+  mq:
+    # 只用 Remoting 接入（ADR 0003 / architecture §3），不走 Proxy
+    namesrv-addr: ${ROCKETMQ_NAMESRV:127.0.0.1:9876}

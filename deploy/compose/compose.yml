@@ -221,7 +221,11 @@ services:
     logging: *default-logging
     environment:
       <<: *default-app-env
-    depends_on: *default-app-depends
+      ROCKETMQ_NAMESRV: rmq-namesrv:9876
+    depends_on:
+      <<: *default-app-depends
+      rmq-broker:
+        condition: service_healthy
     networks:
       - kuaikan
     healthcheck:
@@ -242,7 +246,11 @@ services:
     logging: *default-logging
     environment:
       <<: *default-app-env
-    depends_on: *default-app-depends
+      ROCKETMQ_NAMESRV: rmq-namesrv:9876
+    depends_on:
+      <<: *default-app-depends
+      rmq-broker:
+        condition: service_healthy
     networks:
       - kuaikan
     healthcheck:
