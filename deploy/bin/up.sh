@@ -108,7 +108,7 @@ wait_healthy() {
     done
 
     if [ "$elapsed" -ge "$timeout" ]; then
-      echo "==> 超时 ${elapsed}s，未就绪：$bad" >&2
+      echo "==> 超时：已等待 ${elapsed}s，超过阈值 ${timeout}s，未就绪：$bad" >&2
       for n in $bad; do
         local cid
         cid=$(compose ps -q "$n" 2>/dev/null || true)
