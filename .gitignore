@@ -1,0 +1,47 @@
+# ---- 系统 ----
+.DS_Store
+Thumbs.db
+
+# ---- IDE ----
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# ---- Java / Maven ----
+target/
+!.mvn/wrapper/maven-wrapper.jar
+*.class
+hs_err_pid*
+replay_pid*
+
+# ---- 前端 / Node ----
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---- 日志与运行时 ----
+logs/
+data/
+*.pid
+deploy/**/volumes/
+
+# ---- 环境变量与密钥（务必只提交 .env.example）----
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.jks
+application-local.yml
+application-local.yaml
+bootstrap-local.yml
+
+# ---- 本地工具产物 ----
+*.http
