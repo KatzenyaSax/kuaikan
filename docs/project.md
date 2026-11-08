@@ -48,21 +48,40 @@
 
 | 项 | 值 |
 |---|---|
-| 服务器 | 境外（待采购），8C16G，月预算 ≈ ¥300 档 |
-| 域名 | 待定（免 ICP 备案） |
-| 公网暴露 | 仅 443（Nginx） |
-| 部署形态 | **全组件容器化**（8 个 Java 服务 + 全部中间件），全部运行在云服务器上 |
+| 服务器 | `206.237.30.147`，Ubuntu 24.04.1 LTS，x86_64，8 vCPU / 15 GiB / 79 GB |
+| 登录 | `root`，密钥 `~/.ssh/pi_cloud`，端口 22 |
+| 域名 | `www.katzenyasax.top`（主站），`katzenyasax.top` 301 → www；DNS 均已指向本机 |
+| TLS | Let's Encrypt，有效期至 2027-02-06，`certbot.timer` 自动续期，续期后自动 reload nginx |
+| 边缘代理 | **宿主机 nginx 1.24**（ADR 0007 显式例外），配置源自 `deploy/nginx/` |
+| 公网端口 | 仅 22 / 80 / 443（UFW + 云安全组） |
+| 上游 | 网关容器只绑 `127.0.0.1:8080`，nginx `/api/` 反代至此 |
+| 前端产物目录 | `/opt/kuaikan/frontend/dist` |
+| 部署根目录 | `/opt/kuaikan/{deploy,data,logs,backup}` |
+| 部署形态 | **全组件容器化**（8 个 Java 服务 + 全部中间件），nginx 除外 |
 | 环境数量 | **1 套**（无本地环境、无预发环境） |
 | 镜像构建位置 | 服务器（x86_64）或 CI；**禁止在 arm64 开发机构建后推送** |
 | 回滚手段 | 保留上一版镜像 tag |
 | 磁盘 | 80 GB，预算占用 ≈ 42 GB |
-| 编排 | Docker Compose；k3s 为 P7 之后的可选升级（ADR 0007） |
-| Compose profile | `core` / `app` / `observe` / `extra` |
-| 容器网络 | 单一 Compose 网络，仅 Nginx 映射宿主 443 |
-| 服务健康检查 | `/actuator/health/readiness` |
-| JVM 内存约束 | `-XX:MaxRAMPercentage=70` + Compose `limits.memory` |
-| 网关路由前缀 | `/api/**`（`/internal/**` 不经网关） |
-| 心跳间隔 | SSE 心跳 15s，网关与 Nginx 超时 > 30s |
+| 交换分区 | 4.4 GB（`/swap.img` 1.4G + `/swapfile` 3G） |
+| 时区 | Asia/Shanghai，NTP 已同步 |
+
+## 已装软件（服务器实测）
+
+| 组件 | 版本 |
+|---|---|
+| Docker Engine | 29.9.3 |
+| Docker Compose | v5.7.0 |
+| buildx | v0.38.1 |
+| nginx | 1.24.0（Ubuntu） |
+| certbot | 2.9.0 |
+
+## 服务器已生效的基线配置
+
+- `/etc/docker/daemon.json`：日志轮转 `50m × 3`、`live-restore`、地址池 `172.30.0.0/16`
+- `/etc/sysctl.d/99-kuaikan.conf`：`vm.max_map_count=262144`（ES 必需）、`swappiness=10`、`file-max=1048576`、`somaxconn=1024`
+- `/etc/security/limits.d/99-kuaikan.conf` + systemd `DefaultLimitNOFILE=65535`
+- UFW：默认拒绝入站，仅放行 22/80/443
+- ⚠️ Docker 发布端口会绕过 UFW，因此"只开 443"靠的是 compose 不映射端口，而非防火墙
 
 ## 已锁定的版本
 

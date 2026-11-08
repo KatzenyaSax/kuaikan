@@ -184,7 +184,8 @@
 
 ### 单一环境
 
-- **单一 Compose 网络**，所有进程同一地址空间；**仅 Nginx 映射宿主机 443**，其余端口一律不映射（ADR 0003 硬约束）。
+- **单一 Compose 网络**，所有进程同一地址空间；**只有网关向宿主机映射 `127.0.0.1:8080`**，其余端口一律不映射（ADR 0003 硬约束）。
+- **宿主机 nginx 是唯一监听 443 的进程**（ADR 0007 的显式例外）：TLS 终止 → 静态资源 → `/api/` 反代到 `127.0.0.1:8080`。配置在 `deploy/nginx/kuaikan.conf`，由 `deploy/nginx/install.sh` 安装。
 - **profile 分组**：`core`（MySQL / Redis / RocketMQ / Nacos）、`app`（8 个 Java 服务 + Nginx）、`observe`（Prometheus / Grafana / Loki / SkyWalking）、`extra`（ES / MinIO）。
 - **多阶段 Dockerfile**：`maven:3.9-eclipse-temurin-21` 构建 → `eclipse-temurin:21-jre` 运行；依赖层与 jar 层分离，并用 BuildKit `--mount=type=cache,target=/root/.m2` 持久化 Maven 依赖。
 - **构建只能在服务器（x86_64）或 CI 上做**。开发机是 Apple Silicon，本地构建的镜像在服务器上会 `exec format error`。
