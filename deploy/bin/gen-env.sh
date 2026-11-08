@@ -10,7 +10,9 @@ ENV_FILE="$ENV_DIR/kuaikan.env"
 mkdir -p "$ENV_DIR"
 chmod 700 "$ENV_DIR"
 
-gen() { LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c "${1:-32}"; }
+# 不要用 `tr </dev/urandom | head -c N`：head 提前退出会让 tr 收到 SIGPIPE，
+# 在 set -o pipefail 下变成偶发失败。openssl rand 长度固定，没有这个问题。
+gen() { openssl rand -hex "$(( ${1:-32} / 2 ))"; }
 genb64() { openssl rand -base64 "${1:-32}" | tr -d '\n'; }
 
 # key=需要的生成器
