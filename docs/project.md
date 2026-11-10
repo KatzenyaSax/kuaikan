@@ -27,6 +27,17 @@
 
 结论：MySQL 单实例 + 一主一从足够；Redis 单实例足够；RocketMQ 单 Master 足够；Elasticsearch 单节点足够。分库分表、多可用区明确不做。
 
+## 模块结构
+
+```
+services/
+├── kuaikan-common        零 Spring 依赖：Result / ErrorCode / ErrorHttpStatus / AuthErrorCode /
+│                          UserContext / Headers / Services / Topics（网关也能用）
+├── kuaikan-common-web    依赖 Spring Web：Jackson Long→String 等 servlet 侧基础设施
+│                          （网关**不依赖**它，避免 WebFlux 进程被 servlet 栈污染）
+├── gateway + 7 个服务
+```
+
 ## 进程与存储
 
 1 网关 + 7 服务 = 8 个进程，共用一个 MySQL 实例，各自独立 schema（见 ADR 0006）。
@@ -191,6 +202,35 @@
 | Sentinel 规则 | 代码内 `FlowRuleManager.loadRules`，resource `p0Sentinel`，QPS 2 |
 | RocketMQ topic | `kuaikan_p0_smoke`（**下划线，RocketMQ 不允许点号**） |
 | 消费台账 | community-service 内存 `ConcurrentHashMap`，上限 1 万条，**重启即清空，不是去重表** |
+
+### Long 序列化（P1.1 落地）
+
+**所有 `Long` 全局序列化为字符串**（`kuaikan-common-web` 的 `JacksonConfig`，AutoConfiguration 注册）。
+
+原因：JS 的 `Number` 只有 53 位精度，雪花 ID 是 19 位。实测 `2120067985624219650`
+在 JS 里会变成 `2120067985624219648`——表现为"注册成功但查不到自己的账号"，日志里完全看不出来。
+
+配套要求：**DTO 里的 ID 字段必须加 `@Schema(type = "string")`**，否则 OpenAPI 契约仍写 `int64`，
+生成的 TS 类型是 `number`，与实际 JSON 不符。
+
+代价：以后所有 `Long` 字段（包括计数）到前端都是字符串。需要时再单独处理。
+
+### 邮件（P1.1）
+
+| 项 | 值 |
+|---|---|
+| 方案 | **MailHog 假 SMTP**（`devtools` profile），上线前再换真实服务商 |
+| 容器 | `mailhog/mailhog:v1.0.1`，`172.30.10.20`，UI 绑 `127.0.0.1:8025`（回环，与网关同类） |
+| 退化策略 | 未配置 `MAIL_HOST` 时打 `WARN` 日志输出验证码，保证无 SMTP 也能跑通注册 |
+| 访问 | `ssh -L 8025:127.0.0.1:8025 root@206.237.30.147` 后打开 `http://localhost:8025` |
+
+### 注册开关（P1.1）
+
+`kuaikan.auth.register-enabled`，默认 **false**。真值在 Nacos：
+dataId `user-service.yaml`，group `DEFAULT_GROUP`。
+
+实测热切换：改配置后 **约 20 秒**生效，无需重启（`@ConfigurationProperties` 经 Spring Cloud 的 rebinder 重绑）。
+验收脚本会用它临时打开注册、跑完再关回去。
 
 ### 错误码契约（P1.0）
 
