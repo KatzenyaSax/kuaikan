@@ -198,8 +198,9 @@ printf '  %s通过 %d%s   %s失败 %d%s   %s跳过 %d%s\n' "$G" "$PASS" "$N" "$R
 cat <<'EOF'
 
   人工清单（无法脚本化的两条）：
-    1. 浏览器打开 https://www.katzenyasax.top/       → 7 张卡片全绿，显示不同 host
-    2. 浏览器打开 https://www.katzenyasax.top/whatever → 404 页面，不是白屏
+    1. 浏览器打开 https://www.katzenyasax.top/        → 首页只有一个居中的描边「注册账号」按钮
+    2. 浏览器打开 https://www.katzenyasax.top/test     → 7 张服务卡片全绿，MQ/Sentinel 面板可用
+    3. 浏览器打开 https://www.katzenyasax.top/whatever → 404 页面，不是白屏
 
 EOF
 
