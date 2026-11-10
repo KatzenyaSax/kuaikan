@@ -14,7 +14,8 @@
     "preview": "vite preview",
     "gen:types": "node scripts/gen-types.mjs",
     "smoke:api": "tsx scripts/smoke-api.mts",
-    "gen:contract": "node scripts/gen-contract.mjs"
+    "gen:contract": "node scripts/gen-contract.mjs",
+    "e2e:auth": "node scripts/e2e-auth.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.107.1",
@@ -36,6 +37,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.14.0",
     "openapi-typescript": "^7.13.0",
+    "playwright": "^1.65.0",
     "tailwindcss": "^4.3.5",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
