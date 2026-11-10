@@ -1,0 +1,21 @@
+{
+  "$comment": "错误码唯一事实来源。改动后必须同步 services 下的 Java 枚举，并运行 npm run gen:contract 与 node deploy/bin/check-contract.mjs。",
+  "version": 1,
+  "codes": [
+    { "code": 40000, "name": "BAD_REQUEST",           "http": 200, "owner": "common", "message": "请求参数不合法" },
+    { "code": 40010, "name": "PARAM_INVALID",         "http": 200, "owner": "common", "message": "字段校验未通过" },
+    { "code": 40100, "name": "UNAUTHORIZED",          "http": 401, "owner": "common", "message": "未登录或登录已过期" },
+    { "code": 40201, "name": "CODE_INVALID",          "http": 200, "owner": "auth",   "message": "验证码错误或已失效" },
+    { "code": 40202, "name": "CODE_TOO_FREQUENT",     "http": 429, "owner": "auth",   "message": "验证码发送过于频繁，请稍后再试" },
+    { "code": 40203, "name": "REGISTER_DISABLED",     "http": 403, "owner": "auth",   "message": "注册功能暂未开放" },
+    { "code": 40204, "name": "EMAIL_TAKEN",           "http": 200, "owner": "auth",   "message": "该邮箱已被注册" },
+    { "code": 40205, "name": "ACCOUNT_BANNED",        "http": 403, "owner": "auth",   "message": "账号已被封禁" },
+    { "code": 40206, "name": "CREDENTIALS_INVALID",   "http": 200, "owner": "auth",   "message": "邮箱或密码错误" },
+    { "code": 40300, "name": "FORBIDDEN",             "http": 403, "owner": "common", "message": "没有权限" },
+    { "code": 40400, "name": "NOT_FOUND",             "http": 404, "owner": "common", "message": "资源不存在" },
+    { "code": 40900, "name": "CONFLICT",              "http": 409, "owner": "common", "message": "状态冲突" },
+    { "code": 42900, "name": "RATE_LIMITED",          "http": 429, "owner": "common", "message": "请求过于频繁" },
+    { "code": 50000, "name": "INTERNAL",              "http": 500, "owner": "common", "message": "服务内部错误" },
+    { "code": 50300, "name": "UPSTREAM_UNAVAILABLE",  "http": 503, "owner": "common", "message": "服务暂时不可用" }
+  ]
+}

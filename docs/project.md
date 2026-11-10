@@ -192,6 +192,27 @@
 | RocketMQ topic | `kuaikan_p0_smoke`（**下划线，RocketMQ 不允许点号**） |
 | 消费台账 | community-service 内存 `ConcurrentHashMap`，上限 1 万条，**重启即清空，不是去重表** |
 
+### 错误码契约（P1.0）
+
+| 项 | 值 |
+|---|---|
+| 唯一事实来源 | `contract/error-codes.json` |
+| 后端镜像 | `services/**/error/*ErrorCode.java`（枚举） |
+| 前端镜像 | `web/src/shared/api/error-codes.gen.ts`（生成，禁止手改） |
+| 生成 | `npm run gen:contract` |
+| 校验 | `node deploy/bin/check-contract.mjs` |
+
+规则：**HTTP 状态码只表达传输层语义**（401/403/429/500），业务结果走 `code`。
+唯一必须记住的例外：**登录失败是 200 + 40206，不能是 401**——否则前端 401 拦截器会去 refresh，形成"输错密码 → 跳登录页"的死循环。
+
+### 前端 mock 开关
+
+`VITE_API_MOCK=1 npm run dev` 启用。开关通过 `vite.config.ts` 的 `define` 注入为
+**可静态折叠的常量** `__KUIKAN_API_MOCK__`，因此生产构建里整块 mock 会被摇掉
+（实测：产物中 `mockRoute` 出现 0 次，且无 mock chunk）。
+
+未注册的路径在 mock 模式下**显式抛错**，不回落真实网络——否则"为什么这个页面数据是真的、那个是假的"无从解释。
+
 ### 契约端点（内部）
 
 | 服务 | 容器内地址 | 公网 |

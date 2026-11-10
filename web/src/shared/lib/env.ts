@@ -7,6 +7,7 @@ const nodeEnv = (globalThis as { process?: ProcessLike }).process?.env
 export const isBrowser = typeof window !== 'undefined'
 export const isDev = viteEnv?.DEV === true
 
+
 /**
  * API 基址解析顺序：
  *   1. Node 侧显式注入的 API_BASE_URL（冒烟脚本用）

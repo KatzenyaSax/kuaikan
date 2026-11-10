@@ -13,7 +13,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "gen:types": "node scripts/gen-types.mjs",
-    "smoke:api": "tsx scripts/smoke-api.mts"
+    "smoke:api": "tsx scripts/smoke-api.mts",
+    "gen:contract": "node scripts/gen-contract.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.107.1",

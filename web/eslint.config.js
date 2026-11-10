@@ -5,7 +5,7 @@ import globals from 'globals'
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'node_modules/**', 'openapi/**', 'src/shared/api/types/**'],
+    ignores: ['dist/**', 'node_modules/**', 'openapi/**', '**/*.gen.ts'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
