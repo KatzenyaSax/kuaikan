@@ -35,7 +35,14 @@
 | typescript-eslint | 8.72.2 |
 | eslint-plugin-react-hooks | 7.1.1（S2 起接入 flat config） |
 | @types/node | 26.6.6 |
+| react-router | **8.5.1**（立项时写的是 7） |
+| @tanstack/react-query | 5.107.1 |
+| tailwindcss / @tailwindcss/vite | 4.3.5 |
+| clsx / tailwind-merge | 2.1.1 / 3.7.0 |
 | Node 运行时 | 22.23.4 |
+
+**Zustand 推迟到 P1**：现在没有任何会话态或 UI 态可存，装了就是死依赖。
+P1 引入 token 存储时再装，并同时把"数据分层纪律"落成代码。
 
 **TypeScript 6 的一处破坏性变更**：`baseUrl` 已废弃（TS 7 将移除），配置里不能写。`paths` 直接写相对路径即可：
 

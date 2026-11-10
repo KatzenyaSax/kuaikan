@@ -1,13 +1,14 @@
 import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 
 // 本地开发通过 Vite proxy 打服务器上的真后端。
 // P1 的 refresh token 放在 httpOnly cookie 里，所以必须 changeOrigin + 转发 cookie。
 const API_TARGET = process.env.VITE_API_TARGET ?? 'https://www.katzenyasax.top'
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

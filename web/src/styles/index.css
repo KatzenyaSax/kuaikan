@@ -1,27 +1,38 @@
+@import 'tailwindcss';
+
+/*
+ * 设计令牌。刻意沿用 shadcn 的命名（--color-background / --color-foreground …），
+ * 以便将来若要接 shadcn CLI 是无痛的。
+ * Tailwind 4 是 CSS-first 配置：@theme 里的变量会自动生成对应工具类，如 bg-background。
+ */
+@theme {
+  --color-background: #0b0d11;
+  --color-foreground: #e8eaed;
+  --color-card: #14171d;
+  --color-border: #232833;
+  --color-muted: #1a1e26;
+  --color-muted-foreground: #8b93a1;
+  --color-primary: #58a6ff;
+  --color-success: #3fb950;
+  --color-danger: #f85149;
+  --color-warning: #d29922;
+
+  --radius-lg: 0.625rem;
+}
+
 :root {
   color-scheme: dark;
-  --background: #0b0d11;
-  --foreground: #e8eaed;
-  --muted-foreground: #8b93a1;
-  --border: #232833;
-  --radius: 0.625rem;
-
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'PingFang SC', monospace;
-  line-height: 1.6;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-html,
-body,
-#root {
-  height: 100%;
 }
 
 body {
   margin: 0;
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'PingFang SC', monospace;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+#root {
+  min-height: 100vh;
 }

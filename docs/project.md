@@ -98,7 +98,14 @@
 | typescript-eslint | 8.72.2 |
 | eslint-plugin-react-hooks | 7.1.1 |
 | @types/node | 26.6.6 |
+| react-router | **8.5.1** |
+| @tanstack/react-query | 5.107.1 |
+| tailwindcss / @tailwindcss/vite | 4.3.5 |
+| clsx / tailwind-merge | 2.1.1 / 3.7.0 |
 | Node 运行时 | 22.23.4（`~/.local/node/current`） |
+| **zustand** | 未安装，P1 有会话 store 时再引入 |
+
+前端产物（S2 后）：`index.js` 368 KB（gzip 117 KB）、`index.css` 11.3 KB（gzip 3.1 KB）。
 
 `web/.node-version` 固定 22.23.4；`package.json` 的 `engines.node` 为 `>=20.19 <23`。
 **开发机上共存 3 个 Node**：`/usr/local/bin/node`(22.22.1)、`/opt/homebrew/bin/node`(25.8.0)、`~/.local/node/current`(22.23.4)。
