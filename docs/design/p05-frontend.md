@@ -224,6 +224,22 @@ export type PingDataIdentical = AllTrue<[
 只要有任何一个服务的 spec 与 user-service 不同，对应元素变成 `false`，泛型约束不满足，
 `npm run typecheck` 直接报错。**不需要任何运行时代码，也不需要单元测试。**
 
+## S6 实测结果
+
+```
+通过 11   失败 0   跳过 2
+P0.5 验收通过
+```
+
+发布脚本的两处细节（都是实测踩出来的）：
+
+1. **`COPYFILE_DISABLE=1`**：不加时 macOS 的 bsdtar 会写入 AppleDouble `._*` 文件，
+   远端 dist 里多出 5 个垃圾文件（3 个真实文件变成 8 个）。
+2. **`--no-xattrs`**：否则远端 GNU tar 会对每个条目刷一行
+   `Ignoring unknown extended header keyword 'LIBARCHIVE.xattr.com.apple.provenance'`。
+
+发布采用「解到 `dist.new` 再原子换名」，而不是直接覆盖：覆盖到一半失败会让站点变成半截。
+
 ## 明确不做
 
 登录页、注册页、帖子列表、帖子详情、`/api/user/auth/**` 调用、Zustand 用户态、Playwright、i18n、深色模式、移动端适配、图片上传。

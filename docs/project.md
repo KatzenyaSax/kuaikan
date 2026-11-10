@@ -55,8 +55,8 @@
 | 边缘代理 | **宿主机 nginx 1.24**（ADR 0007 显式例外），配置源自 `deploy/nginx/` |
 | 公网端口 | 仅 22 / 80 / 443（UFW + 云安全组） |
 | 上游 | 网关容器只绑 `127.0.0.1:8080`，nginx `/api/` 反代至此 |
-| 静态站点 | `/` 根占位页；`/test/` 冒烟控制台（源码在 `deploy/status/`，`deploy/bin/install-status.sh` 发布） |
-| 前端产物目录 | `/opt/kuaikan/frontend/dist`（真实前端）与 `/opt/kuaikan/frontend/test`（冒烟台） |
+| 静态站点 | `/` **React 应用**（S5 的真实数据空壳，`deploy/bin/deploy-web.sh` 发布）；`/test/` 冒烟控制台（`deploy/bin/install-status.sh` 发布） |
+| 前端产物目录 | `/opt/kuaikan/frontend/dist`（React 应用）与 `/opt/kuaikan/frontend/test`（冒烟台） |
 | 部署根目录 | `/opt/kuaikan/{deploy,data,logs,backup}` |
 | 部署形态 | **全组件容器化**（8 个 Java 服务 + 全部中间件），nginx 除外 |
 | 环境数量 | **1 套**（无本地环境、无预发环境） |
@@ -283,6 +283,27 @@ P1 引入鉴权后，`/ping/**` 与 `/test/` 一并纳入保护或在网关下�
 | feign-core | 13.6.1 |
 | jackson-databind | 2.21.4 |
 | spring-webmvc | 6.2.19 |
+
+## P0.5 验收（已完成）
+
+`deploy/bin/verify-p05.sh`，退出码 0 即通过。**11 条自动断言 + 2 条人工**。
+
+| 层 | 断言 | 实测 |
+|---|---|---|
+| L1 | typecheck 0 error / build 成功 / `__error-demo` 不进产物 | ✓ js 384K |
+| L2 | `gen:types` 后 `git diff` 为空（契约漂移探测） | ✓ |
+| L3 | Node 直连后端，7 个服务 + 1 个 404 | ✓ 8 项 |
+| L4 | 线上是 Vite 产物而非占位页 | ✓ |
+| L5 | `/assets/*.js` → 200 且 `application/javascript` | ✓ |
+| L6a | `/whatever` → 200 且是 index.html | ✓ |
+| L6b | 浏览器确认（人工） | 待确认 |
+| L7 | `/api/user/internal/api-docs` → 404 | ✓ |
+| L8 | 服务器 `verify.sh` P0 回归 | ✓ 14 通过 |
+| L9 | `git status` 为空 | ✓ |
+
+发布链路：`deploy/bin/deploy-web.sh` —— 本地 `typecheck + build` → `COPYFILE_DISABLE=1 tar --no-xattrs` over SSH
+→ 解到 `dist.new` 后原子换名 → 立即冒烟（首页非占位 / 有 module script / 资源 200 / `/test/` 仍 200）。
+**只动 `frontend/dist`，`test/` 是兄弟目录，物理上不可能被覆盖。**
 
 ## P0 验收（已完成）
 
