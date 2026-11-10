@@ -38,7 +38,9 @@ echo "    产物：$(du -h "$JS" | cut -f1) $(du -h dist/assets/*.css | cut -f1 
 
 echo
 echo "==> 2/4 传输到 $SSH_HOST:$REMOTE_DIR/dist"
-tar -czf - -C dist . | ssh "${SSH_OPTS[@]}" "$SSH_HOST" "
+# COPYFILE_DISABLE=1：阻止 macOS 的 tar 写入 AppleDouble(._*) 文件与 xattr 头。
+# 不加的话远端会多出 5 个 ._ 垃圾文件，虽然不影响访问，但很脏。
+COPYFILE_DISABLE=1 tar -czf - -C dist . | ssh "${SSH_OPTS[@]}" "$SSH_HOST" "
   set -e
   rm -rf '$REMOTE_DIR/dist.new'
   mkdir -p '$REMOTE_DIR/dist.new'
