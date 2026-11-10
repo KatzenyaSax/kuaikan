@@ -38,7 +38,12 @@ public class TokenService {
 
     public TokenService(RsaKeyProvider keyProvider) {
         this.keyProvider = keyProvider;
-        this.signer = new RSASSASigner(keyProvider.signingKey());
+        try {
+            this.signer = new RSASSASigner(keyProvider.signingKey());
+        } catch (JOSEException e) {
+            // 密钥不可用属于启动期致命错误，直接失败而不是降级成"发不出 token"
+            throw new IllegalStateException("RSA 签名器初始化失败", e);
+        }
     }
 
     public record IssuedToken(String value, String jti, Instant expiresAt) {
