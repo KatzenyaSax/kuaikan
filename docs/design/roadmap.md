@@ -6,6 +6,7 @@
 
 - ✅ **P0 已完成**：8 个服务 + 5 个中间件共 13 个容器全部 healthy，
   `deploy/bin/verify.sh` 16 条断言全绿，冷启动 120 秒。实测版本见 `docs/project.md`。
+- ⬜ **P0.5 前端基础设施**：待开始（范围与验收已定，见下表）
 - ⬜ P1 起未开始。
 
 ## 阶段表
@@ -13,6 +14,7 @@
 | 阶段 | 内容 | 位置理由 | 验收标准 |
 |---|---|---|---|
 | ✅ **P0 版本矩阵 spike（已完成）** | 骨架 → 多阶段 Dockerfile → Compose 编排（core + app）→ Nacos 注册 → 网关路由 → Feign 调用 → Sentinel 规则 → RocketMQ 收发 → MyBatis-Plus → Redis | 版本兼容是全项目最大未知数，必须在写业务前清零 | `React → Nginx → 网关 → user-service` 的 `/ping`（匿名放行）打通，**且全部进程在服务器上以容器运行、按 healthcheck 顺序启动、单服务重建可在 90 秒内完成**；实际版本号回写 `docs/project.md` |
+| **P0.5 前端基础设施** | `web/` 脚手架（Vite 7 + React 19 + TS strict + Tailwind 4 + shadcn/ui + Router 7 + TanStack Query 5 + Zustand）、HTTP 层解包 `Result<T>`、**类型由后端 OpenAPI 生成**、双环境配置、`npm run build` 发布通道，以及**一个跑真实数据的空壳页面** | 前端工具链的未知数（TS 严格模式、Vite proxy、路径别名、构建产物部署、类型生成）若混在 P1 的登录功能里排查，会分不清"是登录写错了还是脚手架配错了"。与 P0 同性质：先用最小代价清零工具链风险 | `npm run typecheck` 0 error；`npm run build` 成功；`https://www.katzenyasax.top/` 显示真实 React 应用且**至少有一个请求打到后端真数据**；`/test/` 仍可用；未匹配路由显示 404 而非白屏；`types.d.ts` 由 openapi 生成而非手写 |
 | **P1 身份切片** | 邮箱验证码注册、登录、JWT + JWKS、Redis 白名单、网关验签与注入身份头、前端登录态 | 所有后续功能都依赖身份；一次验证网关/用户/前端/Redis 四条线 | 登出立刻失效；踢下线立刻生效；后端服务端口对公网不可达 |
 | **P2 内容读路径** | 建社群、加入社群、发帖、社群帖列表、帖子详情（游客可读） | 最薄的一条完整读路径，先把"前端并行 + 计数快照"的形态定下来 | 游客能浏览；登录能发帖；**此阶段刻意不含评论与计数** |
 | **P3 评论 + 互动（风险核心）** | 评论（存储任意深度/展示两级、游标分页）、点赞、收藏、outbox、RocketMQ、content 消费事件更新计数 | 整个架构的验证点：第一次真跑"写事实 → 发事件 → 改冗余" | 点赞后计数 5 秒内变化；**kill 掉 content-service 再点赞，重启后对账任务把计数修回** |
@@ -20,6 +22,21 @@
 | **P5 排行** | rank-service 定时算日榜/周榜写 ZSet（Top 50 不分页）；帖子内评论按热度排序（在 content 内） | 依赖 P3 的计数稳定；评论排序不需要 rank | 榜单可全量重建，重建期间接口不报错；热度 = 点赞数 + 评论数（收藏不计入） |
 | **P6 搜索** | search-service + ES + IK，消费内容事件建索引 | 需要 P2 的内容事件稳定，且是**最该被砍**的功能 | 建索引幂等；删帖后搜不到 |
 | **P7 治理与上线** | 封禁/禁言/管理员权限、SkyWalking + Prometheus + Grafana + Loki、JMeter 压测、限流规则、备份、HTTPS、镜像 tag 回滚演练 | 上线前置条件 | 8 服务全绿；300 QPS 压测无错误；备份可恢复演练成功 |
+
+## P0.5 的边界
+
+**只做"能让页面存在并拿到真实数据"的基础设施，不做任何业务页面。**
+
+明确不做：登录页、注册页、帖子列表、帖子详情、任何调用 `/api/user/auth/**` 的代码、Zustand 里的用户态、业务组件。
+
+验收物是一个**能显示后端真实数据的空壳**（把 `/test/` 的服务状态用 React 重写），不是任何产品功能。
+
+### P0.5 同时确定的两件事
+
+1. **后端加 `springdoc-openapi`**，前端类型由 `openapi-typescript` 从 spec 生成。
+   一旦手写了第一个接口类型，后面会一直手写——"前端类型来自后端契约"必须在第一个业务接口之前建立。
+2. **Token 存储方案**：access 放内存（Zustand），refresh 放 `httpOnly` + `Secure` + `SameSite=Lax` cookie。
+   代价是 P0.5 的 HTTP 层要预留 `credentials: 'include'` 与"启动时静默续期"两个位置（先留空实现）。
 
 ## 分期开关
 
