@@ -16,6 +16,9 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // 端口被占时直接失败，而不是静默换到下一个可用端口。
+    // 静默漂移会让"我明明起了 dev server 但请求打到了旧进程"这种问题极难排查。
+    strictPort: true,
     proxy: {
       '/api': {
         target: API_TARGET,

@@ -107,7 +107,7 @@
 | Node 运行时 | 22.23.4（`~/.local/node/current`） |
 | **zustand** | 未安装，P1 有会话 store 时再引入 |
 
-前端产物（S2 后）：`index.js` 368 KB（gzip 117 KB）、`index.css` 11.3 KB（gzip 3.1 KB）。
+前端产物（S5 后）：`index.js` 389.85 KB（gzip 122.36 KB）、`index.css` 13.23 KB（gzip 3.55 KB）。
 
 `web/.node-version` 固定 22.23.4；`package.json` 的 `engines.node` 为 `>=20.19 <23`。
 **开发机上共存 3 个 Node**：`/usr/local/bin/node`(22.22.1)、`/opt/homebrew/bin/node`(25.8.0)、`~/.local/node/current`(22.23.4)。

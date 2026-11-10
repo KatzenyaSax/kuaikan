@@ -183,6 +183,39 @@ web/
 
 **何时必须补上 Playwright**：P1 出现登录表单之后——那时会有"填错密码显示什么""401 后跳哪里"这类只有浏览器能验的行为。
 
+## 本地 dev 的两个坑（S5 实测）
+
+| 现象 | 根因 | 解法 |
+|---|---|---|
+| 明明起了 dev server，请求却打到旧代码 / 返回 000 | **`kill` 杀掉的是 npm 父进程，vite 子进程存活并继续占着 5173**；新实例静默换到 5174，探测打在僵尸上 | `pkill -f "kuaikan/web/node_modules/.bin/vite"`；并在 `vite.config.ts` 设 `strictPort: true` 让端口冲突硬失败 |
+| 同一类问题的另一次：诊断容器残留吃 2.2 GB 内存 | `docker run --rm` 只在容器**自己退出**时清理，客户端被 kill 后容器仍驻留 | 诊断用的容器用完立刻 `docker rm -f` |
+
+这两件事的共同点是：**"我以为它停了，其实没停"**。所以约定一律用「匹配完整路径的 pkill」而不是「kill 父进程 PID」，并且让端口冲突显式失败而不是自动避让。
+
+## S5 实测结果
+
+- `npm run typecheck` 0 error、`lint` 通过、`build` 成功（389.85 KB / gzip 122.36 KB）
+- **Vite proxy 打穿真实后端**：`http://127.0.0.1:5173/api/{service}/ping` 返回 7 个不同的容器主机名
+- 产物中 `service-ping` / `/api/user/ping` / `/api/rank/ping` 各出现 1 次（feature 确实被打包）
+- 产物中 `__error-demo` 出现 0 次（dev-only 仍被摇掉）
+
+### 一个用编译器替代运行时的技巧
+
+7 个服务的 `/ping` 结构必须一致，但这句话不能只写在注释里。实现方式：
+
+```ts
+type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
+type AllTrue<T extends readonly true[]> = T
+
+export type PingDataIdentical = AllTrue<[
+  Same<DataOf<userOps,'ping'>, DataOf<communityOps,'ping'>>,
+  ... 其余 5 个
+]>
+```
+
+只要有任何一个服务的 spec 与 user-service 不同，对应元素变成 `false`，泛型约束不满足，
+`npm run typecheck` 直接报错。**不需要任何运行时代码，也不需要单元测试。**
+
 ## 明确不做
 
 登录页、注册页、帖子列表、帖子详情、`/api/user/auth/**` 调用、Zustand 用户态、Playwright、i18n、深色模式、移动端适配、图片上传。
