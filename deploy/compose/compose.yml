@@ -257,6 +257,10 @@ services:
       MAIL_PORT: "1025"
       MAIL_FROM: no-reply@katzenyasax.top
       ID_WORKER_ID: "1"
+      AUTH_KEY_DIR: /app/keys
+    volumes:
+      # RSA 私钥落盘：随机生成会导致重启后所有人被登出
+      - /opt/kuaikan/data/auth-keys:/app/keys
     depends_on:
       <<: *default-app-depends
       rmq-broker:

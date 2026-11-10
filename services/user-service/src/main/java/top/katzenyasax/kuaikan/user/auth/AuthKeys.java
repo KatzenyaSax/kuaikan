@@ -30,6 +30,16 @@ public final class AuthKeys {
         return PREFIX + "code:rate:ip:" + ip;
     }
 
+    /** access 白名单：auth:session:{jti} → userId（网关 P1.3 查它） */
+    public static String session(String jti) {
+        return PREFIX + "session:" + jti;
+    }
+
+    /** 用户全部 access jti 集合：auth:user:{userId}:jti（踢下线时批量删） */
+    public static String userJtiSet(Long userId) {
+        return PREFIX + "user:" + userId + ":jti";
+    }
+
     private AuthKeys() {
     }
 }

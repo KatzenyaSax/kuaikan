@@ -2,16 +2,35 @@ package top.katzenyasax.kuaikan.user.web;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.CookieValue;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import top.katzenyasax.kuaikan.common.api.Result;
+import top.katzenyasax.kuaikan.common.error.BizException;
+import top.katzenyasax.kuaikan.common.error.CommonErrorCode;
+import top.katzenyasax.kuaikan.user.auth.LoginService;
 import top.katzenyasax.kuaikan.user.auth.RegistrationService;
+import top.katzenyasax.kuaikan.user.auth.SessionService;
+import top.katzenyasax.kuaikan.user.auth.TokenService;
+import top.katzenyasax.kuaikan.user.domain.RefreshToken;
+import top.katzenyasax.kuaikan.user.domain.User;
+import top.katzenyasax.kuaikan.user.web.dto.LoginRequest;
+import top.katzenyasax.kuaikan.user.web.dto.LoginResponse;
 import top.katzenyasax.kuaikan.user.web.dto.RegisterRequest;
 import top.katzenyasax.kuaikan.user.web.dto.RegisterResponse;
 import top.katzenyasax.kuaikan.user.web.dto.SendCodeRequest;
+import top.katzenyasax.kuaikan.user.web.dto.SessionItem;
+import top.katzenyasax.kuaikan.user.web.dto.UserProfile;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -19,9 +38,15 @@ import java.util.Map;
 public class AuthController {
 
     private final RegistrationService registrationService;
+    private final LoginService loginService;
+    private final SessionService sessionService;
 
-    public AuthController(RegistrationService registrationService) {
+    public AuthController(RegistrationService registrationService,
+                          LoginService loginService,
+                          SessionService sessionService) {
         this.registrationService = registrationService;
+        this.loginService = loginService;
+        this.sessionService = sessionService;
     }
 
     /** 发送注册验证码 */
@@ -40,6 +65,102 @@ public class AuthController {
     @PostMapping("/register")
     public Result<RegisterResponse> register(@Valid @RequestBody RegisterRequest body) {
         return Result.ok(registrationService.register(body));
+    }
+
+    // ---------------------------------------------------------------- 登录
+
+    /**
+     * 登录。
+     *
+     * 凭据错误返回 200 + 40206（不是 401）：401 会让前端的续期拦截器介入，
+     * 变成"输错密码 → 跳登录页"的死循环。见 p1-auth.md §4。
+     */
+    @PostMapping("/login")
+    public ResponseEntity<Result<LoginResponse>> login(@Valid @RequestBody LoginRequest body,
+                                                       HttpServletRequest request) {
+        LoginService.TokenPair pair = loginService.login(
+                body.email(), body.password(), request.getHeader(HttpHeaders.USER_AGENT),
+                clientIp(request));
+        LoginResponse payload = LoginResponse.of(pair.accessToken(), pair.expiresInSeconds(),
+                UserProfile.of(pair.user()));
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE,
+                        AuthCookies.refresh(pair.refreshToken(), TokenService.REFRESH_TTL).toString())
+                .body(Result.ok(payload));
+    }
+
+    /** 续期。refresh 从 httpOnly cookie 读，JS 拿不到它 */
+    @PostMapping("/refresh")
+    public ResponseEntity<Result<LoginResponse>> refresh(
+            @CookieValue(value = AuthCookies.REFRESH, required = false) String refreshToken,
+            HttpServletRequest request) {
+        if (refreshToken == null || refreshToken.isBlank()) {
+            throw new BizException(CommonErrorCode.UNAUTHORIZED);
+        }
+        LoginService.TokenPair pair = loginService.refresh(
+                refreshToken, request.getHeader(HttpHeaders.USER_AGENT), clientIp(request));
+        LoginResponse payload = LoginResponse.of(pair.accessToken(), pair.expiresInSeconds(),
+                UserProfile.of(pair.user()));
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE,
+                        AuthCookies.refresh(pair.refreshToken(), TokenService.REFRESH_TTL).toString())
+                .body(Result.ok(payload));
+    }
+
+    /** 登出。幂等：refresh 已失效也返回成功 */
+    @PostMapping("/logout")
+    public ResponseEntity<Result<Void>> logout(
+            @CookieValue(value = AuthCookies.REFRESH, required = false) String refreshToken,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization) {
+        String accessToken = BearerTokens.extract(authorization);
+        loginService.logout(refreshToken, accessToken == null ? null : loginService.accessJtiOf(accessToken));
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, AuthCookies.clear().toString())
+                .body(Result.ok());
+    }
+
+    // ---------------------------------------------------------------- 当前用户
+
+    @GetMapping("/me")
+    public Result<UserProfile> me(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization) {
+        User user = requireUser(authorization);
+        return Result.ok(UserProfile.of(user));
+    }
+
+    @GetMapping("/sessions")
+    public Result<List<SessionItem>> sessions(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization) {
+        User user = requireUser(authorization);
+        List<RefreshToken> rows = sessionService.activeSessions(user.getId());
+        List<SessionItem> items = rows.stream()
+                .map(r -> new SessionItem(r.getJti(), r.getUserAgent(), r.getIp(),
+                        r.getIssuedAt(), r.getExpiresAt(), false))
+                .toList();
+        return Result.ok(items);
+    }
+
+    /** 踢掉某一个设备（产品语义：用户自己管理登录设备） */
+    @DeleteMapping("/sessions/{jti}")
+    public Result<Map<String, Object>> revokeSession(
+            @PathVariable("jti") String jti,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization) {
+        User user = requireUser(authorization);
+        RefreshToken target = sessionService.findByJti(jti);
+        // 只能删自己的会话；别人的 jti 一律当作不存在，不暴露其是否存在
+        if (target == null || !target.getUserId().equals(user.getId())) {
+            throw new BizException(CommonErrorCode.NOT_FOUND);
+        }
+        sessionService.revokeOne(jti);
+        return Result.ok(Map.of("revoked", jti));
+    }
+
+    private User requireUser(String authorization) {
+        String token = BearerTokens.extract(authorization);
+        if (token == null) {
+            throw new BizException(CommonErrorCode.UNAUTHORIZED);
+        }
+        return loginService.requireUserFromAccessToken(token);
     }
 
     /**
