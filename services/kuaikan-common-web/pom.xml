@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>top.katzenyasax.kuaikan</groupId>
+        <artifactId>kuaikan-services</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>kuaikan-common-web</artifactId>
+    <name>kuaikan-common-web</name>
+    <description>
+        servlet 服务的共享基础设施。
+        与 kuaikan-common 的分工：common 是零 Spring 依赖的契约层（网关也能用），
+        common-web 依赖 Spring Web，只给 7 个 servlet 服务用，网关不依赖它。
+        放在这里的东西仍是基础设施而非业务，不违反「common 只放非业务」。
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>top.katzenyasax.kuaikan</groupId>
+            <artifactId>kuaikan-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+    </dependencies>
+</project>

@@ -8,7 +8,12 @@ export function HomePage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-xl font-semibold tracking-wide">kuaikan</h1>
-        <p className="mt-1 text-xs text-muted-foreground">
+        <div className="mt-2 flex gap-2 text-xs">
+          <a href="/register" className="text-primary hover:underline" data-testid="link-register">
+            注册账号 →
+          </a>
+        </div>
+        <p className="mt-3 text-xs text-muted-foreground">
           下面这张表来自 <code className="text-foreground">/api/&lt;service&gt;/ping</code> 的实时响应，
           每 {REFETCH_SECONDS} 秒刷新一次。host 与 port 是各服务自报的容器信息——
           浏览器只请求了同源路径，能拿到七个不同的主机名，说明

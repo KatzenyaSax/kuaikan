@@ -92,6 +92,39 @@ export function listMockRoutes(): string[] {
   return routes.map((r) => `${r.method} ${r.pattern}`)
 }
 
+// ---------------------------------------------------------------- auth（P1.1）
+// 演示账号：验证码固定 123456。真实后端由 code-service 校验，这里只为跑通表单链路。
+mockRoute('POST', '/api/user/auth/register/code', (req) => {
+  const email = (req.body as { email?: string } | undefined)?.email ?? ''
+  if (!email.includes('@')) {
+    return { ok: false, code: 40010, message: '邮箱格式不正确', status: 200 }
+  }
+  return { ok: true, data: { sent: true, message: '验证码已发送（mock）', ttlSeconds: 600 } }
+})
+
+mockRoute('POST', '/api/user/auth/register', (req) => {
+  const body = (req.body ?? {}) as {
+    email?: string
+    code?: string
+    nickname?: string
+  }
+  if (body.code !== '123456') {
+    return { ok: false, code: 40201, message: '验证码错误或已失效', status: 200 }
+  }
+  if ((body.email ?? '').includes('taken')) {
+    return { ok: false, code: 40204, message: '该邮箱已被注册', status: 200 }
+  }
+  return {
+    ok: true,
+    data: {
+      userId: '1000000000000000001',
+      email: body.email ?? '',
+      nickname: body.nickname ?? '',
+      createdAt: new Date().toISOString(),
+    },
+  }
+})
+
 // ---------------------------------------------------------------- 内置示例
 // P1.0 只放一条，用来证明 mock 通道本身可用；auth 相关的 mock 由 P1.1/P1.2 补。
 mockRoute('GET', '/api/user/ping', () => ({

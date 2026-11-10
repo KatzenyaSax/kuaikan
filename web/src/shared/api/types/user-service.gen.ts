@@ -26,6 +26,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["register"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/register/code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["sendRegisterCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ping": {
         parameters: {
             query?: never;
@@ -102,6 +134,31 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        RegisterRequest: {
+            /** Format: email */
+            email: string;
+            password: string;
+            nickname: string;
+            code: string;
+        };
+        RegisterResponse: {
+            /** Format: int64 */
+            userId?: number;
+            email?: string;
+            nickname?: string;
+            /** Format: date-time */
+            createdAt?: string;
+        };
+        ResultRegisterResponse: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: components["schemas"]["RegisterResponse"];
+        };
+        SendCodeRequest: {
+            /** Format: email */
+            email: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -119,6 +176,54 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultMapStringObject"];
+                };
+            };
+        };
+    };
+    register: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultRegisterResponse"];
+                };
+            };
+        };
+    };
+    sendRegisterCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SendCodeRequest"];
+            };
+        };
         responses: {
             /** @description OK */
             200: {
