@@ -45,3 +45,14 @@ kuaikan:
   mq:
     # 只用 Remoting 接入（ADR 0003 / architecture §3），不走 Proxy
     namesrv-addr: ${ROCKETMQ_NAMESRV:127.0.0.1:9876}
+
+springdoc:
+  api-docs:
+    # 刻意放在 /internal 前缀下：与 architecture §10 不变量 7 一致，
+    # 网关不得路由 /internal/**，因此这份契约只在容器网络内可见。
+    path: /internal/api-docs
+    enabled: true
+  swagger-ui:
+    enabled: false
+  packages-to-scan: top.katzenyasax.kuaikan.community
+  show-actuator: false

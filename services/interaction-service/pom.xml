@@ -38,6 +38,12 @@
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-loadbalancer</artifactId>
         </dependency>
+
+        <!-- 只引 api 版，不引 swagger-ui 版：契约端点放在 /internal/api-docs，且不暴露 UI -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-api</artifactId>
+        </dependency>
     </dependencies>
 
     <build>

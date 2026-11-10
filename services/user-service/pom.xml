@@ -39,6 +39,12 @@
             <artifactId>spring-cloud-starter-loadbalancer</artifactId>
         </dependency>
 
+        <!-- 只引 api 版，不引 swagger-ui 版：契约端点放在 /internal/api-docs，且不暴露 UI -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-api</artifactId>
+        </dependency>
+
         <!-- 版本由 SCA BOM 管理：rocketmq-client 5.3.1（Remoting，不用 Proxy） -->
         <dependency>
             <groupId>org.apache.rocketmq</groupId>

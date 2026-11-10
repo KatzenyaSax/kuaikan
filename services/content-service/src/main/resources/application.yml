@@ -40,3 +40,14 @@ info:
 logging:
   level:
     root: INFO
+
+springdoc:
+  api-docs:
+    # 刻意放在 /internal 前缀下：与 architecture §10 不变量 7 一致，
+    # 网关不得路由 /internal/**，因此这份契约只在容器网络内可见。
+    path: /internal/api-docs
+    enabled: true
+  swagger-ui:
+    enabled: false
+  packages-to-scan: top.katzenyasax.kuaikan.content
+  show-actuator: false
