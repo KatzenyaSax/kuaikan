@@ -80,7 +80,7 @@ if [ "$DO_COLD" = "1" ]; then
   if [ $rc -eq 0 ]; then
     ok "冷启动完成，耗时 ${cold_s}s（日志 /tmp/kuaikan-coldstart.log）"
   else
-    ng "冷启动失败（rc=$rc）" "见 /tmp/kuaikan-coldstart.log 末尾"
+    ng "冷启动失败（rc=${rc}）" "见 /tmp/kuaikan-coldstart.log 末尾"
     tail -30 /tmp/kuaikan-coldstart.log | sed 's/^/    /'
   fi
 fi
@@ -182,7 +182,7 @@ done
 if [ "$limited" -gt 0 ] && [ "$allowed" -gt 0 ]; then
   ok "限流生效：放行 $allowed 次 / 限流 $limited 次（429 + code 42900）"
 else
-  ng "Sentinel 限流" "放行 $allowed / 限流 $limited（预期两者都非 0）"
+  ng "Sentinel 限流" "放行 $allowed / 限流 ${limited}（预期两者都非 0）"
 fi
 
 # ---------------------------------------------------------------- 8. Actuator

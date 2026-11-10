@@ -26,7 +26,7 @@ if command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' 2>/dev/n
 elif command -v ssh >/dev/null 2>&1 && [ -f "$SSH_KEY" ]; then
   MODE="ssh"
 else
-  echo "既没有可用的 docker（本机），也没有 $SSH_KEY（远程），无法采集" >&2
+  echo "既没有可用的 docker（本机），也没有 ${SSH_KEY}（远程），无法采集" >&2
   exit 1
 fi
 

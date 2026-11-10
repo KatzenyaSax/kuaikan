@@ -134,7 +134,7 @@ else
   code=${meta%% *}
   ctype=${meta#* }
   if [ "$code" = "200" ] && printf '%s' "$ctype" | grep -qi javascript; then
-    ok "$asset -> 200（$ctype）"
+    ok "$asset -> 200（${ctype}）"
   else
     ng "静态资源" "$asset -> $code / $ctype"
   fi

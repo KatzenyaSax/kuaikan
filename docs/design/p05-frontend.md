@@ -192,6 +192,14 @@ web/
 
 这两件事的共同点是：**"我以为它停了，其实没停"**。所以约定一律用「匹配完整路径的 pkill」而不是「kill 父进程 PID」，并且让端口冲突显式失败而不是自动避让。
 
+### 第三个坑：`$var` 紧跟中文字符会被 bash 吃进变量名
+
+`ok "资源 -> 200（$ctype）"` 在 `set -u` 下直接报 `ctype\xef: unbound variable`——
+bash 把全角括号的首字节当成了变量名的一部分。
+
+**规则：脚本里 `$var` 后面紧跟任何非 ASCII 字符时，一律写成 `${var}`。**
+已对 `deploy/bin/*.sh` 全量扫描并修正 6 处。这条对中文注释/输出密集的脚本尤其重要。
+
 ## S5 实测结果
 
 - `npm run typecheck` 0 error、`lint` 通过、`build` 成功（389.85 KB / gzip 122.36 KB）

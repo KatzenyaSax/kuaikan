@@ -15,7 +15,7 @@ COMPOSE="$REPO/deploy/compose/compose.yml"
 TARGET="${1:-all}"
 POLL="${POLL_INTERVAL:-5}"
 
-[ -f "$ENV_FILE" ] || { echo "缺少 $ENV_FILE，先跑 deploy/bin/gen-env.sh" >&2; exit 1; }
+[ -f "$ENV_FILE" ] || { echo "缺少 ${ENV_FILE}，先跑 deploy/bin/gen-env.sh" >&2; exit 1; }
 
 # 始终同时启用 core 与 app 两个 profile。
 # 原因：app 里的服务 depends_on 指向 core 里的 nacos/redis，

@@ -20,7 +20,7 @@ docker volume create "$CACHE_VOL" >/dev/null
 args=(-B -DskipTests package)
 if [ -n "$MODULE" ]; then
   args=(-B -DskipTests -pl "$MODULE" -am package)
-  echo "==> 编译模块：$MODULE（含其依赖模块）"
+  echo "==> 编译模块：${MODULE}（含其依赖模块）"
 else
   echo "==> 全量编译 9 个模块"
 fi
