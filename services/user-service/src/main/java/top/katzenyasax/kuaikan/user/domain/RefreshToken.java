@@ -1,8 +1,6 @@
 package top.katzenyasax.kuaikan.user.domain;
 
-import com.baomidou.mybatisplus.annotation.FieldFill;
 import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 
@@ -29,8 +27,11 @@ public class RefreshToken {
     private String userAgent;
     private String ip;
 
-    @TableField(fill = FieldFill.INSERT)
-    private LocalDateTime createdAt;
+    /*
+     * 刻意没有 createdAt：issuedAt 已经是这条记录的语义时间戳，
+     * 再加一个 created_at 是同一信息的重复存储，且两者一旦不一致没人说得清哪个对。
+     * （t_user 有 created_at 是因为它的业务时间戳不叫 issued_at。）
+     */
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -67,7 +68,4 @@ public class RefreshToken {
 
     public String getIp() { return ip; }
     public void setIp(String ip) { this.ip = ip; }
-
-    public LocalDateTime getCreatedAt() { return createdAt; }
-    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
 }
