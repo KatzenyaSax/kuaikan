@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { REFETCH_SECONDS } from '@/features/status/api'
 import { ServiceStatusGrid } from '@/features/status/service-status-grid'
 import { MqPanel } from '@/features/devtools/mq-panel'
@@ -64,10 +63,17 @@ function UiAtomsCard() {
   )
 }
 
-/** ErrorBoundary 只在 dev 下可触发，生产构建里整块被摇掉 */
+/**
+ * ErrorBoundary 只在 dev 下可触发。
+ *
+ * 守卫必须写成**直接引用 `import.meta.env.DEV` 的 if**，不能藏进 useState 的初值里：
+ * 那样 Rollup 无法静态判定，函数体（含 '/__error-demo' 字符串）会被保留到生产产物。
+ * 这一条由 verify-p05 的 L1 断言守着。
+ */
 function ErrorBoundaryDemo() {
-  const [gone] = useState(() => import.meta.env.DEV)
-  if (!gone) return null
+  if (!import.meta.env.DEV) {
+    return null
+  }
   return (
     <section className="space-y-3">
       <h2 className="text-sm font-semibold">错误边界自检</h2>
