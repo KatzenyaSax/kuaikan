@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 构建并发布前端到线上，替换根路径；**绝不触碰 /test/**。
+# 构建并发布前端到线上，替换整个 SPA 产物（含 /test 诊断路由）。
 #
 #   ./deploy/bin/deploy-web.sh
 #
@@ -67,12 +67,12 @@ code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$SITE$asset")
 echo "    首页 OK，静态资源 $asset -> $code"
 [ "$code" = "200" ] || { echo "    静态资源不可达" >&2; exit 1; }
 
-# /test/ 必须仍然存在
-tcode=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$SITE/test/")
-echo "    /test/ -> $tcode"
-[ "$tcode" = "200" ] || { echo "    /test/ 被破坏了" >&2; exit 1; }
+# /test 诊断路由必须仍然可达（现为 SPA 路由）
+tcode=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$SITE/test")
+echo "    /test -> $tcode"
+[ "$tcode" = "200" ] || { echo "    /test 不可达" >&2; exit 1; }
 
 echo
 echo "==> 4/4 完成"
 echo "    $SITE/"
-echo "    $SITE/test/"
+echo "    $SITE/test"

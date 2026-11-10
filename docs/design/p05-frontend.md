@@ -162,7 +162,7 @@ web/
 
 ## 发布通道
 
-`deploy/bin/deploy-web.sh`：`npm run build` → rsync `dist/` 到 `/opt/kuaikan/frontend/dist/`，**绝不触碰 `/opt/kuaikan/frontend/test/`**。
+`deploy/bin/deploy-web.sh`：`npm run build` → tar over ssh 到 `/opt/kuaikan/frontend/dist/`（原子换名）。
 
 ## 验收（`deploy/bin/verify-p05.sh`，9 层）
 
@@ -176,7 +176,7 @@ web/
 | L6a | `/whatever` 返回 200 且是 `index.html` | 脚本 |
 | L6b | 浏览器打开 `/whatever` 显示 404 UI | **人工** |
 | L7 | `/api/user/internal/api-docs` → **404** | 脚本（安全断言） |
-| L8 | `deploy/bin/verify.sh --no-restart` 16 条仍全绿；`/test/` → 200 | 脚本（回归） |
+| L8 | `deploy/bin/verify.sh --no-restart` 16 条仍全绿；`/test` → 200 | 脚本（回归） |
 | L9 | `git status --porcelain` 为空 | 脚本 |
 
 **L6b 保留人工的理由**：无头浏览器（Playwright）能覆盖，但要引入约 300MB 依赖和一整套 CI 依赖，为 1 条断言不划算。
