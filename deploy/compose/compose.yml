@@ -178,6 +178,30 @@ services:
       start_period: 40s
 
   # ============================================================
+  # devtools（仅开发期启用，生产 up.sh all 不带它）
+  # ============================================================
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    profiles: ["devtools"]
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      TZ: Asia/Shanghai
+    networks:
+      kuaikan:
+        ipv4_address: 172.30.10.20
+    ports:
+      # 只绑回环，与网关同一类：不是"对外发布"，而是"本机可见"
+      - "127.0.0.1:8025:8025"
+      - "127.0.0.1:1025:1025"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8025/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ============================================================
   # app（8 个 Java 服务，共用 deploy/docker/Dockerfile.service）
   # ============================================================
   gateway:
@@ -222,9 +246,24 @@ services:
     environment:
       <<: *default-app-env
       ROCKETMQ_NAMESRV: rmq-namesrv:9876
+      # 数据层（ADR 0006：只连自己的 schema，账号只有本库权限）
+      MYSQL_HOST: mysql
+      MYSQL_USER: u_user
+      MYSQL_PASSWORD: ${MYSQL_PWD_USER:?}
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?}
+      # P1.1 用 MailHog 假 SMTP；不配 MAIL_HOST 时退化为打日志
+      MAIL_HOST: mailhog
+      MAIL_PORT: "1025"
+      MAIL_FROM: no-reply@katzenyasax.top
+      ID_WORKER_ID: "1"
     depends_on:
       <<: *default-app-depends
       rmq-broker:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - kuaikan
