@@ -4,6 +4,9 @@ import { RootLayout } from '@/routes/root'
 import { HomePage } from '@/routes/home'
 import { RegisterPage } from '@/routes/register'
 import { TestPage } from '@/routes/test'
+import { LoginPage } from '@/routes/login'
+import { MePage } from '@/routes/me'
+import { AuthBootstrap, RequireAuth } from '@/features/auth/auth-gate'
 import { NotFoundPage } from '@/routes/not-found'
 import { RootErrorBoundary } from '@/routes/root-error'
 import { ErrorDemoPage } from '@/routes/error-demo'
@@ -22,11 +25,26 @@ const devOnlyRoutes: RouteObject[] = import.meta.env.DEV
 const routes: RouteObject[] = [
   {
     path: '/',
-    element: <RootLayout />,
+    // AuthBootstrap 在整个应用之外先跑一次静默续期：
+    // httpOnly cookie 决定了前端无法同步判断登录态，必须先问服务端。
+    element: (
+      <AuthBootstrap>
+        <RootLayout />
+      </AuthBootstrap>
+    ),
     errorElement: <RootErrorBoundary />,
     children: [
       { index: true, element: <HomePage /> },
       { path: 'register', element: <RegisterPage /> },
+      { path: 'login', element: <LoginPage /> },
+      {
+        path: 'me',
+        element: (
+          <RequireAuth>
+            <MePage />
+          </RequireAuth>
+        ),
+      },
       { path: 'test', element: <TestPage /> },
       ...devOnlyRoutes,
       { path: '*', element: <NotFoundPage /> },

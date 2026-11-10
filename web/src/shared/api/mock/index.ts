@@ -125,6 +125,88 @@ mockRoute('POST', '/api/user/auth/register', (req) => {
   }
 })
 
+// ---------------------------------------------------------------- 登录态（P1.2）
+// mock 下用一个内存 session 模拟 httpOnly cookie 的效果：登录后 refresh 才能成功。
+let mockSession: { nickname: string; email: string } | null = null
+
+const mockProfile = (): Record<string, unknown> => ({
+  userId: '1000000000000000001',
+  email: mockSession?.email ?? 'mock@kuaikan.test',
+  nickname: mockSession?.nickname ?? 'mock 用户',
+  avatarUrl: null,
+  roles: 'USER',
+  createdAt: new Date().toISOString(),
+})
+
+mockRoute('POST', '/api/user/auth/login', (req) => {
+  const body = (req.body ?? {}) as { email?: string; password?: string }
+  if (!body.email || !body.password) {
+    return { ok: false, code: 40010, message: '邮箱或密码不能为空', status: 200 }
+  }
+  if (body.password === 'wrong') {
+    return { ok: false, code: 40206, message: '邮箱或密码错误', status: 200 }
+  }
+  if (body.email.startsWith('banned')) {
+    return { ok: false, code: 40205, message: '账号已被封禁', status: 403 }
+  }
+  mockSession = { nickname: 'mock 用户', email: body.email }
+  return {
+    ok: true,
+    data: {
+      accessToken: 'mock-access-token',
+      tokenType: 'Bearer',
+      expiresIn: 7200,
+      user: mockProfile(),
+    },
+  }
+})
+
+mockRoute('POST', '/api/user/auth/refresh', () => {
+  if (!mockSession) {
+    return { ok: false, code: 40100, message: '未登录或登录已过期', status: 401 }
+  }
+  return {
+    ok: true,
+    data: {
+      accessToken: 'mock-access-token',
+      tokenType: 'Bearer',
+      expiresIn: 7200,
+      user: mockProfile(),
+    },
+  }
+})
+
+mockRoute('POST', '/api/user/auth/logout', () => {
+  mockSession = null
+  return { ok: true, data: null }
+})
+
+mockRoute('GET', '/api/user/auth/me', () => {
+  if (!mockSession) {
+    return { ok: false, code: 40100, message: '未登录或登录已过期', status: 401 }
+  }
+  return { ok: true, data: mockProfile() }
+})
+
+mockRoute('GET', '/api/user/auth/sessions', () => {
+  if (!mockSession) {
+    return { ok: false, code: 40100, message: '未登录或登录已过期', status: 401 }
+  }
+  return {
+    ok: true,
+    data: [
+      {
+        jti: 'mock-jti-1',
+        userAgent: 'Mozilla/5.0 (mock)',
+        ip: '127.0.0.1',
+        issuedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 86400000).toISOString(),
+        current: true,
+      },
+    ],
+  }
+})
+
 // ---------------------------------------------------------------- 内置示例
 // P1.0 只放一条，用来证明 mock 通道本身可用；auth 相关的 mock 由 P1.1/P1.2 补。
 mockRoute('GET', '/api/user/ping', () => ({

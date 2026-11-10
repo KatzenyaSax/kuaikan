@@ -8,13 +8,47 @@ type Envelope<T> = { code: number; message: string; data: T }
 
 const SUCCESS_CODE = 0
 
-/** P1 接入后由会话层注册「refresh 失败，需要重新登录」的处理动作 */
-type UnauthorizedHandler = () => void
-let unauthorizedHandler: UnauthorizedHandler | null = null
+// ---------------------------------------------------------------- 会话接线
+//
+// client 不能直接 import 会话 store（会形成 client → store → client 的循环）。
+// 所以反过来：由会话模块在初始化时把下面三个函数注册进来。
 
-export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): void {
-  unauthorizedHandler = handler
+type TokenProvider = () => string | null
+type RefreshFn = () => Promise<string | null>
+
+let getToken: TokenProvider = () => null
+let refreshTokens: RefreshFn | null = null
+let onUnauthorized: (() => void) | null = null
+
+export function configureAuth(opts: {
+  getToken: TokenProvider
+  refresh?: RefreshFn
+  onUnauthorized?: () => void
+}): void {
+  getToken = opts.getToken
+  if (opts.refresh) refreshTokens = opts.refresh
+  if (opts.onUnauthorized) onUnauthorized = opts.onUnauthorized
 }
+
+/**
+ * single-flight 续期。
+ *
+ * 页面同时发 7 个请求全部 401 时，如果每个都去 refresh，会因 refresh 轮换
+ * 把彼此作废，最后把用户踢下线。所以只允许一个 refresh 在飞，其余请求等它的结果。
+ */
+let inFlightRefresh: Promise<string | null> | null = null
+
+function refreshOnce(): Promise<string | null> {
+  if (!refreshTokens) return Promise.resolve(null)
+  if (!inFlightRefresh) {
+    inFlightRefresh = refreshTokens().finally(() => {
+      inFlightRefresh = null
+    })
+  }
+  return inFlightRefresh
+}
+
+// ---------------------------------------------------------------- 请求
 
 export type RequestOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
@@ -23,12 +57,18 @@ export type RequestOptions = {
   signal?: AbortSignal
   /** 默认 10 秒；SSE 等长连接不走这里 */
   timeoutMs?: number
+  /** 内部使用：跳过 401 自动续期（续期请求自己必须跳过，否则递归） */
+  skipAuthRetry?: boolean
 }
 
-function buildHeaders(opts: RequestOptions): HeadersInit {
+function buildHeaders(opts: RequestOptions): Record<string, string> {
   const headers: Record<string, string> = { Accept: 'application/json', ...opts.headers }
   if (opts.body !== undefined) {
     headers['Content-Type'] = 'application/json'
+  }
+  const token = getToken()
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
   }
   return headers
 }
@@ -43,39 +83,11 @@ function isEnvelope(value: unknown): value is Envelope<unknown> {
   )
 }
 
-/**
- * 发起请求并解包 `Result<T>`。
- *
- * 契约（见 docs/design/p05-frontend.md）：
- *   - HTTP 状态码只表达传输层语义（401/403/429/500）
- *   - 业务错误一律 HTTP 2xx + code != 0
- *   - 所有请求默认带 credentials: 'include'（P1 的 refresh cookie 依赖它）
- */
-export async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-  if (!path.startsWith('/api/')) {
-    throw new Error(`请求路径必须以 /api/ 开头，实际：${path}`)
-  }
-
-  // mock 模式下不发真实网络请求。
-  // 用 typeof 守卫是为了在 Node（冒烟脚本）下不抛 ReferenceError；
-  // 生产构建里 __KUIKAN_API_MOCK__ 被替换为 false，整个分支连同动态 import 一起被摇掉。
-  if (typeof __KUIKAN_API_MOCK__ !== 'undefined' && __KUIKAN_API_MOCK__) {
-    const { resolveMock } = await import('@/shared/api/mock')
-    const queryIndex = path.indexOf('?')
-    const cleanPath = queryIndex >= 0 ? path.slice(0, queryIndex) : path
-    const data = await resolveMock({
-      method: opts.method ?? 'GET',
-      path: cleanPath,
-      body: opts.body,
-    })
-    return data as T
-  }
-
+async function sendOnce(path: string, opts: RequestOptions): Promise<{ status: number; body: unknown }> {
   const timeoutMs = opts.timeoutMs ?? 10_000
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
 
-  // 调用方传了 signal 就把它接进来，两者任一触发都取消
   if (opts.signal) {
     if (opts.signal.aborted) {
       controller.abort()
@@ -101,30 +113,69 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
     clearTimeout(timer)
   }
 
-  // 401：先走会话层的处理动作，再把错误抛给调用方
-  if (response.status === 401) {
-    unauthorizedHandler?.()
-  }
-
   let body: unknown = null
   try {
     body = await response.json()
   } catch {
-    // 非 JSON（例如网关直接返回的空 404），下面按状态码处理
+    // 非 JSON（例如网关直接返回的空 404）
+  }
+  return { status: response.status, body }
+}
+
+/**
+ * 发起请求并解包 `Result<T>`。
+ *
+ * 契约（见 docs/design/p05-frontend.md）：
+ *   - HTTP 状态码只表达传输层语义（401/403/429/500）
+ *   - 业务错误一律 HTTP 2xx + code != 0
+ *   - 所有请求默认带 credentials: 'include'（refresh cookie 依赖它）
+ *   - 401 时自动尝试一次续期并重放原请求（single-flight）
+ */
+export async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
+  if (!path.startsWith('/api/')) {
+    throw new Error(`请求路径必须以 /api/ 开头，实际：${path}`)
+  }
+
+  // mock 模式下不发真实网络请求。
+  // 用 typeof 守卫是为了在 Node（冒烟脚本）下不抛 ReferenceError；
+  // 生产构建里 __KUIKAN_API_MOCK__ 被替换为 false，整个分支连同动态 import 一起被摇掉。
+  if (typeof __KUIKAN_API_MOCK__ !== 'undefined' && __KUIKAN_API_MOCK__) {
+    const { resolveMock } = await import('@/shared/api/mock')
+    const queryIndex = path.indexOf('?')
+    const cleanPath = queryIndex >= 0 ? path.slice(0, queryIndex) : path
+    const data = await resolveMock({
+      method: opts.method ?? 'GET',
+      path: cleanPath,
+      body: opts.body,
+    })
+    return data as T
+  }
+
+  let { status, body } = await sendOnce(path, opts)
+
+  // 401：先尝试续期一次，成功则重放；失败或不能续期才走登出流程
+  if (status === 401 && !opts.skipAuthRetry) {
+    const newToken = await refreshOnce()
+    if (newToken) {
+      ;({ status, body } = await sendOnce(path, opts))
+    }
+    if (status === 401) {
+      onUnauthorized?.()
+    }
   }
 
   if (isEnvelope(body)) {
     if (body.code === SUCCESS_CODE) {
       return body.data as T
     }
-    throw new ApiError(body.code, body.message, response.status)
+    throw new ApiError(body.code, body.message, status)
   }
 
-  if (!response.ok) {
-    throw new ApiError('BAD_RESPONSE', `HTTP ${String(response.status)}`, response.status)
+  if (status !== 200 && status !== 0) {
+    throw new ApiError('BAD_RESPONSE', `HTTP ${String(status)}`, status)
   }
 
-  throw new ApiError('BAD_RESPONSE', '响应不是约定的 Result 信封', response.status)
+  throw new ApiError('BAD_RESPONSE', '响应不是约定的 Result 信封', status)
 }
 
 export const api = {
@@ -132,4 +183,6 @@ export const api = {
     request<T>(path, { ...opts, method: 'GET' }),
   post: <T>(path: string, body?: unknown, opts?: Omit<RequestOptions, 'method' | 'body'>) =>
     request<T>(path, { ...opts, method: 'POST', body }),
+  del: <T>(path: string, opts?: Omit<RequestOptions, 'method' | 'body'>) =>
+    request<T>(path, { ...opts, method: 'DELETE' }),
 }
