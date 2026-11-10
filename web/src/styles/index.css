@@ -1,27 +1,28 @@
 @import 'tailwindcss';
 
 /*
- * 设计令牌。刻意沿用 shadcn 的命名（--color-background / --color-foreground …），
- * 以便将来若要接 shadcn CLI 是无痛的。
- * Tailwind 4 是 CSS-first 配置：@theme 里的变量会自动生成对应工具类，如 bg-background。
+ * 浅色主题：白底黑字。
+ * 令牌沿用 shadcn 命名（--color-background / --color-foreground …），
+ * 将来若要接 shadcn CLI 或换主题是无痛的。
  */
 @theme {
-  --color-background: #0b0d11;
-  --color-foreground: #e8eaed;
-  --color-card: #14171d;
-  --color-border: #232833;
-  --color-muted: #1a1e26;
-  --color-muted-foreground: #8b93a1;
-  --color-primary: #58a6ff;
-  --color-success: #3fb950;
-  --color-danger: #f85149;
-  --color-warning: #d29922;
+  --color-background: #ffffff;
+  --color-foreground: #111827;
+  --color-card: #ffffff;
+  --color-border: #e5e7eb;
+  --color-muted: #f3f4f6;
+  --color-muted-foreground: #6b7280;
+  --color-primary: #2563eb;
+  --color-primary-foreground: #ffffff;
+  --color-success: #16a34a;
+  --color-danger: #dc2626;
+  --color-warning: #d97706;
 
   --radius-lg: 0.625rem;
 }
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 body {

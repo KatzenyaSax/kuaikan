@@ -3,6 +3,7 @@ import { createBrowserRouter } from 'react-router'
 import { RootLayout } from '@/routes/root'
 import { HomePage } from '@/routes/home'
 import { RegisterPage } from '@/routes/register'
+import { TestPage } from '@/routes/test'
 import { NotFoundPage } from '@/routes/not-found'
 import { RootErrorBoundary } from '@/routes/root-error'
 import { ErrorDemoPage } from '@/routes/error-demo'
@@ -26,6 +27,7 @@ const routes: RouteObject[] = [
     children: [
       { index: true, element: <HomePage /> },
       { path: 'register', element: <RegisterPage /> },
+      { path: 'test', element: <TestPage /> },
       ...devOnlyRoutes,
       { path: '*', element: <NotFoundPage /> },
     ],

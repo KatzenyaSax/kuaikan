@@ -224,6 +224,22 @@ export type PingDataIdentical = AllTrue<[
 只要有任何一个服务的 spec 与 user-service 不同，对应元素变成 `false`，泛型约束不满足，
 `npm run typecheck` 直接报错。**不需要任何运行时代码，也不需要单元测试。**
 
+## 2026-11-10 调整：诊断内容合并进 React 应用
+
+诊断能力（服务状态 7 卡片、UI 原子自检、MQ/Sentinel 探针）原先是一个独立静态页
+（`deploy/status/test/index.html`，由 nginx 直接从 `/test/` 提供）。
+
+现已合并进 React 应用的路由 `/test`，并删除了：
+- `deploy/status/`
+- `deploy/bin/install-status.sh`
+- nginx 里的 `location = /test` 与 `location /test/`
+
+理由：静态页与后端契约脱钩，只能手工维护；合并后它的类型来自 OpenAPI，
+后端改接口会在 `typecheck` 阶段就报错。代价是诊断页与产品代码同生共死
+（部署挂了它也挂），判断是值得的。
+
+同时主题改为**浅色（白底黑字）**，首页只保留一个居中的描边「注册账号」按钮。
+
 ## S6 实测结果
 
 ```

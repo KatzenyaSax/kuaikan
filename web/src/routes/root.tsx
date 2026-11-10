@@ -11,12 +11,13 @@ export function RootLayout() {
           <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">
             P0.5
           </span>
-          <a
-            href="/test/"
+          <NavLink
+            to="/test"
             className="ml-auto text-xs text-muted-foreground transition-colors hover:text-foreground"
+            data-testid="link-test"
           >
-            /test/ 冒烟控制台 →
-          </a>
+            /test 诊断台 →
+          </NavLink>
         </div>
       </header>
 
