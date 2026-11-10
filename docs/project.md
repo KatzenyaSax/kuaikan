@@ -215,6 +215,34 @@ services/
 
 代价：以后所有 `Long` 字段（包括计数）到前端都是字符串。需要时再单独处理。
 
+### 认证（P1.2）
+
+| 项 | 值 |
+|---|---|
+| 算法 | RS256，`kid` 用密钥指纹 |
+| access | 2 小时，JWT（`typ=access`，含 `sub`/`jti`/`roles`） |
+| refresh | 30 天，JWT（`typ=refresh`，含 `jti`/`fid` 家族），**库里只存 jti** |
+| 私钥 | `/opt/kuaikan/data/auth-keys/jwt-private.pem`（挂载进容器 `/app/keys`，属主 10001，权限 600） |
+| 公钥分发 | `GET /internal/jwks`（仅容器网络，公网 **404**） |
+| refresh cookie | `kuaikan_refresh`：HttpOnly + Secure + SameSite=Lax + `Path=/api/user/auth` + 30 天 |
+| access 白名单 | Redis `auth:session:{jti}` → userId（网关 P1.3 查它） |
+| 重放宽限期 | 30 秒（多标签页并发刷新不误判） |
+
+**access 与 refresh 的存储分工**：access 白名单进 Redis（每请求热路径 + 立刻失效），
+refresh 家族进 MySQL（可分页、可审计、低频）。这样不存在双写一致性问题。
+
+### 浏览器层验收（P1.2）
+
+```bash
+cd web
+E2E_EMAIL=... E2E_PASSWORD=... npm run e2e:auth
+```
+
+9 条断言：未登录守卫 / 登录成功 / cookie 属性 / 存储无 token / 刷新不掉登录态 /
+不闪登录页 / 出现 bootstrap 加载态 / 登出后重定向 / cookie 已清除。
+
+用 **playwright 库形态**（不引 `@playwright/test`），浏览器按 内置 chromium → msedge → chrome 回退。
+
 ### 邮件（P1.1）
 
 | 项 | 值 |
