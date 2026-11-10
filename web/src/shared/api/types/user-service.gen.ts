@@ -142,8 +142,8 @@ export interface components {
             code: string;
         };
         RegisterResponse: {
-            /** Format: int64 */
-            userId?: number;
+            /** @description 雪花 ID，序列化为字符串以避免 JS 精度丢失 */
+            userId?: string;
             email?: string;
             nickname?: string;
             /** Format: date-time */
