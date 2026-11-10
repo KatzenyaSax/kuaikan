@@ -84,8 +84,14 @@ public class LoginService {
      *   首次使用 → 轮换
      *   宽限期内重复 → 允许（多标签页），consumedAt 不更新
      *   超过宽限期重放 → 吊销整族 + 401
+     *
+     * **noRollbackFor = BizException**：这是必须的。检测到重放时我们要
+     * "先吊销整族、再抛 401"，而默认的 @Transactional 会在抛出异常时把
+     * 吊销一起回滚掉——结果是"报告了发现泄漏，却没有真的处置"。
+     * 实测确认过：不加这个参数，DB 里 revoked_at 永远是 NULL。
+     * BizException 语义上就是"业务拒绝"，此前的写入都是有意的，不该回滚。
      */
-    @Transactional
+    @Transactional(noRollbackFor = BizException.class)
     public TokenPair refresh(String refreshTokenValue, String userAgent, String ip) {
         JWTClaimsSet claims;
         try {
@@ -131,7 +137,7 @@ public class LoginService {
     }
 
     /** 登出：吊销当前 refresh + 立即删除 access 白名单（"立刻失效"） */
-    @Transactional
+    @Transactional(noRollbackFor = BizException.class)
     public void logout(String refreshTokenValue, String accessJti) {
         if (refreshTokenValue != null && !refreshTokenValue.isBlank()) {
             try {
