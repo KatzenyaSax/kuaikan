@@ -20,6 +20,29 @@ export type ButtonProps = ComponentProps<'button'> & {
   size?: Size
 }
 
+/**
+ * 生成按钮样式。给「需要渲染成 <a> 的元素」复用，避免 <a> 嵌套在 <button> 里
+ * （那是非法 HTML，可访问性与默认行为都会出问题）。
+ */
+export function buttonClass({
+  variant = 'primary',
+  size = 'md',
+  className,
+}: {
+  variant?: Variant
+  size?: Size
+  className?: string
+} = {}): string {
+  return cn(
+    'inline-flex items-center justify-center rounded-md font-medium transition-colors',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+    'disabled:pointer-events-none disabled:opacity-50',
+    VARIANTS[variant],
+    SIZES[size],
+    className,
+  )
+}
+
 export function Button({
   variant = 'primary',
   size = 'md',
@@ -30,14 +53,7 @@ export function Button({
   return (
     <button
       type={type}
-      className={cn(
-        'inline-flex items-center justify-center rounded-md font-medium transition-colors',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-        'disabled:pointer-events-none disabled:opacity-50',
-        VARIANTS[variant],
-        SIZES[size],
-        className,
-      )}
+      className={buttonClass({ variant, size, ...(className === undefined ? {} : { className }) })}
       {...rest}
     />
   )

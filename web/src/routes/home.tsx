@@ -1,5 +1,5 @@
 import { Link } from 'react-router'
-import { Button } from '@/shared/ui/button'
+import { buttonClass } from '@/shared/ui/button'
 
 /**
  * 首页目前只是入口页。
@@ -15,9 +15,13 @@ export function HomePage() {
         <p className="mt-2 text-xs text-muted-foreground">一个以社群为单位的讨论社区</p>
       </div>
 
-      <Button variant="outline" data-testid="btn-register">
-        <Link to="/register">注册账号</Link>
-      </Button>
+      <Link
+        to="/register"
+        className={buttonClass({ variant: 'outline', className: 'px-6' })}
+        data-testid="btn-register"
+      >
+        注册账号
+      </Link>
     </div>
   )
 }
