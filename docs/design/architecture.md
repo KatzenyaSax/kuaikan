@@ -56,7 +56,7 @@
 | 调度 | XXL-Job | 2.4.x |
 | 对象存储 | MinIO | 最新（P7 才接） |
 | 入口 | Nginx | 1.27.x |
-| 前端 | React 19 / TS 5.x / Vite 7 / TanStack Query v5 / Zustand / Tailwind 4 + shadcn/ui | — |
+| 前端 | React 19 / TypeScript 6 / Vite 8 / TanStack Query 5 / Zustand / Tailwind 4 | 版本以 `web/package.json` 为准 |
 
 **已明确排除**：Dubbo（ADR 0002）、BFF（ADR 0005）、**Seata**（本地消息表已取代全部分布式事务场景，见 ADR 0004）、分库分表、多可用区、RocketMQ 事务消息（ADR 0004）、Spring Authorization Server / Keycloak、私密社群与加入审批、一期图片上传（P7 才接 MinIO）。
 

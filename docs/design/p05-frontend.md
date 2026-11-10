@@ -21,6 +21,28 @@
 | 5 | 生成物顶部标注"由 npm run gen:types 生成，禁止手改" | 手改生成的类型是契约失效的第一种死法 |
 | 6 | registry 先用官方源，超 3 分钟再切 npmmirror 并记录 | 不预先假设网络状况 |
 
+## 实测版本（S1 完成后回填）
+
+`npm install` 解析出的版本比立项时的假设新一个大版本，以 `web/package.json` 为准：
+
+| 包 | 版本 |
+|---|---|
+| react / react-dom | 19.3.1 |
+| vite | **8.3.7** |
+| @vitejs/plugin-react | 6.3.0 |
+| typescript | **6.0.3** |
+| eslint / @eslint/js | 10.14.0 / 10.0.1 |
+| typescript-eslint | 8.72.2 |
+| eslint-plugin-react-hooks | 7.1.1（S2 起接入 flat config） |
+| @types/node | 26.6.6 |
+| Node 运行时 | 22.23.4 |
+
+**TypeScript 6 的一处破坏性变更**：`baseUrl` 已废弃（TS 7 将移除），配置里不能写。`paths` 直接写相对路径即可：
+
+```jsonc
+"paths": { "@/*": ["./src/*"] }   // 不要 baseUrl
+```
+
 ## 目录结构
 
 ```
@@ -138,7 +160,7 @@ web/
 
 | 风险 | 回退 |
 |---|---|
-| Tailwind 4 与 Vite 7 插件不兼容 | 降 Tailwind 3.x，记进 `project.md` |
+| Tailwind 4 与 Vite 8 插件不兼容 | 降 Tailwind 3.x，记进 `project.md` |
 | springdoc 输出 OpenAPI 3.1，`openapi-typescript` 解析失败 | 降 springdoc 版本使其输出 3.0 |
 | `exactOptionalPropertyTypes` 与第三方库类型冲突 | `skipLibCheck` 已默认开启，不影响自有代码 |
 | npm 官方源过慢 | 切 npmmirror 并记进 `web/.npmrc` |

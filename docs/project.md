@@ -86,6 +86,24 @@
 
 本机原为 Homebrew 的 Node 25.8.0（奇数版、非 LTS）。因 **Homebrew 5.1.11 不认识 macOS 27.0**，`brew install node@22` 会报 `Error: unknown or unsupported macOS version: :dunno`（依赖已装齐，失败发生在 bottle 选择阶段）。故改用 **nodejs.org 官方 tarball**（SHA256 已校验）安装到 `~/.local/node/node-v22.23.4-darwin-arm64`，由 `~/.zshrc` 中的 PATH 前置生效。
 
+### 前端工具链（S1 实测）
+
+| 包 | 版本 |
+|---|---|
+| react / react-dom | 19.3.1 |
+| vite | **8.3.7** |
+| @vitejs/plugin-react | 6.3.0 |
+| typescript | **6.0.3** |
+| eslint / @eslint/js | 10.14.0 / 10.0.1 |
+| typescript-eslint | 8.72.2 |
+| eslint-plugin-react-hooks | 7.1.1 |
+| @types/node | 26.6.6 |
+| Node 运行时 | 22.23.4（`~/.local/node/current`） |
+
+`web/.node-version` 固定 22.23.4；`package.json` 的 `engines.node` 为 `>=20.19 <23`。
+**开发机上共存 3 个 Node**：`/usr/local/bin/node`(22.22.1)、`/opt/homebrew/bin/node`(25.8.0)、`~/.local/node/current`(22.23.4)。
+所有 npm 命令必须显式 `export PATH="$HOME/.local/node/current/bin:$PATH"`，`web/.node-version` 只约束工具不约束执行。
+
 ### 前后端两条回路
 
 | | 回路 | 耗时 |
