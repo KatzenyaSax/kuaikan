@@ -39,7 +39,27 @@
 | @tanstack/react-query | 5.107.1 |
 | tailwindcss / @tailwindcss/vite | 4.3.5 |
 | clsx / tailwind-merge | 2.1.1 / 3.7.0 |
+| openapi-typescript | 7.13.0 |
+| tsx | 4.23.15 |
+| globals | 最新 |
 | Node 运行时 | 22.23.4 |
+
+### 一处必须记录的 peer 冲突
+
+`openapi-typescript@7.13.0` 声明 peer 依赖 `typescript@^5.x`，而本项目用 TypeScript 6.0.3。
+它的 TS peer 只影响生成器对输出语法的假设，生成器本身不调用 TS 编译器 API，
+**实测生成的类型在 TS 6 下可以正常 typecheck**。
+
+处理方式：`web/.npmrc` 固定 `legacy-peer-deps=true`，并在文件里写明原因与移除条件。
+若将来 openapi-typescript 放开 peer 范围，删掉那一行即可。
+
+### TS 配置上为 S4 补的三处
+
+| 改动 | 原因 |
+|---|---|
+| `allowImportingTsExtensions: true` | 冒烟脚本以 `.ts` 显式后缀导入，避免 tsx 与 tsc 解析歧义 |
+| `include` 增加 `scripts` | 让 `npm run typecheck` 覆盖冒烟脚本——"编译器充当测试"的前提是它在程序里 |
+| eslint 对 TS 文件关闭 `no-undef`，给 `scripts/` 补 Node globals | 官方 typescript-eslint 明确建议：TS 自己检查未定义标识符，eslint 的 `no-undef` 只会误报 |
 
 **Zustand 推迟到 P1**：现在没有任何会话态或 UI 态可存，装了就是死依赖。
 P1 引入 token 存储时再装，并同时把"数据分层纪律"落成代码。

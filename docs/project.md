@@ -102,6 +102,8 @@
 | @tanstack/react-query | 5.107.1 |
 | tailwindcss / @tailwindcss/vite | 4.3.5 |
 | clsx / tailwind-merge | 2.1.1 / 3.7.0 |
+| openapi-typescript | 7.13.0（peer 声明 TS ^5，用 `legacy-peer-deps` 安装，实测兼容 TS 6） |
+| tsx | 4.23.15 |
 | Node 运行时 | 22.23.4（`~/.local/node/current`） |
 | **zustand** | 未安装，P1 有会话 store 时再引入 |
 
