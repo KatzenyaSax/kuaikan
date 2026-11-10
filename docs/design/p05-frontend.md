@@ -128,13 +128,17 @@ web/
 
 ## 后端契约导出
 
-- 7 个 servlet 服务加 `springdoc`，`api-docs.path: /internal/api-docs`，`swagger-ui.enabled: false`
+- 7 个 servlet 服务加 `springdoc-openapi-starter-webmvc-api` **2.10.0**（其 parent 正是
+  `spring-boot-starter-parent 3.5.16`，与项目精确对齐；3.x 线对应 Boot 4，不可用），
+  `api-docs.path: /internal/api-docs`，`swagger-ui.enabled: false`，`packages-to-scan` 限定到各自包
 - **gateway 不加**（没有业务接口）
 - **网关新增内部路径拒绝过滤器**：路径匹配 `^/api/[^/]+/internal/.*` 直接返回 404
 
   现有路由 `/api/user/**` + `StripPrefix=2` 会把 `/api/user/internal/api-docs` 转发成 `/internal/api-docs` 并返回 200，契约就泄漏了。这个过滤器把「不变量 7：网关不得路由 `/internal/**`」从文档承诺变成代码强制。
 
-- `deploy/bin/openapi-dump.sh` 从容器内拉取 7 份 spec 到 `web/openapi/`
+- `deploy/bin/openapi-dump.sh` 从容器内拉取 7 份 spec 到 `web/openapi/`。
+  脚本自动判断运行位置：服务器上有 docker 就直连，开发机上走 SSH。
+- **产出的 spec 是 OpenAPI 3.1.0**（springdoc 2.x 默认），`openapi-typescript` 需 ≥7 才支持
 
 ## 发布通道
 

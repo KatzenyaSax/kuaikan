@@ -190,6 +190,17 @@
 | RocketMQ topic | `kuaikan_p0_smoke`（**下划线，RocketMQ 不允许点号**） |
 | 消费台账 | community-service 内存 `ConcurrentHashMap`，上限 1 万条，**重启即清空，不是去重表** |
 
+### 契约端点（内部）
+
+| 服务 | 容器内地址 | 公网 |
+|---|---|---|
+| 7 个 servlet 服务 | `http://127.0.0.1:<port>/internal/api-docs` | **404**（网关 `InternalPathBlockFilter` 拦截） |
+
+- springdoc **2.10.0**，只引 `-webmvc-api`（不含 swagger-ui）
+- spec 版本 **OpenAPI 3.1.0**
+- 采集：`./deploy/bin/openapi-dump.sh` → `web/openapi/<service>.json`（入库）
+- 拦截证据：公网请求会触发网关 `WARN 拦截内部路径访问 path=...`，且容器内同路径返回 200
+
 ### 网关路由约定
 
 `/api/{service}/**` → `lb://{service}`，`StripPrefix=2`。即前端请求 `/api/user/ping`，user-service 实际收到 `/ping`。
