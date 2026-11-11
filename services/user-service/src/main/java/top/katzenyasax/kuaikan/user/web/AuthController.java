@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -18,6 +19,7 @@ import top.katzenyasax.kuaikan.common.error.BizException;
 import top.katzenyasax.kuaikan.common.error.CommonErrorCode;
 import top.katzenyasax.kuaikan.common.web.UserContext;
 import top.katzenyasax.kuaikan.user.auth.LoginService;
+import top.katzenyasax.kuaikan.user.auth.ProfileService;
 import top.katzenyasax.kuaikan.user.auth.RegistrationService;
 import top.katzenyasax.kuaikan.user.auth.SessionService;
 import top.katzenyasax.kuaikan.user.auth.TokenService;
@@ -29,6 +31,7 @@ import top.katzenyasax.kuaikan.user.web.dto.RegisterRequest;
 import top.katzenyasax.kuaikan.user.web.dto.RegisterResponse;
 import top.katzenyasax.kuaikan.user.web.dto.SendCodeRequest;
 import top.katzenyasax.kuaikan.user.web.dto.SessionItem;
+import top.katzenyasax.kuaikan.user.web.dto.UpdateProfileRequest;
 import top.katzenyasax.kuaikan.user.web.dto.UserProfile;
 
 import java.util.List;
@@ -41,13 +44,16 @@ public class AuthController {
     private final RegistrationService registrationService;
     private final LoginService loginService;
     private final SessionService sessionService;
+    private final ProfileService profileService;
 
     public AuthController(RegistrationService registrationService,
                           LoginService loginService,
-                          SessionService sessionService) {
+                          SessionService sessionService,
+                          ProfileService profileService) {
         this.registrationService = registrationService;
         this.loginService = loginService;
         this.sessionService = sessionService;
+        this.profileService = profileService;
     }
 
     /** 发送注册验证码 */
@@ -126,6 +132,13 @@ public class AuthController {
     public Result<UserProfile> me() {
         User user = currentUser();
         return Result.ok(UserProfile.of(user));
+    }
+
+    /** 修改自己的资料（昵称 / 头像）。目标用户来自 UserContext，不接受调用方传 userId */
+    @PatchMapping("/me")
+    public Result<UserProfile> updateProfile(@Valid @RequestBody UpdateProfileRequest body) {
+        Long userId = UserContext.requireUserId();
+        return Result.ok(profileService.update(userId, body));
     }
 
     @GetMapping("/sessions")
