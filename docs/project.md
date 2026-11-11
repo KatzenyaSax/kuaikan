@@ -321,14 +321,33 @@ docker exec kuaikan-user-service-1 \
 - `expired`：只在"本来已登录、被动掉线"时设置（首次访问的 401 是正常的"没登录"）
 - `manual`：主动登出，不提示
 
+### 个人资料（P1.6）
+
+`PATCH /api/user/auth/me`，body `{nickname?, avatarUrl?}`，部分更新。
+
+| 约定 | 值 |
+|---|---|
+| 目标用户 | 来自 `UserContext`，**不接受调用方传 userId**（否则能改别人） |
+| 头像 | 只接受 `^https?://`，≤255；上传留到 P7 的 MinIO |
+| 清空头像 | 传**空字符串**（JSON 的 null 与字段缺失无法区分） |
+| 昵称 | 2~32，不允许空 |
+| 写库方式 | `UpdateWrapper` 而非 `updateById`（后者忽略 null，清空会变成不改） |
+
+**改昵称不需要重新登录**：token 里只有 `sub`/`jti`/`roles`，没有昵称。
+这是"token 不放会变的数据"那个决定的直接收益，`verify-p1.sh` 有断言守着它。
+
+**P2 起的连锁影响**：帖子和评论会冗余存作者昵称/头像**快照**。改昵称之后，
+历史内容保持当时的快照——这是有意的（历史内容不该被改名追溯改变），
+不要当成 bug 去"修复"。等 P2 给用户摘要加缓存时，改昵称必须触发缓存失效。
+
 ### P1 验收（已完成）
 
-`deploy/bin/verify-p1.sh`，退出码 0 即通过。**27 条自动断言 + 3 条人工**。
+`deploy/bin/verify-p1.sh`，退出码 0 即通过。**33 条自动断言 + 3 条人工**。
 
 | 层 | 内容 | 条数 |
 |---|---|---|
 | L1 契约与构建 | 错误码三方一致 / spec 与类型无漂移 / typecheck / build | 4 |
-| L2 后端 HTTP | 注册开关、防枚举、cookie 属性、信任边界、typ 校验、网关注入、refresh 轮换与宽限期、登出即时失效 | 13 |
+| L2 后端 HTTP | 注册开关、防枚举、cookie 属性、信任边界、typ 校验、网关注入、refresh 轮换与宽限期、资料编辑、登出即时失效 | 19 |
 | L3 浏览器 | 守卫、登录、静默续期、不闪登录页、存储无 token、cookie 属性、登出 | 9 |
 | L4 破坏性动作 | kick / ban / unban（经 SSH 调 `/internal/admin`） | 6 |
 | L5 回归 | `verify.sh`（P0）+ `verify-p05.sh`（P0.5） | 2 |
