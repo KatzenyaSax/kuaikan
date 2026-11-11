@@ -71,6 +71,26 @@ print('' if v is None else v)
 
 ssh_run() { ssh "${SSH_OPTS[@]}" "$SSH_HOST" "$@" 2>/dev/null; }
 
+# POST JSON，返回 "HTTP状态码|响应体"。
+# 空响应会重试两次：否则一次网络抖动会被当成"响应语义不符"，
+# 让人误以为是产品行为差异，其实只是没拿到响应。
+post_json() {
+  local url="$1" body="$2" attempt=0 out status resp
+  while [ $attempt -lt 3 ]; do
+    out=$(curl -s -w '\n%{http_code}' --max-time 15 -X POST "$url" \
+      -H 'Content-Type: application/json' -d "$body" 2>/dev/null)
+    status=$(printf '%s' "$out" | tail -1)
+    resp=$(printf '%s' "$out" | sed '$d')
+    if [ -n "$resp" ]; then
+      printf '%s|%s' "$status" "$resp"
+      return 0
+    fi
+    attempt=$((attempt + 1))
+    sleep 1
+  done
+  printf '%s|' "$status"
+}
+
 cleanup() {
   if [ -n "$USER_ID" ]; then
     ssh_run "set -a; . $ENV_FILE; set +a;
@@ -150,14 +170,16 @@ else
     ng "注册开关状态异常" "HTTP $reg"
   fi
 
-  bad_pwd=$(curl -s -X POST "$SITE/api/user/auth/login" -H 'Content-Type: application/json' \
-    -d "{\"email\":\"$EMAIL\",\"password\":\"wrong-password\"}")
-  ok_user=$(curl -s -X POST "$SITE/api/user/auth/login" -H 'Content-Type: application/json' \
-    -d '{"email":"nobody@kuaikan.test","password":"wrong-password"}')
-  if printf '%s' "$bad_pwd" | grep -q '"code":40206' && [ "$bad_pwd" = "$ok_user" ]; then
+  bad_pwd=$(post_json "$SITE/api/user/auth/login" "{\"email\":\"$EMAIL\",\"password\":\"wrong-password\"}")
+  ok_user=$(post_json "$SITE/api/user/auth/login" '{"email":"nobody@kuaikan.test","password":"wrong-password"}')
+  bad_body=${bad_pwd#*|}
+  same_body=${ok_user#*|}
+  if [ -z "$bad_body" ] || [ -z "$same_body" ]; then
+    ng "登录失败语义" "没拿到响应（密码错=${bad_pwd%%|*} / 邮箱不存在=${ok_user%%|*}）"
+  elif printf '%s' "$bad_body" | grep -q '"code":40206' && [ "$bad_body" = "$same_body" ]; then
     ok "凭据错误 = 200/40206，且与'邮箱不存在'完全一致（防枚举）"
   else
-    ng "登录失败语义" "密码错=$bad_pwd / 邮箱不存在=$ok_user"
+    ng "登录失败语义" "密码错=$bad_body / 邮箱不存在=$same_body"
   fi
 
   rm -f /tmp/p1-jar.txt
