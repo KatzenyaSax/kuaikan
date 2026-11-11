@@ -100,15 +100,20 @@ async function refreshTokens(): Promise<string | null> {
     })
     return payload.accessToken
   } catch (err) {
-    // 只有在"之前是已登录"时才算一次被动的会话结束。
-    // 首次访问（status=unknown）时的 401 是正常的"没登录"，不该给用户弹提示。
     const wasAuthenticated = useSession.getState().status === 'authenticated'
+    // 封禁是账号级事实，与"之前是否已登录"无关：
+    // 用户刷新页面（store 重置、status=unknown）时也要告诉他，否则他只会看到
+    // 一个莫名其妙的登录页，再输一次密码又被打回来。
     const banned = err instanceof ApiError && err.code === 40205
+
     useSession.setState({
       status: 'anonymous',
       accessToken: null,
       user: null,
-      ...(wasAuthenticated ? { logoutReason: banned ? 'banned' : 'expired' } : {}),
+      // 'expired' 只在"本来已登录、被动掉线"时才提示；
+      // 首次访问的 401 是正常的"没登录"，不该弹任何东西。
+      ...(banned ? { logoutReason: 'banned' as const }
+        : wasAuthenticated ? { logoutReason: 'expired' as const } : {}),
     })
     return null
   }
