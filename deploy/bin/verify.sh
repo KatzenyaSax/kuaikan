@@ -146,6 +146,40 @@ else
   ng "Feign 调用链" "响应：$(printf '%s' "$feign" | head -c 160)"
 fi
 
+# ------------------------------------------------- 5b. Feign 身份传播
+section "5b. Feign 身份传播（网关认证 → 服务 → Feign → 下游）"
+SECRET=$(grep '^INTERNAL_AUTH_SECRET=' "$ENV_FILE" 2>/dev/null | cut -d= -f2-)
+if [ -z "$SECRET" ]; then
+  skip "Feign 身份传播" "env 文件里没有 INTERNAL_AUTH_SECRET"
+elif ! command -v python3 >/dev/null 2>&1; then
+  skip "Feign 身份传播" "缺 python3"
+else
+  probe_uid=$(( (RANDOM % 90000) + 10000 ))
+  ts=$(date +%s)
+  sig=$(python3 -c "
+import hmac, hashlib, sys
+secret, uid, ts = sys.argv[1], sys.argv[2], sys.argv[3]
+print(hmac.new(secret.encode(), (uid + '|USER|' + ts).encode(), hashlib.sha256).hexdigest())
+" "$SECRET" "$probe_uid" "$ts")
+
+  propagated=$(docker exec kuaikan-user-service-1 curl -s \
+      -H "X-User-Id: $probe_uid" -H "X-User-Roles: USER" \
+      -H "X-Internal-Timestamp: $ts" -H "X-Internal-Signature: $sig" \
+      http://127.0.0.1:8081/ping/feign 2>/dev/null)
+  callee_uid=$(printf '%s' "$propagated" | sed -n 's/.*"calleeIdentity":{[^}]*"userId":"\([0-9]*\)".*/\1/p')
+
+  if [ "$callee_uid" = "$probe_uid" ]; then
+    ok "身份经 Feign 传播到下游（callee 看到 userId=$probe_uid）"
+  else
+    ng "Feign 身份未传播" "下游看到 '${callee_uid:-空}'，期望 $probe_uid"
+  fi
+
+  # 反向：带身份但没签名必须被拒，证明服务侧真的在校验而不只是"读到了"
+  code=$(docker exec kuaikan-user-service-1 curl -s -o /dev/null -w '%{http_code}' \
+      -H "X-User-Id: $probe_uid" http://127.0.0.1:8081/ping/feign 2>/dev/null)
+  [ "$code" = "401" ] && ok "带身份无签名被拒（401）" || ng "带身份无签名未被拒" "HTTP $code"
+fi
+
 # ---------------------------------------------------------------- 6. RocketMQ 收发
 section "6. RocketMQ 端到端（发 → broker → 消费 → Feign 回查）"
 send=$(curl -s -X POST --max-time 15 "$INTERNAL/api/user/ping/mq" 2>/dev/null)

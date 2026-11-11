@@ -306,8 +306,16 @@ refresh 家族进 MySQL（可分页、可审计、低频）。这样不存在双
 `INTERNAL_AUTH_SECRET` 由 `gen-env.sh` 生成（96 位十六进制），
 网关 `kuaikan.auth.internal-secret` 与各服务 `kuaikan.internal.auth.secret` 共用。
 
-**服务间调用（Feign）目前不传身份**，因此下游视为匿名。P3 需要传身份时，
-必须加 Feign 拦截器同时转发身份与签名。
+### 服务间身份传播（ADR 0008）
+
+Feign 发起的是**全新请求**，入站 header 会全部丢失。`kuaikan-common-web` 的
+`IdentityPropagationInterceptor` 把 `X-User-Id` / `X-User-Roles` / `X-Internal-Timestamp` /
+`X-Internal-Signature` **原样转抄**到出站请求（不重签）。
+
+只覆盖"用户请求触发的同步链路"：`RequestContextHolder` 为 null 时（MQ 消费、XXL-Job）不传播。
+
+可观测点：`GET /ping/feign` 返回 `callerIdentity` 与 `calleeIdentity`，
+`GET /ping/whoami` 回报本服务收到的身份。`verify.sh` 的 5b 段自动断言传播生效。
 
 ### 浏览器层验收（P1.2）
 
