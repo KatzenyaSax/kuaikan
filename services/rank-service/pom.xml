@@ -18,6 +18,13 @@
             <groupId>top.katzenyasax.kuaikan</groupId>
             <artifactId>kuaikan-common</artifactId>
         </dependency>
+        <!-- 身份上下文 + Feign 身份传播。缺这个依赖会导致：
+             服务读到 header 却没人构造 UserContext → 永远匿名；
+             Feign 调用不转发身份 → 下游看不到用户。且完全静默。 -->
+        <dependency>
+            <groupId>top.katzenyasax.kuaikan</groupId>
+            <artifactId>kuaikan-common-web</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
