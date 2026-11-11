@@ -235,6 +235,39 @@ else
   [ "$grace" = "200" ] && ok "宽限期内同一 refresh 可重复使用（多标签页不误杀）" \
     || ng "宽限期失效" "HTTP $grace"
 
+  # 修改自己的资料（P1.6）
+  unauth=$(curl -s -o /dev/null -w '%{http_code}' -X PATCH "$SITE/api/user/auth/me" \
+    -H 'Content-Type: application/json' -d '{"nickname":"hacker"}')
+  [ "$unauth" = "401" ] && ok "PATCH /me 无 token → 401" || ng "PATCH /me 无 token" "HTTP $unauth"
+
+  newnick="e2e-nick-${STAMP}"
+  upd=$(curl -s -X PATCH "$SITE/api/user/auth/me" -H "Authorization: Bearer $TOKEN" \
+    -H 'Content-Type: application/json' -d "{\"nickname\":\"$newnick\"}")
+  after_name=$(curl -s -H "Authorization: Bearer $TOKEN" "$SITE/api/user/auth/me" | json_field 'data.nickname')
+  [ "$after_name" = "$newnick" ] && ok "改昵称后 /me 返回新昵称" || ng "改昵称未生效" "got=$after_name"
+
+  # 这是"token 里不放会变的数据"那个决定的直接验证：改完昵称旧 token 照样能用
+  still=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "$SITE/api/user/auth/me")
+  [ "$still" = "200" ] && ok "改昵称后原 access token 仍有效（token 不含昵称）" \
+    || ng "改昵称导致 token 失效" "HTTP $still"
+
+  # 头像：设置 / 清空 / 非法协议
+  curl -s -o /dev/null -X PATCH "$SITE/api/user/auth/me" -H "Authorization: Bearer $TOKEN" \
+    -H 'Content-Type: application/json' -d '{"avatarUrl":"https://example.com/a.png"}'
+  av=$(curl -s -H "Authorization: Bearer $TOKEN" "$SITE/api/user/auth/me" | json_field 'data.avatarUrl')
+  [ "$av" = "https://example.com/a.png" ] && ok "设置头像 URL" || ng "设置头像失败" "got=$av"
+
+  curl -s -o /dev/null -X PATCH "$SITE/api/user/auth/me" -H "Authorization: Bearer $TOKEN" \
+    -H 'Content-Type: application/json' -d '{"avatarUrl":""}'
+  av2=$(curl -s -H "Authorization: Bearer $TOKEN" "$SITE/api/user/auth/me" | json_field 'data.avatarUrl')
+  [ -z "$av2" ] && ok "空字符串清空头像（MyBatis-Plus 默认会忽略 null，这里用 UpdateWrapper）" \
+    || ng "清空头像失败" "got=$av2"
+
+  bad_av=$(curl -s -X PATCH "$SITE/api/user/auth/me" -H "Authorization: Bearer $TOKEN" \
+    -H 'Content-Type: application/json' -d '{"avatarUrl":"javascript:alert(1)"}')
+  printf '%s' "$bad_av" | grep -q '"code":40010' && ok "非法头像协议被拒（40010）" \
+    || ng "非法头像未被拒" "$(printf '%s' "$bad_av" | head -c 100)"
+
   # 登出
   curl -s -b /tmp/p1-jar.txt -H "Authorization: Bearer $TOKEN" -o /dev/null -X POST "$SITE/api/user/auth/logout"
   after=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "$SITE/api/user/auth/me")
