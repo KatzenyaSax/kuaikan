@@ -276,7 +276,7 @@ fi
 # 注意：这一步必须跑在"重启自愈"之前。
 # 重启窗口内网关会对下游返回真实的 500，那是预期行为，不该被日志断言算成异常。
 # 拆开的语义更清楚：日志断言管"稳态是否干净"，重启断言管"能不能自愈"。
-section "11. 日志无异常（近 10 分钟）"
+section "10. 日志无异常（近 10 分钟）"
 # nacos-client 在优雅关闭时会打 InterruptedException，是已知无害噪音
 NOISE='NotifyCenter|Nacos client graceful shutdown|GracefulShutdownDelegate|InterruptedException'
 dirty=""
@@ -294,7 +294,7 @@ fi
 
 # ---------------------------------------------------------------- 11. 重启自愈
 if [ "$DO_RESTART" = "1" ]; then
-  section "10. 重启自愈（restart user-service）"
+  section "11. 重启自愈（restart user-service）"
   docker restart "$(cid_of user-service)" >/dev/null 2>&1
   t0=$SECONDS
   recovered=""
