@@ -13,7 +13,10 @@ export default tseslint.config(
     // scripts/ 是 Node 环境（生成器与冒烟脚本），需要 Node 全局量
     files: ['scripts/**/*.{js,mjs,mts,ts}'],
     languageOptions: {
-      globals: { ...globals.node },
+      // 脚本跑在 Node 里，但 e2e 脚本里 page.addInitScript(() => { ... }) 的
+      // 回调体是**浏览器代码**（window / document / MutationObserver /
+      // requestAnimationFrame），所以两套全局量都要有。
+      globals: { ...globals.node, ...globals.browser },
     },
   },
   {
