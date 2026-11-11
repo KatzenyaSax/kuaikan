@@ -311,7 +311,7 @@ if [ "$DO_RESTART" = "1" ]; then
     ng "重启自愈" "$((SECONDS - t0))s 内未恢复 healthy"
   fi
 else
-  section "10. 重启自愈"
+  section "11. 重启自愈"
   skip "重启自愈" "--no-restart"
 fi
 
