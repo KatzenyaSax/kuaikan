@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { authErrorMessage } from '@/features/auth/auth-error'
 import { useSession } from '@/features/auth/session'
-import { useLogout, useRevokeSession, useSessions } from '@/features/auth/session-api'
+import { useLogout, useRevokeSession, useSessions, useUpdateProfile } from '@/features/auth/session-api'
+import { Avatar } from '@/shared/ui/avatar'
 import { Button } from '@/shared/ui/button'
 import { Card, CardDescription, CardTitle } from '@/shared/ui/card'
 import { Skeleton } from '@/shared/ui/skeleton'
@@ -22,10 +23,39 @@ export function MePage() {
   const logout = useLogout()
   const revoke = useRevokeSession()
   const sessions = useSessions(true)
+  const updateProfile = useUpdateProfile()
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [editing, setEditing] = useState(false)
+  const [nickname, setNickname] = useState('')
+  const [avatarUrl, setAvatarUrl] = useState('')
 
   if (!user) {
     return <Skeleton className="mx-auto h-6 w-40" />
+  }
+
+  const startEdit = () => {
+    setNickname(user.nickname)
+    setAvatarUrl(user.avatarUrl ?? '')
+    setError(null)
+    setNotice(null)
+    setEditing(true)
+  }
+
+  const save = () => {
+    setError(null)
+    setNotice(null)
+    updateProfile.mutate(
+      // 头像用空字符串表示"清空"（服务端约定，见 UpdateProfileRequest）
+      { nickname, avatarUrl },
+      {
+        onSuccess: () => {
+          setEditing(false)
+          setNotice('资料已更新')
+        },
+        onError: (err) => setError(authErrorMessage(err)),
+      },
+    )
   }
 
   const onLogout = () => {
@@ -38,17 +68,70 @@ export function MePage() {
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <Card className="space-y-3">
-        <CardTitle>我的资料</CardTitle>
-        <dl className="grid grid-cols-[80px_1fr] gap-y-2 text-xs" data-testid="profile">
-          <dt className="text-muted-foreground">昵称</dt>
-          <dd data-testid="profile-nickname">{user.nickname}</dd>
-          <dt className="text-muted-foreground">邮箱</dt>
-          <dd>{user.email}</dd>
-          <dt className="text-muted-foreground">角色</dt>
-          <dd>{user.roles}</dd>
-          <dt className="text-muted-foreground">ID</dt>
-          <dd className="font-mono text-[11px] break-all">{user.userId}</dd>
-        </dl>
+        <div className="flex items-center justify-between">
+          <CardTitle>我的资料</CardTitle>
+          {!editing ? (
+            <Button variant="ghost" size="sm" onClick={startEdit} data-testid="btn-edit-profile">
+              编辑
+            </Button>
+          ) : null}
+        </div>
+
+        {editing ? (
+          <div className="space-y-3">
+            <label className="block">
+              <span className="mb-1 block text-[11px] text-muted-foreground">昵称（2~32 字符）</span>
+              <input
+                data-testid="field-nickname"
+                value={nickname}
+                onChange={(e) => setNickname(e.target.value)}
+                className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[11px] text-muted-foreground">
+                头像地址（http/https，留空表示不显示头像）
+              </span>
+              <input
+                data-testid="field-avatar"
+                value={avatarUrl}
+                onChange={(e) => setAvatarUrl(e.target.value)}
+                placeholder="https://…"
+                className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              />
+            </label>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={save} disabled={updateProfile.isPending} data-testid="btn-save-profile">
+                {updateProfile.isPending ? '保存中…' : '保存'}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>
+                取消
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <dl className="grid grid-cols-[64px_1fr] items-center gap-y-2 text-xs" data-testid="profile">
+            <dt className="text-muted-foreground">头像</dt>
+            <dd>
+              <Avatar url={user.avatarUrl} name={user.nickname} size={40} />
+            </dd>
+            <dt className="text-muted-foreground">昵称</dt>
+            <dd data-testid="profile-nickname">{user.nickname}</dd>
+            <dt className="text-muted-foreground">邮箱</dt>
+            <dd>{user.email}</dd>
+            <dt className="text-muted-foreground">角色</dt>
+            <dd>{user.roles}</dd>
+            <dt className="text-muted-foreground">ID</dt>
+            <dd className="font-mono text-[11px] break-all">{user.userId}</dd>
+          </dl>
+        )}
+
+        {notice ? (
+          <p className="text-[11px] text-success" data-testid="profile-notice">
+            {notice}
+          </p>
+        ) : null}
+
         <div className="pt-1">
           <Button
             variant="outline"

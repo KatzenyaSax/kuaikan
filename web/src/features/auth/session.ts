@@ -31,7 +31,7 @@ function requireString(value: unknown, field: string): string {
   return value
 }
 
-function narrowProfile(wire: WireProfile | undefined): UserProfile {
+export function narrowProfile(wire: WireProfile | undefined): UserProfile {
   if (!wire) {
     throw new ApiError('BAD_RESPONSE', '登录响应缺少 user', 0)
   }
@@ -82,6 +82,8 @@ type SessionState = {
   login: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
   clear: () => void
+  /** 资料更新后回写 store（服务端返回的是真相，不要本地拼） */
+  setUser: (user: UserProfile) => void
 }
 
 const AUTH_BASE = '/api/user/auth'
@@ -148,6 +150,8 @@ export const useSession = create<SessionState>((set, get) => ({
   },
 
   clear: () => set({ status: 'anonymous', accessToken: null, user: null }),
+
+  setUser: (user) => set({ user }),
 }))
 
 /**

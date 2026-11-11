@@ -1,5 +1,6 @@
 import { NavLink, Outlet, ScrollRestoration, useNavigate } from 'react-router'
 import { useSession } from '@/features/auth/session'
+import { Avatar } from '@/shared/ui/avatar'
 import { Button } from '@/shared/ui/button'
 
 export function RootLayout() {
@@ -20,8 +21,10 @@ export function RootLayout() {
               /test
             </NavLink>
             {status === 'authenticated' && user ? (
-              <span data-testid="nav-user" className="text-muted-foreground">
-                {user.nickname}
+              <span className="flex items-center gap-2" data-testid="nav-user">
+                {/* 头像在昵称左边 */}
+                <Avatar url={user.avatarUrl} name={user.nickname} size={22} />
+                <span className="text-muted-foreground">{user.nickname}</span>
               </span>
             ) : null}
             {status === 'authenticated' ? (

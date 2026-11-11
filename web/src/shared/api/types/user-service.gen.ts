@@ -106,6 +106,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["me"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["updateProfile"];
+        trace?: never;
+    };
     "/ping": {
         parameters: {
             query?: never;
@@ -178,22 +194,6 @@ export interface paths {
             cookie?: never;
         };
         get: operations["sessions"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/me": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["me"];
         put?: never;
         post?: never;
         delete?: never;
@@ -289,6 +289,16 @@ export interface components {
             email: string;
             password: string;
         };
+        UpdateProfileRequest: {
+            nickname?: string;
+            avatarUrl?: string;
+        };
+        ResultUserProfile: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: components["schemas"]["UserProfile"];
+        };
         ResultListSessionItem: {
             /** Format: int32 */
             code?: number;
@@ -304,12 +314,6 @@ export interface components {
             /** Format: date-time */
             expiresAt?: string;
             current?: boolean;
-        };
-        ResultUserProfile: {
-            /** Format: int32 */
-            code?: number;
-            message?: string;
-            data?: components["schemas"]["UserProfile"];
         };
     };
     responses: never;
@@ -458,6 +462,50 @@ export interface operations {
             };
         };
     };
+    me: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultUserProfile"];
+                };
+            };
+        };
+    };
+    updateProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultUserProfile"];
+                };
+            };
+        };
+    };
     ping: {
         parameters: {
             query?: never;
@@ -543,9 +591,7 @@ export interface operations {
     sessions: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -562,34 +608,10 @@ export interface operations {
             };
         };
     };
-    me: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ResultUserProfile"];
-                };
-            };
-        };
-    };
     revokeSession: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string;
-            };
+            header?: never;
             path: {
                 jti: string;
             };
