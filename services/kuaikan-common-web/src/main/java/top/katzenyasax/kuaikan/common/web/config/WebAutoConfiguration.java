@@ -51,6 +51,7 @@ public class WebAutoConfiguration {
     @Bean
     @ConditionalOnClass(name = "feign.RequestInterceptor")
     public IdentityPropagationInterceptor identityPropagationInterceptor() {
+        log.info("Feign 身份传播拦截器已注册");
         return new IdentityPropagationInterceptor();
     }
 }

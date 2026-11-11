@@ -66,6 +66,9 @@ public class IdentityPropagationInterceptor implements RequestInterceptor {
         for (String header : PROPAGATED) {
             template.header(header, inbound.getHeader(header));
         }
+        // 留一条日志：'身份在服务间丢失'是最难排查的静默故障，
+        // 有这条就能在日志里确认传播到底有没有发生
+        log.info("Feign 身份传播 userId={} target={}", userId, template.url());
     }
 
     private HttpServletRequest currentRequest() {
