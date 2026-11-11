@@ -10,6 +10,7 @@ export function LoginForm() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const login = useSession((s) => s.login)
+  const logoutReason = useSession((s) => s.logoutReason)
 
   const [email, setEmail] = useState(params.get('registered') ?? '')
   const [password, setPassword] = useState('')
@@ -35,6 +36,17 @@ export function LoginForm() {
   return (
     <Card className="mx-auto max-w-md">
       <CardTitle>登录</CardTitle>
+
+      {logoutReason === 'banned' ? (
+        <CardDescription className="mt-1 text-danger" data-testid="session-notice">
+          账号已被封禁，如有疑问请联系管理员。
+        </CardDescription>
+      ) : logoutReason === 'expired' ? (
+        <CardDescription className="mt-1 text-warning" data-testid="session-notice">
+          登录状态已过期，请重新登录。
+        </CardDescription>
+      ) : null}
+
       {params.get('registered') ? (
         <CardDescription className="mt-1 text-success">
           注册成功，请用刚才的邮箱登录。

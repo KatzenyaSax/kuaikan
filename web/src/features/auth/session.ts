@@ -63,10 +63,20 @@ function narrowLogin(wire: WireLogin): { accessToken: string; user: UserProfile 
  */
 export type AuthStatus = 'unknown' | 'authenticated' | 'anonymous'
 
+/**
+ * 会话是怎么结束的。
+ *
+ * 区分这个的唯一目的是**给用户一句准确的话**：
+ * "登录已过期，请重新登录" 和 "账号已被封禁" 是完全不同的两件事，
+ * 前者他会重试，后者他该去找管理员。
+ */
+export type LogoutReason = 'manual' | 'expired' | 'banned' | null
+
 type SessionState = {
   status: AuthStatus
   accessToken: string | null
   user: UserProfile | null
+  logoutReason: LogoutReason
 
   bootstrap: () => Promise<void>
   login: (email: string, password: string) => Promise<void>
@@ -89,8 +99,17 @@ async function refreshTokens(): Promise<string | null> {
       user: payload.user,
     })
     return payload.accessToken
-  } catch {
-    useSession.setState({ status: 'anonymous', accessToken: null, user: null })
+  } catch (err) {
+    // 只有在"之前是已登录"时才算一次被动的会话结束。
+    // 首次访问（status=unknown）时的 401 是正常的"没登录"，不该给用户弹提示。
+    const wasAuthenticated = useSession.getState().status === 'authenticated'
+    const banned = err instanceof ApiError && err.code === 40205
+    useSession.setState({
+      status: 'anonymous',
+      accessToken: null,
+      user: null,
+      ...(wasAuthenticated ? { logoutReason: banned ? 'banned' : 'expired' } : {}),
+    })
     return null
   }
 }
@@ -99,6 +118,7 @@ export const useSession = create<SessionState>((set, get) => ({
   status: 'unknown',
   accessToken: null,
   user: null,
+  logoutReason: null,
 
   /** 页面启动时调用一次：静默续期，成功即已登录 */
   bootstrap: async () => {
@@ -110,7 +130,7 @@ export const useSession = create<SessionState>((set, get) => ({
     const body: RequestBody<'login'> = { email, password }
     const wire = await api.post<WireLogin>(`${AUTH_BASE}/login`, body)
     const payload = narrowLogin(wire)
-    set({ status: 'authenticated', accessToken: payload.accessToken, user: payload.user })
+    set({ status: 'authenticated', accessToken: payload.accessToken, user: payload.user, logoutReason: null })
   },
 
   logout: async () => {
@@ -119,7 +139,7 @@ export const useSession = create<SessionState>((set, get) => ({
     } catch {
       // 登出必须幂等：服务端已经失效时也应该把本地状态清干净
     }
-    set({ status: 'anonymous', accessToken: null, user: null })
+    set({ status: 'anonymous', accessToken: null, user: null, logoutReason: 'manual' })
   },
 
   clear: () => set({ status: 'anonymous', accessToken: null, user: null }),
