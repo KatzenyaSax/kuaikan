@@ -111,12 +111,23 @@
 
 | Key | 类型 | TTL | 用途 |
 |---|---|---|---|
-| `auth:session:{jti}` | String (userId) | access 剩余时间 | 网关白名单 |
-| `auth:user:{userId}:jti` | Set | refresh 最长期限 | 踢下线时批量删除 |
-| `auth:refresh:{jti}` | Hash (userId, family) | 30 天 | refresh 轮换与重放检测 |
+| `auth:session:{accessJti}` | String (userId) | access 剩余时间 | **网关白名单**（正向：知道 jti 问是否有效） |
+| `auth:user:{userId}:access` | **ZSet**（member=jti，score=过期时间戳） | access 剩余时间 | 踢下线时批量找（反向：知道 userId 找他所有 jti） |
 | `auth:code:{scene}:{email}` | String (code) | 10 分钟 | 验证码 |
 | `auth:code:try:{email}` | String (count) | 10 分钟 | 验证码错误次数 |
-| `auth:code:rate:{email}` | String | 60 秒 | 发送频率限制 |
+| `auth:code:rate:email:{email}` | String | 60 秒 | 发送频率限制 |
+| `auth:code:rate:ip:{ip}` | String (count) | 1 小时 | 同 IP 发送上限 |
+
+**两处与最初设计不同，以本节为准：**
+
+1. **`auth:refresh:{jti}` 不存在**。refresh token 的真相只在 MySQL（`t_refresh_token`），
+   Redis 不参与。理由见 `p1-storage.md`：要能分页列设备、要能审计轮换链、要避免双写一致性。
+2. **`auth:user:{id}:access` 是 ZSet 而不是 Set**。Set 的成员没有独立 TTL，只有整个 key 有，
+   而每次写入又会重置 key 的 TTL —— 结果是过期的 jti 永远留着，长期活跃用户会累积几百个死成员。
+   改成 ZSet 后，score 存 access 过期时间戳，**每次写入顺手 `ZREMRANGEBYSCORE` 清理已过期的**，
+   规模被限制在"最近 2 小时内签发的 access 数量"。登出时也会 `ZREM` 掉自己那一条。
+
+两处的 `jti` 是**两个不同的命名空间**（access jti vs refresh jti），永远对不上，这是设计如此。
 
 **网关的白名单查询不做本地缓存。** 缓存 5 秒就等于让"立刻失效"退化成"5 秒内仍有效"，而即时失效正是 P1 的全部意义。50 并发下一次 Redis 往返是亚毫秒级开销。
 

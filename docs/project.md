@@ -225,7 +225,8 @@ services/
 | 私钥 | `/opt/kuaikan/data/auth-keys/jwt-private.pem`（挂载进容器 `/app/keys`，属主 10001，权限 600） |
 | 公钥分发 | `GET /internal/jwks`（仅容器网络，公网 **404**） |
 | refresh cookie | `kuaikan_refresh`：HttpOnly + Secure + SameSite=Lax + `Path=/api/user/auth` + 30 天 |
-| access 白名单 | Redis `auth:session:{jti}` → userId（网关 P1.3 查它） |
+| access 白名单 | Redis `auth:session:{accessJti}` → userId（网关 P1.3 查它） |
+| access 反向索引 | Redis **ZSet** `auth:user:{userId}:access`（member=jti，score=过期时间戳；踢下线时批量找） |
 | 重放宽限期 | 30 秒（多标签页并发刷新不误判） |
 
 **access 与 refresh 的存储分工**：access 白名单进 Redis（每请求热路径 + 立刻失效），
