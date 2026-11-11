@@ -35,9 +35,16 @@ public final class AuthKeys {
         return PREFIX + "session:" + jti;
     }
 
-    /** 用户全部 access jti 集合：auth:user:{userId}:jti（踢下线时批量删） */
-    public static String userJtiSet(Long userId) {
-        return PREFIX + "user:" + userId + ":jti";
+    /**
+     * 该用户仍有效的 access jti：auth:user:{userId}:access
+     *
+     * **ZSet 而不是 Set**：member=jti，score=access 的过期时间戳（epoch 秒）。
+     * Set 的成员没有独立 TTL，只有整个 key 有，导致过期的 jti 永远留在集合里、
+     * 而每次写入又把 key 的 TTL 重置回 30 天 —— 集合只增不减。
+     * 换成 ZSet 后可以按 score 精确剔除已过期的成员。
+     */
+    public static String userAccessJtis(Long userId) {
+        return PREFIX + "user:" + userId + ":access";
     }
 
     private AuthKeys() {

@@ -41,17 +41,39 @@ public class SessionService {
 
     // ---------------- access 白名单 ----------------
 
-    /** 登录/刷新后登记 access jti，并加入用户的 jti 集合（踢下线用） */
+    /**
+     * 登录/刷新后登记 access jti。
+     *
+     * 同时维护两处：
+     *   auth:session:{jti}      → 网关每请求查它（正向：知道 jti 问是否有效）
+     *   auth:user:{id}:access   → 踢下线时批量找（反向：知道 userId 找他所有 jti）
+     *
+     * 集合成员按 score（过期时间戳）在每次写入时顺手清理，因此规模被限制在
+     * "最近 2 小时内签发的 access 数量"，不会随用户长期活跃无限增长。
+     */
     public void registerAccess(Long userId, String jti, Duration ttl) {
         redis.opsForValue().set(AuthKeys.session(jti), String.valueOf(userId), ttl);
-        String userJtiKey = AuthKeys.userJtiSet(userId);
-        redis.opsForSet().add(userJtiKey, jti);
-        // 集合存活时间和 refresh 一致：access 早已过期，但集合留着供 kick 使用
-        redis.expire(userJtiKey, TokenService.REFRESH_TTL);
+
+        String zsetKey = AuthKeys.userAccessJtis(userId);
+        double expireAt = System.currentTimeMillis() / 1000.0 + ttl.toSeconds();
+        redis.opsForZSet().add(zsetKey, jti, expireAt);
+        pruneExpiredJtis(zsetKey);
+        // key 的 TTL 与 access 一致即可：成员不可能活过它，最坏情况是 key 自然消失
+        redis.expire(zsetKey, ttl);
     }
 
+    /** 只访问而不签发时（如登出）也要能清掉自己那一条 */
     public void revokeAccess(String jti) {
+        String userId = redis.opsForValue().get(AuthKeys.session(jti));
         redis.delete(AuthKeys.session(jti));
+        if (userId != null) {
+            redis.opsForZSet().remove(AuthKeys.userAccessJtis(Long.valueOf(userId)), jti);
+        }
+    }
+
+    /** 剔除 score 已过期的成员（access 已失效，留着只是占内存） */
+    private void pruneExpiredJtis(String zsetKey) {
+        redis.opsForZSet().removeRangeByScore(zsetKey, 0, System.currentTimeMillis() / 1000.0);
     }
 
     public boolean isAccessActive(String jti) {
@@ -59,11 +81,15 @@ public class SessionService {
         return Boolean.TRUE.equals(exists);
     }
 
-    /** 踢下线：删除该用户全部 access 白名单 */
+    /** 踢下线：删除该用户全部仍有效的 access 白名单 */
     public long revokeAllAccess(Long userId) {
-        String key = AuthKeys.userJtiSet(userId);
-        var members = redis.opsForSet().members(key);
+        String key = AuthKeys.userAccessJtis(userId);
+        // 先清掉已过期的成员，避免为死 jti 做无意义的 DEL
+        pruneExpiredJtis(key);
+
+        var members = redis.opsForZSet().range(key, 0, -1);
         if (members == null || members.isEmpty()) {
+            redis.delete(key);
             return 0;
         }
         members.forEach(jti -> redis.delete(AuthKeys.session(jti)));
@@ -153,8 +179,11 @@ public class SessionService {
                 .lt(RefreshToken::getExpiresAt, before));
     }
 
-    public long jtiSetSize(Long userId) {
-        Long size = redis.opsForSet().size(AuthKeys.userJtiSet(userId));
+    /** 该用户仍有效的 access token 数量（会先剔除过期成员） */
+    public long activeAccessCount(Long userId) {
+        String key = AuthKeys.userAccessJtis(userId);
+        pruneExpiredJtis(key);
+        Long size = redis.opsForZSet().zCard(key);
         return size == null ? 0 : size;
     }
 
