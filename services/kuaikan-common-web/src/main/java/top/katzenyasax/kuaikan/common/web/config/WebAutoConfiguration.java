@@ -5,7 +5,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplicat
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.Ordered;
-import org.top.katzenyasax.kuaikan.common.web.filter.UserContextFilter;
+import top.katzenyasax.kuaikan.common.web.filter.UserContextFilter;
 
 /**
  * servlet 服务的公共 Web 配置。
