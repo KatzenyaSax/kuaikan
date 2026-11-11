@@ -291,6 +291,36 @@ refresh 家族进 MySQL（可分页、可审计、低频）。这样不存在双
 **刻意不在 `/ping/**` 下**——那个前缀是放行的，放行分支会剥离身份头，放在那里永远匿名。
 `verify.sh` 的 5b 段用它做断言：无 token → 401；带 token → 返回本人 id。
 
+### 运维端点（P1.4）
+
+只能从服务器上 `docker exec` 调用——网关不路由 `/internal/**`，公网访问会得到 404。
+
+| 端点 | 作用 | 关键点 |
+|---|---|---|
+| `POST /internal/admin/kick` | 踢下线（不改账号状态，可重新登录） | 删 Redis access 白名单 + 吊销全部 refresh |
+| `POST /internal/admin/ban` | 封禁（登录也会被拒） | 先改状态再撤销凭证，反过来的话中间有窗口能重登 |
+| `POST /internal/admin/unban` | 解封 | 只改状态，保留 `banned_at`/`banned_reason` 作审计 |
+
+```bash
+docker exec kuaikan-user-service-1 \
+  curl -s -X POST http://127.0.0.1:8081/internal/admin/ban \
+  -H 'Content-Type: application/json' -d '{"userId":"<id>","reason":"..."}'
+```
+
+实测：ban 后该用户全部设备立刻 401、refresh 也 401、登录 403/40205，
+但游客可读接口（`/ping`、首页）仍 200；kick 只影响目标用户，其他用户不受影响。
+
+**refresh 里账号状态检查必须在"token 是否已吊销"之前**：封禁会吊销全部 refresh 行，
+先判吊销就会先命中 REVOKED 返回 401，用户永远看不到"账号已被封禁"。
+
+### 前端会话结束提示
+
+`session.logoutReason` 三态：`manual` / `expired` / `banned`。
+
+- `banned`：无条件设置（封禁是账号级事实，整页刷新后也要提示，否则用户只会反复重试登录）
+- `expired`：只在"本来已登录、被动掉线"时设置（首次访问的 401 是正常的"没登录"）
+- `manual`：主动登出，不提示
+
 ### 服务间身份传递（ADR 0008）
 
 **`UserContext` 只在"用户直接请求的服务"里有效。** 服务间调用不传播身份，内部接口用显式参数：
