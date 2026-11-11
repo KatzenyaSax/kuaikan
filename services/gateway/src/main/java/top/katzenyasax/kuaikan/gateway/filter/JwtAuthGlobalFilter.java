@@ -6,7 +6,6 @@ import com.nimbusds.jwt.SignedJWT;
 import com.nimbusds.jose.crypto.RSASSAVerifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
@@ -23,6 +22,7 @@ import top.katzenyasax.kuaikan.common.api.Result;
 import top.katzenyasax.kuaikan.common.error.CommonErrorCode;
 import top.katzenyasax.kuaikan.common.web.Headers;
 import top.katzenyasax.kuaikan.gateway.auth.AccessWhitelist;
+import top.katzenyasax.kuaikan.gateway.auth.GatewayAuthProperties;
 import top.katzenyasax.kuaikan.gateway.auth.JwksProvider;
 
 import java.nio.charset.StandardCharsets;
@@ -58,20 +58,19 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     private final JwksProvider jwksProvider;
     private final AccessWhitelist whitelist;
     private final ObjectMapper objectMapper;
-    private final List<String> exactWhitelist;
-    private final List<String> patternWhitelist;
+    private final GatewayAuthProperties props;
 
     public JwtAuthGlobalFilter(
             JwksProvider jwksProvider,
             AccessWhitelist whitelist,
             ObjectMapper objectMapper,
-            @Value("${kuaikan.auth.whitelist:}") List<String> exactWhitelist,
-            @Value("${kuaikan.auth.public-patterns:}") List<String> patternWhitelist) {
+            GatewayAuthProperties props) {
         this.jwksProvider = jwksProvider;
         this.whitelist = whitelist;
         this.objectMapper = objectMapper;
-        this.exactWhitelist = exactWhitelist;
-        this.patternWhitelist = patternWhitelist;
+        this.props = props;
+        log.info("放行名单已加载 whitelist={} patterns={}",
+                props.getWhitelist(), props.getPublicPatterns());
     }
 
     @Override
@@ -154,6 +153,8 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     }
 
     private boolean isPublic(String path) {
+        List<String> exactWhitelist = props.getWhitelist();
+        List<String> patternWhitelist = props.getPublicPatterns();
         for (String allowed : exactWhitelist) {
             if (allowed != null && allowed.equals(path)) {
                 return true;
