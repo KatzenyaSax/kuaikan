@@ -271,8 +271,6 @@ refresh 家族进 MySQL（可分页、可审计、低频）。这样不存在双
 | 白名单校验 | 响应式 Redis 查 `auth:session:{jti}`，**不做本地缓存** |
 | 身份注入 | **先 remove 再 set** `X-User-Id` / `X-User-Roles` |
 | 放行分支 | 同样剥离身份头，否则匿名请求带 `X-User-Id` 会被下游当成已登录 |
-| 内部签名 | 网关注入 `X-Internal-Signature = HMAC-SHA256(secret, userId\|roles\|timestamp)` + `X-Internal-Timestamp`；服务验签名 + 60 秒时间窗 |
-| 密钥缺失 | **服务启动即失败**，不静默降级成"不校验" |
 | 依赖不可用 | **fail-closed 503**（不是 200） |
 
 放行名单（`kuaikan.auth.whitelist` + `public-patterns`）：
@@ -287,35 +285,28 @@ refresh 家族进 MySQL（可分页、可审计、低频）。这样不存在双
 
 服务侧：`kuaikan-common-web` 的 `UserContextFilter` 从 header 构造 `UserContext`，
 `finally` 里 `clear()`（ThreadLocal 不清理会在并发下把上一个请求的身份带给下一个）。
-**它还会校验网关的内部签名**：只有签名 + 时间窗都过了才认 `X-User-Id`。
+**只读 header，不验签、不校验签名**——网关是唯一信任源。
 
-### 为什么需要内部签名（B 方案）
+探针：`GET /api/community/whoami` 回报服务从 header 读到的身份。
+**刻意不在 `/ping/**` 下**——那个前缀是放行的，放行分支会剥离身份头，放在那里永远匿名。
+`verify.sh` 的 5b 段用它做断言：无 token → 401；带 token → 返回本人 id。
 
-「下游信任 `X-User-Id`」的唯一前提是端口不可达。实测过失败态：加签名之前，
-从容器网络直连 user-service 只带一个 `X-User-Id` 头就能拿到该用户完整资料。
+### 服务间身份传递（ADR 0008）
 
-加上签名后的实测：
+**`UserContext` 只在"用户直接请求的服务"里有效。** 服务间调用不传播身份，内部接口用显式参数：
 
-| 场景 | 加签名前 | 加签名后 |
-|---|---|---|
-| 直连 + 只伪造 `X-User-Id` | **200，拿到资料** | **401** |
-| 直连 + 伪造签名（乱写） | — | **401** |
-| 直连 + 用正确密钥自签 | — | **200**（诚实说明：这是 B 方案的边界，密钥泄漏仍然可伪造） |
-| 时间戳超出 60 秒窗 | — | **401**（防重放） |
+```
+content-service → community-service
+  GET /internal/memberships?communityId=1&userIds=1,2,3      ← 身份是参数，不是 header
+```
 
-`INTERNAL_AUTH_SECRET` 由 `gen-env.sh` 生成（96 位十六进制），
-网关 `kuaikan.auth.internal-secret` 与各服务 `kuaikan.internal.auth.secret` 共用。
+理由：ADR 0005 已决定读路径由前端并发聚合，服务间同步调用本来就少；剩下的内部调用是
+"业务对业务"，身份作为参数比作为隐式上下文更明确、更好调试，且可检查（内部接口不该出现 `UserContext`）。
 
-### 服务间身份传播（ADR 0008）
-
-Feign 发起的是**全新请求**，入站 header 会全部丢失。`kuaikan-common-web` 的
-`IdentityPropagationInterceptor` 把 `X-User-Id` / `X-User-Roles` / `X-Internal-Timestamp` /
-`X-Internal-Signature` **原样转抄**到出站请求（不重签）。
-
-只覆盖"用户请求触发的同步链路"：`RequestContextHolder` 为 null 时（MQ 消费、XXL-Job）不传播。
-
-可观测点：`GET /ping/feign` 返回 `callerIdentity` 与 `calleeIdentity`，
-`GET /ping/whoami` 回报本服务收到的身份。`verify.sh` 的 5b 段自动断言传播生效。
+我们评估过在应用层加内部签名（HMAC + 时间窗）来兜底"端口泄漏"，**结论是不做**：
+能连容器端口的人基本也能读环境变量、直连 MySQL/Redis，绕过成本近乎为零；
+而真实风险（意外暴露端口）已由 compose 不声明 ports + 配置层断言 + UFW 盖住。
+完整权衡见 ADR 0008。
 
 ### 浏览器层验收（P1.2）
 

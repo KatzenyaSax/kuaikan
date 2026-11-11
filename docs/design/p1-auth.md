@@ -17,7 +17,7 @@
 | **P1.0 契约闸门** | 错误码枚举、端点冻结 | mock 基座、错误文案表 | 契约一致性脚本通过 |
 | **P1.1 注册** | Flyway 建表、验证码、BCrypt、注册开关 | 注册页、验证码倒计时、表单校验 | A：浏览器完成真实注册，库里是 BCrypt 哈希 |
 | **P1.2 登录与会话** | RSA + JWKS、签发、refresh 轮换、`/me`、`/sessions` | 登录页、会话层、路由守卫、bootstrap | B：刷新页面与重开浏览器都不掉登录态 |
-| **P1.3 网关验签** | GlobalFilter 验签 + 白名单 + 剥离注入 + `kuaikan-common-web` | 仅接线确认 | C：伪造 `X-User-Id` 无法冒充 |
+| **P1.3 网关验签** | GlobalFilter：验签 + 白名单 + 剥离注入 + fail-closed；`kuaikan-common-web` 的 UserContextFilter | 仅接线确认 | C：伪造 `X-User-Id` 无法冒充 |
 | **P1.4 三种失效** | 登出 / kick / ban 内部端点 | 登出按钮、被封禁与踢下线提示 | D：三种失效均在浏览器可见 |
 | **P1.5 验收** | — | — | `verify-p1.sh` 全绿 |
 
