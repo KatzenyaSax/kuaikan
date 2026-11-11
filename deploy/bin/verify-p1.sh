@@ -117,11 +117,15 @@ section "准备：创建临时测试账号"
 ssh_ok=0
 ssh_run 'true' && ssh_ok=1
 if [ $ssh_ok = 1 ]; then
-  out=$(ssh_run "set -a; . $ENV_FILE; set +a;
-    docker exec kuaikan-mysql-1 mysql -uroot -p\"\$MYSQL_ROOT_PASSWORD\" -N -e \"
-      INSERT INTO kuaikan_user.t_user (id, email, password_hash, nickname, roles, status)
+  # SQL 用 base64 传过去：BCrypt 哈希里全是 $，直接内插进远端双引号命令
+  # 会被远端 shell 当成变量展开（$2a / $10 ...），哈希就被打坏了。
+  SQL=$(printf '%s' "INSERT INTO kuaikan_user.t_user (id, email, password_hash, nickname, roles, status)
       VALUES (FLOOR(RAND()*900000000000000000)+100000000000000000, '$EMAIL', '$FIXTURE_HASH', '$NICKNAME', 'USER', 1);
-      SELECT id FROM kuaikan_user.t_user WHERE email='$EMAIL';\" 2>/dev/null | tail -1")
+      SELECT id FROM kuaikan_user.t_user WHERE email='$EMAIL';" | base64 | tr -d '\n')
+  out=$(ssh_run "echo '$SQL' | base64 -d > /tmp/p1-fixture.sql
+    set -a; . $ENV_FILE; set +a
+    docker exec -i kuaikan-mysql-1 mysql -uroot -p\"\$MYSQL_ROOT_PASSWORD\" -N < /tmp/p1-fixture.sql 2>/dev/null | tail -1
+    rm -f /tmp/p1-fixture.sql")
   USER_ID=$(printf '%s' "$out" | tr -d '\r\n ')
   if [ -n "$USER_ID" ]; then
     ok "测试账号已创建 userId=$USER_ID"
@@ -170,7 +174,12 @@ else
   done
   [ -z "$missing" ] && ok "refresh cookie 属性齐全" || ng "cookie 属性缺失" "$missing"
 
-  [ -n "$TOKEN" ] && ok "登录成功并拿到 accessToken" || ng "登录失败" "$(head -c 120 /tmp/p1-login.json)"
+  if [ -n "$TOKEN" ]; then
+    ok "登录成功并拿到 accessToken"
+  else
+    # 没有 token 的话，下面"应该 401"的断言都会空转通过，必须拦住
+    ng "登录失败（后续断言无效）" "$(head -c 120 /tmp/p1-login.json)"
+  fi
 
   code=$(http_code "$SITE/api/user/auth/me")
   [ "$code" = "401" ] && ok "/auth/me 无 token → 401" || ng "/auth/me 无 token" "HTTP $code"
@@ -183,7 +192,6 @@ else
   [ "$forged" = "$MYID" ] && ok "伪造 X-User-Id 被剥离（返回自己的 id）" \
     || ng "伪造头生效（严重）" "got=$forged"
 
-  tampered=$(http_code "$SITE/api/user/auth/me" 15)
   tampered=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer ${TOKEN%?}X" "$SITE/api/user/auth/me")
   [ "$tampered" = "401" ] && ok "篡改签名 → 401" || ng "篡改签名未被拒" "HTTP $tampered"
 
@@ -207,7 +215,6 @@ else
 
   # 登出
   curl -s -b /tmp/p1-jar.txt -H "Authorization: Bearer $TOKEN" -o /dev/null -X POST "$SITE/api/user/auth/logout"
-  after=$(http_code "$SITE/api/user/auth/me" 15)
   after=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "$SITE/api/user/auth/me")
   [ "$after" = "401" ] && ok "登出后 access 立刻失效" || ng "登出未即时生效" "HTTP $after"
 fi
@@ -248,6 +255,10 @@ else
   curl -s -c /tmp/p1-jar2.txt -o /tmp/p1-login2.json -X POST "$SITE/api/user/auth/login" \
     -H 'Content-Type: application/json' -d "{\"email\":\"$EMAIL\",\"password\":\"$FIXTURE_PASS\"}"
   t2=$(json_field 'data.accessToken' < /tmp/p1-login2.json)
+  if [ -z "$t2" ]; then
+    # 没有 token 时，后面所有"应该 401"的断言都会空转通过 —— 必须显式拦住
+    ng "kick 段无法登录，断言无效" "$(head -c 100 /tmp/p1-login2.json)"
+  fi
 
   admin kick "{\"userId\":\"$USER_ID\"}" >/dev/null
   sleep 1
@@ -262,6 +273,9 @@ else
   curl -s -c /tmp/p1-jar3.txt -o /tmp/p1-login3.json -X POST "$SITE/api/user/auth/login" \
     -H 'Content-Type: application/json' -d "{\"email\":\"$EMAIL\",\"password\":\"$FIXTURE_PASS\"}"
   t3=$(json_field 'data.accessToken' < /tmp/p1-login3.json)
+  if [ -z "$t3" ]; then
+    ng "ban 段无法登录，断言无效" "$(head -c 100 /tmp/p1-login3.json)"
+  fi
   admin ban "{\"userId\":\"$USER_ID\",\"reason\":\"P1 验收\"}" >/dev/null
   sleep 1
 
