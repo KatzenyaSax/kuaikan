@@ -219,6 +219,9 @@ services:
       NACOS_ADDR: nacos:8848
       APP_VERSION: ${APP_TAG:-dev}
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70"
+      # 网关是唯一验签点，需要 Redis 查 access 白名单（立刻失效依赖它）
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?}
     depends_on: &default-app-depends
       nacos:
         condition: service_healthy

@@ -175,6 +175,23 @@ public class LoginService {
         return user;
     }
 
+    /**
+     * 按 userId 取"仍然可用"的用户。
+     *
+     * 网关注入的 userId 已经验过签与白名单，但仍要回查状态：
+     * 封禁只清 jti + 改状态，DB 是真相；这里做一次防御性检查。
+     */
+    public User requireActiveUser(Long userId) {
+        User user = userMapper.selectById(userId);
+        if (user == null || user.getDeletedAt() != null) {
+            throw new BizException(CommonErrorCode.UNAUTHORIZED);
+        }
+        if (user.getStatus() != null && user.getStatus() == UserStatus.BANNED.code()) {
+            throw new BizException(AuthErrorCode.ACCOUNT_BANNED);
+        }
+        return user;
+    }
+
     public String accessJtiOf(String accessToken) {
         try {
             return tokenService.verify(accessToken, "access").getJWTID();

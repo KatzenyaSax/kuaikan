@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 import top.katzenyasax.kuaikan.common.api.Result;
 import top.katzenyasax.kuaikan.common.error.BizException;
 import top.katzenyasax.kuaikan.common.error.CommonErrorCode;
+import top.katzenyasax.kuaikan.common.web.UserContext;
 import top.katzenyasax.kuaikan.user.auth.LoginService;
 import top.katzenyasax.kuaikan.user.auth.RegistrationService;
 import top.katzenyasax.kuaikan.user.auth.SessionService;
@@ -122,16 +123,14 @@ public class AuthController {
     // ---------------------------------------------------------------- 当前用户
 
     @GetMapping("/me")
-    public Result<UserProfile> me(
-            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization) {
-        User user = requireUser(authorization);
+    public Result<UserProfile> me() {
+        User user = currentUser();
         return Result.ok(UserProfile.of(user));
     }
 
     @GetMapping("/sessions")
-    public Result<List<SessionItem>> sessions(
-            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization) {
-        User user = requireUser(authorization);
+    public Result<List<SessionItem>> sessions() {
+        User user = currentUser();
         List<RefreshToken> rows = sessionService.activeSessions(user.getId());
         List<SessionItem> items = rows.stream()
                 .map(r -> new SessionItem(r.getJti(), r.getUserAgent(), r.getIp(),
@@ -142,10 +141,8 @@ public class AuthController {
 
     /** 踢掉某一个设备（产品语义：用户自己管理登录设备） */
     @DeleteMapping("/sessions/{jti}")
-    public Result<Map<String, Object>> revokeSession(
-            @PathVariable("jti") String jti,
-            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization) {
-        User user = requireUser(authorization);
+    public Result<Map<String, Object>> revokeSession(@PathVariable("jti") String jti) {
+        User user = currentUser();
         RefreshToken target = sessionService.findByJti(jti);
         // 只能删自己的会话；别人的 jti 一律当作不存在，不暴露其是否存在
         if (target == null || !target.getUserId().equals(user.getId())) {
@@ -155,12 +152,16 @@ public class AuthController {
         return Result.ok(Map.of("revoked", jti));
     }
 
-    private User requireUser(String authorization) {
-        String token = BearerTokens.extract(authorization);
-        if (token == null) {
-            throw new BizException(CommonErrorCode.UNAUTHORIZED);
-        }
-        return loginService.requireUserFromAccessToken(token);
+    /**
+     * 当前用户。
+     *
+     * P1.3 起身份由网关注入（P1.2 时是本服务自己验 token）。
+     * 这里仍然回查一次数据库：网关的白名单只保证"凭证未被撤销"，
+     * 不保证"账号此刻仍可用"——封禁是在 DB 里改状态，属于另一条路径。
+     */
+    private User currentUser() {
+        Long userId = UserContext.requireUserId();
+        return loginService.requireActiveUser(userId);
     }
 
     /**

@@ -14,9 +14,28 @@
     <name>gateway</name>
 
     <dependencies>
+        <!-- 契约层：复用 Headers / CommonErrorCode / ErrorHttpStatus 常量。
+             kuaikan-common 零 Spring 依赖，所以不会把 servlet 栈带进 WebFlux 进程。 -->
+        <dependency>
+            <groupId>top.katzenyasax.kuaikan</groupId>
+            <artifactId>kuaikan-common</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-gateway-server-webflux</artifactId>
+        </dependency>
+
+        <!-- 验签 -->
+        <dependency>
+            <groupId>com.nimbusds</groupId>
+            <artifactId>nimbus-jose-jwt</artifactId>
+        </dependency>
+
+        <!-- 访问凭证白名单查询。**必须是响应式的**：用阻塞客户端会拖死 event loop -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis-reactive</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.cloud</groupId>
