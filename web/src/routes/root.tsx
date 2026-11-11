@@ -24,7 +24,9 @@ export function RootLayout() {
               <span className="flex items-center gap-2" data-testid="nav-user">
                 {/* 头像在昵称左边 */}
                 <Avatar url={user.avatarUrl} name={user.nickname} size={22} />
-                <span className="text-muted-foreground">{user.nickname}</span>
+                <span className="text-muted-foreground" data-testid="nav-nickname">
+                  {user.nickname}
+                </span>
               </span>
             ) : null}
             {status === 'authenticated' ? (
