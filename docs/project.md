@@ -271,6 +271,8 @@ refresh 家族进 MySQL（可分页、可审计、低频）。这样不存在双
 | 白名单校验 | 响应式 Redis 查 `auth:session:{jti}`，**不做本地缓存** |
 | 身份注入 | **先 remove 再 set** `X-User-Id` / `X-User-Roles` |
 | 放行分支 | 同样剥离身份头，否则匿名请求带 `X-User-Id` 会被下游当成已登录 |
+| 内部签名 | 网关注入 `X-Internal-Signature = HMAC-SHA256(secret, userId\|roles\|timestamp)` + `X-Internal-Timestamp`；服务验签名 + 60 秒时间窗 |
+| 密钥缺失 | **服务启动即失败**，不静默降级成"不校验" |
 | 依赖不可用 | **fail-closed 503**（不是 200） |
 
 放行名单（`kuaikan.auth.whitelist` + `public-patterns`）：
@@ -285,6 +287,27 @@ refresh 家族进 MySQL（可分页、可审计、低频）。这样不存在双
 
 服务侧：`kuaikan-common-web` 的 `UserContextFilter` 从 header 构造 `UserContext`，
 `finally` 里 `clear()`（ThreadLocal 不清理会在并发下把上一个请求的身份带给下一个）。
+**它还会校验网关的内部签名**：只有签名 + 时间窗都过了才认 `X-User-Id`。
+
+### 为什么需要内部签名（B 方案）
+
+「下游信任 `X-User-Id`」的唯一前提是端口不可达。实测过失败态：加签名之前，
+从容器网络直连 user-service 只带一个 `X-User-Id` 头就能拿到该用户完整资料。
+
+加上签名后的实测：
+
+| 场景 | 加签名前 | 加签名后 |
+|---|---|---|
+| 直连 + 只伪造 `X-User-Id` | **200，拿到资料** | **401** |
+| 直连 + 伪造签名（乱写） | — | **401** |
+| 直连 + 用正确密钥自签 | — | **200**（诚实说明：这是 B 方案的边界，密钥泄漏仍然可伪造） |
+| 时间戳超出 60 秒窗 | — | **401**（防重放） |
+
+`INTERNAL_AUTH_SECRET` 由 `gen-env.sh` 生成（96 位十六进制），
+网关 `kuaikan.auth.internal-secret` 与各服务 `kuaikan.internal.auth.secret` 共用。
+
+**服务间调用（Feign）目前不传身份**，因此下游视为匿名。P3 需要传身份时，
+必须加 Feign 拦截器同时转发身份与签名。
 
 ### 浏览器层验收（P1.2）
 

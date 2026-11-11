@@ -212,6 +212,27 @@ if [ -z "$leaked" ]; then
 else
   ng "端口收敛" "额外暴露：$leaked"
 fi
+# 配置层断言：除 gateway 外，任何服务都不得声明 ports。
+# 这比"运行时看端口"更早发现问题——写下一行 ports: 的那一刻就该红，
+# 而不是等到某天有人去探测。
+if command -v python3 >/dev/null 2>&1; then
+  leaked_cfg=$(compose config --format json 2>/dev/null | python3 -c "
+import json,sys
+try:
+    d=json.load(sys.stdin)
+except Exception:
+    print('')
+    raise SystemExit(0)
+bad=[n for n,s in d.get('services',{}).items() if n!='gateway' and s.get('ports')]
+print(' '.join(bad))
+" 2>/dev/null)
+  if [ -z "$leaked_cfg" ]; then
+    ok "配置层：除 gateway 外无服务声明 ports"
+  else
+    ng "配置层端口泄漏" "这些服务在 compose 里声明了 ports: $leaked_cfg"
+  fi
+fi
+
 gw8080=$(ss -lntH 2>/dev/null | awk '$1=="LISTEN" && $4 ~ /:8080$/ {print $4}')
 if printf '%s' "$gw8080" | grep -q '^127\.0\.0\.1:8080$'; then
   ok "网关 8080 仅绑定 127.0.0.1"
