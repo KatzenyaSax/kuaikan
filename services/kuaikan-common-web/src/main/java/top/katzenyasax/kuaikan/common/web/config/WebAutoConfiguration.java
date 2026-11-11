@@ -1,6 +1,7 @@
 package top.katzenyasax.kuaikan.common.web.config;
 
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -8,6 +9,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.Ordered;
+import top.katzenyasax.kuaikan.common.web.feign.IdentityPropagationInterceptor;
 import top.katzenyasax.kuaikan.common.web.filter.UserContextFilter;
 
 /**
@@ -40,5 +42,15 @@ public class WebAutoConfiguration {
         // 尽早执行：后面的任何过滤器/拦截器都可能需要身份
         bean.setOrder(Ordered.HIGHEST_PRECEDENCE + 10);
         return bean;
+    }
+
+    /**
+     * Feign 身份传播。用 ConditionalOnClass(名字) 而不是类字面量，
+     * 这样没有 openfeign 的服务也不会因为缺类而启动失败。
+     */
+    @Bean
+    @ConditionalOnClass(name = "feign.RequestInterceptor")
+    public IdentityPropagationInterceptor identityPropagationInterceptor() {
+        return new IdentityPropagationInterceptor();
     }
 }

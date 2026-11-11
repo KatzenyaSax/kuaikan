@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import top.katzenyasax.kuaikan.common.api.Result;
 import top.katzenyasax.kuaikan.common.error.CommonErrorCode;
+import top.katzenyasax.kuaikan.common.web.UserContext;
 import top.katzenyasax.kuaikan.user.client.CommunityPingClient;
 import top.katzenyasax.kuaikan.user.mq.P0MqProducer;
 import top.katzenyasax.kuaikan.user.sentinel.P0SentinelConfig;
@@ -60,6 +61,14 @@ public class PingController {
         body.put("caller", serviceName);
         body.put("protocol", "Feign + Nacos discovery + LoadBalancer");
         body.put("callee", communityPingClient.ping().data());
+        // 调用方（本服务）从网关注入的 header 里看到的身份
+        LinkedHashMap<String, Object> callerIdentity = new LinkedHashMap<>();
+        Long callerId = UserContext.userId();
+        callerIdentity.put("userId", callerId == null ? null : String.valueOf(callerId));
+        callerIdentity.put("roles", UserContext.roles());
+        body.put("callerIdentity", callerIdentity);
+        // 被调方（community-service）经 Feign 收到的身份 —— 传播是否生效看这里
+        body.put("calleeIdentity", communityPingClient.whoami().data());
         return Result.ok(body);
     }
 

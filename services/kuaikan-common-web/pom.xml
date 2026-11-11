@@ -28,5 +28,13 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
+
+        <!-- optional：只为编译 RequestInterceptor。
+             没有 feign 的服务不会因为这个依赖被拖进 openfeign。 -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-openfeign-core</artifactId>
+            <optional>true</optional>
+        </dependency>
     </dependencies>
 </project>

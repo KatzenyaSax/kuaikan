@@ -21,4 +21,8 @@ public interface CommunityPingClient {
 
     @GetMapping("/ping/mq/{traceId}")
     Result<Map<String, Object>> mqStatus(@PathVariable("traceId") String traceId);
+
+    /** P1.3：回报 community-service 收到的身份，用于验证 Feign 身份传播 */
+    @GetMapping("/ping/whoami")
+    Result<Map<String, Object>> whoami();
 }
