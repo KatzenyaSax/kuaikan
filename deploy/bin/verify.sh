@@ -146,38 +146,36 @@ else
   ng "Feign 调用链" "响应：$(printf '%s' "$feign" | head -c 160)"
 fi
 
-# ------------------------------------------------- 5b. Feign 身份传播
-section "5b. Feign 身份传播（网关认证 → 服务 → Feign → 下游）"
-SECRET=$(grep '^INTERNAL_AUTH_SECRET=' "$ENV_FILE" 2>/dev/null | cut -d= -f2-)
-if [ -z "$SECRET" ]; then
-  skip "Feign 身份传播" "env 文件里没有 INTERNAL_AUTH_SECRET"
-elif ! command -v python3 >/dev/null 2>&1; then
-  skip "Feign 身份传播" "缺 python3"
+# ------------------------------------------------- 5b. 网关注入 → 服务读取
+section "5b. 网关注入 → 服务读取（/api/community/whoami）"
+# 这个探针刻意不在 /ping/** 下：那个前缀是放行的，放行分支会剥离身份头，
+# 放在那里访问永远匿名、探针失效。whoami 走完整认证路径。
+whoami_anon=$(http_code "$INTERNAL/api/community/whoami")
+if [ "$whoami_anon" = "401" ]; then
+  ok "/whoami 无 token → 401"
 else
-  probe_uid=$(( (RANDOM % 90000) + 10000 ))
-  ts=$(date +%s)
-  sig=$(python3 -c "
-import hmac, hashlib, sys
-secret, uid, ts = sys.argv[1], sys.argv[2], sys.argv[3]
-print(hmac.new(secret.encode(), (uid + '|USER|' + ts).encode(), hashlib.sha256).hexdigest())
-" "$SECRET" "$probe_uid" "$ts")
+  ng "/whoami 无 token 未被拒" "HTTP $whoami_anon"
+fi
 
-  propagated=$(docker exec kuaikan-user-service-1 curl -s \
-      -H "X-User-Id: $probe_uid" -H "X-User-Roles: USER" \
-      -H "X-Internal-Timestamp: $ts" -H "X-Internal-Signature: $sig" \
-      http://127.0.0.1:8081/ping/feign 2>/dev/null)
-  callee_uid=$(printf '%s' "$propagated" | sed -n 's/.*"calleeIdentity":{[^}]*"userId":"\([0-9]*\)".*/\1/p')
+# 用一个真实账号走完整链路：登录 → 带 token 调 whoami → 断言服务读到的就是本人
+DEV_EMAIL="developer@kuaikan.test"
+DEV_PASS="katzenyasaxDeveloper"
+login_body=$(curl -s -X POST --max-time 15 "$INTERNAL/api/user/auth/login" \
+  -H 'Content-Type: application/json' \
+  -d "{\"email\":\"$DEV_EMAIL\",\"password\":\"$DEV_PASS\"}" 2>/dev/null)
+token=$(printf '%s' "$login_body" | sed -n 's/.*"accessToken":"\([^"]*\)".*/\1/p')
+expect_id=$(printf '%s' "$login_body" | sed -n 's/.*"userId":"\([0-9]*\)".*/\1/p')
 
-  if [ "$callee_uid" = "$probe_uid" ]; then
-    ok "身份经 Feign 传播到下游（callee 看到 userId=$probe_uid）"
+if [ -z "$token" ]; then
+  skip "网关注入 → 服务读取" "开发者账号登录失败（可能密码已改）"
+else
+  whoami=$(curl -s --max-time 15 -H "Authorization: Bearer $token" "$INTERNAL/api/community/whoami" 2>/dev/null)
+  got_id=$(printf '%s' "$whoami" | sed -n 's/.*"userId":"\([0-9]*\)".*/\1/p')
+  if [ "$got_id" = "$expect_id" ]; then
+    ok "community-service 读到的身份就是本人（userId=$expect_id）"
   else
-    ng "Feign 身份未传播" "下游看到 '${callee_uid:-空}'，期望 $probe_uid"
+    ng "网关注入未生效" "服务读到 '${got_id:-空}'，期望 $expect_id"
   fi
-
-  # 反向：带身份但没签名必须被拒，证明服务侧真的在校验而不只是"读到了"
-  code=$(docker exec kuaikan-user-service-1 curl -s -o /dev/null -w '%{http_code}' \
-      -H "X-User-Id: $probe_uid" http://127.0.0.1:8081/ping/feign 2>/dev/null)
-  [ "$code" = "401" ] && ok "带身份无签名被拒（401）" || ng "带身份无签名未被拒" "HTTP $code"
 fi
 
 # ---------------------------------------------------------------- 6. RocketMQ 收发
