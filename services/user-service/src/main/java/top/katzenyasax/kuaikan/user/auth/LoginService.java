@@ -107,6 +107,19 @@ public class LoginService {
             throw new BizException(CommonErrorCode.UNAUTHORIZED);
         }
 
+        // 账号状态检查必须放在 judge() **之前**。
+        // 封禁会吊销该用户全部 refresh 行，如果先判 judge()，会先命中 REVOKED 返回 401，
+        // 前端永远看不到"账号已被封禁"——用户只会以为是普通的会话过期，
+        // 于是反复尝试重新登录。
+        User user = userMapper.selectById(stored.getUserId());
+        if (user == null || user.getDeletedAt() != null) {
+            throw new BizException(CommonErrorCode.UNAUTHORIZED);
+        }
+        if (user.getStatus() != null && user.getStatus() == UserStatus.BANNED.code()) {
+            sessionService.revokeFamily(stored.getFamilyId());
+            throw new BizException(AuthErrorCode.ACCOUNT_BANNED);
+        }
+
         SessionService.ReplayVerdict verdict = sessionService.judge(stored);
         switch (verdict) {
             case REVOKED, EXPIRED -> throw new BizException(CommonErrorCode.UNAUTHORIZED);
@@ -120,15 +133,6 @@ public class LoginService {
                 // 继续
             }
             default -> throw new BizException(CommonErrorCode.UNAUTHORIZED);
-        }
-
-        User user = userMapper.selectById(stored.getUserId());
-        if (user == null || user.getDeletedAt() != null) {
-            throw new BizException(CommonErrorCode.UNAUTHORIZED);
-        }
-        if (user.getStatus() != null && user.getStatus() == UserStatus.BANNED.code()) {
-            sessionService.revokeFamily(stored.getFamilyId());
-            throw new BizException(AuthErrorCode.ACCOUNT_BANNED);
         }
 
         TokenPair pair = issuePairInFamily(user, stored.getFamilyId(), userAgent, ip);
