@@ -152,6 +152,14 @@ public class SessionService {
                 .set(RefreshToken::getRevokedAt, LocalDateTime.now()));
     }
 
+    /** 按用户吊销全部 refresh（踢下线 / 封禁用）。返回受影响行数 */
+    public int revokeAllForUser(Long userId) {
+        return refreshTokenMapper.update(null, new LambdaUpdateWrapper<RefreshToken>()
+                .eq(RefreshToken::getUserId, userId)
+                .isNull(RefreshToken::getRevokedAt)
+                .set(RefreshToken::getRevokedAt, LocalDateTime.now()));
+    }
+
     public void revokeOne(String jti) {
         refreshTokenMapper.update(null, new LambdaUpdateWrapper<RefreshToken>()
                 .eq(RefreshToken::getJti, jti)
