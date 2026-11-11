@@ -71,6 +71,10 @@ mybatis-plus:
     datacenter-id: ${ID_DATACENTER_ID:1}
 
 kuaikan:
+  internal:
+    auth:
+      # 网关→服务的内部签名密钥，与网关的 kuaikan.auth.internal-secret 一致
+      secret: ${INTERNAL_AUTH_SECRET:}
   mq:
     # 只用 Remoting 接入（ADR 0003 / architecture §3），不走 Proxy
     namesrv-addr: ${ROCKETMQ_NAMESRV:127.0.0.1:9876}

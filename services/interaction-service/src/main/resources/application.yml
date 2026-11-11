@@ -51,3 +51,8 @@ springdoc:
     enabled: false
   packages-to-scan: top.katzenyasax.kuaikan.interaction
   show-actuator: false
+
+kuaikan:
+  internal:
+    auth:
+      secret: ${INTERNAL_AUTH_SECRET:}

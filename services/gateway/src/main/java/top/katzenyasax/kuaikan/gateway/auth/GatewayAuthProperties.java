@@ -26,6 +26,9 @@ public class GatewayAuthProperties {
     /** 公钥来源 */
     private String jwksUri = "http://user-service:8081/internal/jwks";
 
+    /** 网关→服务的内部身份签名密钥（HMAC-SHA256） */
+    private String internalSecret;
+
     public List<String> getWhitelist() { return whitelist; }
     public void setWhitelist(List<String> whitelist) { this.whitelist = whitelist; }
 
@@ -34,4 +37,7 @@ public class GatewayAuthProperties {
 
     public String getJwksUri() { return jwksUri; }
     public void setJwksUri(String jwksUri) { this.jwksUri = jwksUri; }
+
+    public String getInternalSecret() { return internalSecret; }
+    public void setInternalSecret(String internalSecret) { this.internalSecret = internalSecret; }
 }

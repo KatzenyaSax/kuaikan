@@ -222,6 +222,8 @@ services:
       # 网关是唯一验签点，需要 Redis 查 access 白名单（立刻失效依赖它）
       REDIS_HOST: redis
       REDIS_PASSWORD: ${REDIS_PASSWORD:?}
+      # 网关→服务的内部身份签名密钥（HMAC-SHA256），必须与各服务一致
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:?}
     depends_on: &default-app-depends
       nacos:
         condition: service_healthy

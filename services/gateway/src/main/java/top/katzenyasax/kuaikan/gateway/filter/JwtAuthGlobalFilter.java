@@ -21,6 +21,7 @@ import reactor.core.publisher.Mono;
 import top.katzenyasax.kuaikan.common.api.Result;
 import top.katzenyasax.kuaikan.common.error.CommonErrorCode;
 import top.katzenyasax.kuaikan.common.web.Headers;
+import top.katzenyasax.kuaikan.common.web.InternalSignature;
 import top.katzenyasax.kuaikan.gateway.auth.AccessWhitelist;
 import top.katzenyasax.kuaikan.gateway.auth.GatewayAuthProperties;
 import top.katzenyasax.kuaikan.gateway.auth.JwksProvider;
@@ -69,7 +70,12 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
         this.whitelist = whitelist;
         this.objectMapper = objectMapper;
         this.props = props;
-        log.info("放行名单已加载 whitelist={} patterns={}",
+        if (props.getInternalSecret() == null || props.getInternalSecret().isBlank()) {
+            // 安全控件缺失时启动即失败，不静默降级
+            throw new IllegalStateException(
+                    "缺少 kuaikan.auth.internal-secret（环境变量 INTERNAL_AUTH_SECRET）");
+        }
+        log.info("放行名单已加载 whitelist={} patterns={}，内部签名已启用",
                 props.getWhitelist(), props.getPublicPatterns());
     }
 
@@ -174,6 +180,8 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
                 .headers(h -> {
                     h.remove(Headers.USER_ID);
                     h.remove(Headers.USER_ROLES);
+                    h.remove(Headers.INTERNAL_SIGNATURE);
+                    h.remove(Headers.INTERNAL_TIMESTAMP);
                 })
                 .build();
         return exchange.mutate().request(mutated).build();
@@ -190,12 +198,22 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
         String roles = String.valueOf(claims.getClaim("roles"));
         String jti = claims.getJWTID();
 
+        long ts = InternalSignature.nowSeconds();
+        String signature = InternalSignature.sign(props.getInternalSecret(),
+                InternalSignature.payload(userId, roles, ts));
+
         ServerHttpRequest mutated = exchange.getRequest().mutate()
                 .headers(h -> {
+                    // 先剥（含客户端可能伪造的签名头），再注入
                     h.remove(Headers.USER_ID);
                     h.remove(Headers.USER_ROLES);
+                    h.remove(Headers.INTERNAL_SIGNATURE);
+                    h.remove(Headers.INTERNAL_TIMESTAMP);
+
                     h.set(Headers.USER_ID, userId);
                     h.set(Headers.USER_ROLES, roles);
+                    h.set(Headers.INTERNAL_TIMESTAMP, String.valueOf(ts));
+                    h.set(Headers.INTERNAL_SIGNATURE, signature);
                     if (jti != null) {
                         h.set("X-Access-Jti", jti);
                     }

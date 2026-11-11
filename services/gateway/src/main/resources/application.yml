@@ -74,6 +74,8 @@ kuaikan:
   auth:
     # 公钥来源。同容器网络内直接用服务名，比走 lb:// 简单且少一跳。
     jwks-uri: ${JWKS_URI:http://user-service:8081/internal/jwks}
+    # 网关→服务的内部身份签名密钥。留空则启动失败（安全控件不静默降级）
+    internal-secret: ${INTERNAL_AUTH_SECRET:}
     # 精确放行：登录前必然未认证的端点
     whitelist:
       - /api/user/auth/login

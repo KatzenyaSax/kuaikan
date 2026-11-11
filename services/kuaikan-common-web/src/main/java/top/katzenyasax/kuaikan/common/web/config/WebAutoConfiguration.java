@@ -2,6 +2,9 @@ package top.katzenyasax.kuaikan.common.web.config;
 
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.Ordered;
@@ -17,9 +20,22 @@ import top.katzenyasax.kuaikan.common.web.filter.UserContextFilter;
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 public class WebAutoConfiguration {
 
+    private static final Logger log = LoggerFactory.getLogger(WebAutoConfiguration.class);
+
     @Bean
-    public FilterRegistrationBean<UserContextFilter> userContextFilter() {
-        FilterRegistrationBean<UserContextFilter> bean = new FilterRegistrationBean<>(new UserContextFilter());
+    public FilterRegistrationBean<UserContextFilter> userContextFilter(
+            @Value("${kuaikan.internal.auth.secret:}") String internalSecret) {
+        // 密钥缺失时**启动即失败**：安全控件不允许静默降级成"不校验"。
+        // 宁可服务起不来，也不要起一个任何人都能伪造身份的服。
+        if (internalSecret == null || internalSecret.isBlank()) {
+            throw new IllegalStateException(
+                    "缺少 kuaikan.internal.auth.secret（环境变量 INTERNAL_AUTH_SECRET）。"
+                            + "这是网关→服务的内部签名密钥，不允许留空。");
+        }
+        log.info("内部签名校验已启用");
+
+        FilterRegistrationBean<UserContextFilter> bean =
+                new FilterRegistrationBean<>(new UserContextFilter(internalSecret));
         bean.addUrlPatterns("/*");
         // 尽早执行：后面的任何过滤器/拦截器都可能需要身份
         bean.setOrder(Ordered.HIGHEST_PRECEDENCE + 10);
