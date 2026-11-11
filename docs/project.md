@@ -321,6 +321,37 @@ docker exec kuaikan-user-service-1 \
 - `expired`：只在"本来已登录、被动掉线"时设置（首次访问的 401 是正常的"没登录"）
 - `manual`：主动登出，不提示
 
+### P1 验收（已完成）
+
+`deploy/bin/verify-p1.sh`，退出码 0 即通过。**27 条自动断言 + 3 条人工**。
+
+| 层 | 内容 | 条数 |
+|---|---|---|
+| L1 契约与构建 | 错误码三方一致 / spec 与类型无漂移 / typecheck / build | 4 |
+| L2 后端 HTTP | 注册开关、防枚举、cookie 属性、信任边界、typ 校验、网关注入、refresh 轮换与宽限期、登出即时失效 | 13 |
+| L3 浏览器 | 守卫、登录、静默续期、不闪登录页、存储无 token、cookie 属性、登出 | 9 |
+| L4 破坏性动作 | kick / ban / unban（经 SSH 调 `/internal/admin`） | 6 |
+| L5 回归 | `verify.sh`（P0）+ `verify-p05.sh`（P0.5） | 2 |
+
+`--fast` 跳过浏览器层与破坏性动作。
+
+测试夹具：每次运行创建一个 `e2e+p<时间戳>@kuaikan.test` 临时账号
+（BCrypt 哈希内嵌，固定测试密码 `E2eFixture-Passw0rd`），`trap EXIT` 时删除
+用户、refresh 行与 Redis 键，不留脏数据。
+
+### 已知债务：refresh 行无清理任务
+
+`t_refresh_token` 目前只增不减。P1 开发期间一天的测试就积累了 137 行
+（120 已吊销 / 4 已消费 / 13 活跃）。容量基线是 200 万级，短期无碍，
+但上线前必须加清理任务：
+
+```sql
+DELETE FROM t_refresh_token
+WHERE revoked_at IS NOT NULL OR consumed_at IS NOT NULL OR expires_at < NOW();
+```
+
+建议挂在 XXL-Job 每日执行（与 P7 的消息归档、已删帖清理同一个任务组）。
+
 ### 服务间身份传递（ADR 0008）
 
 **`UserContext` 只在"用户直接请求的服务"里有效。** 服务间调用不传播身份，内部接口用显式参数：
