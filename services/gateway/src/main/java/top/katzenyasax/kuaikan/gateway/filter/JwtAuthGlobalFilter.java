@@ -232,7 +232,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
         try {
             bytes = objectMapper.writeValueAsBytes(body);
         } catch (Exception e) {
-            bytes = ("{\\"code\\":" + CommonErrorCode.INTERNAL.code() + "}").getBytes(StandardCharsets.UTF_8);
+            bytes = ("{\"code\":" + CommonErrorCode.INTERNAL.code() + "}").getBytes(StandardCharsets.UTF_8);
         }
         DataBuffer buffer = response.bufferFactory().wrap(bytes);
         return response.writeWith(Mono.just(buffer));
