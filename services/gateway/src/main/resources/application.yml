@@ -5,6 +5,15 @@ server:
 spring:
   application:
     name: gateway
+
+  # 网关是唯一验签点，需要 Redis 查 access 白名单（"立刻失效"依赖它）
+  data:
+    redis:
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2s
+
   cloud:
     nacos:
       discovery:
@@ -75,14 +84,6 @@ kuaikan:
     # 这是 P1 的已知债务，见 docs/project.md「P0 期间已知的公开面」。
     public-patterns:
       - ^/api/[^/]+/ping(/.*)?$
-
-spring:
-  data:
-    redis:
-      host: ${REDIS_HOST:redis}
-      port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
-      timeout: 2s
 
 management:
   endpoints:
