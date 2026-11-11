@@ -258,6 +258,34 @@ refresh 家族进 MySQL（可分页、可审计、低频）。这样不存在双
 
 **上线前动作**：删除该账号，或在发布清单里改成"仅在需要时临时创建、用完删除"。
 
+### 网关鉴权（P1.3）
+
+**网关是唯一验签点**，下游服务只从 header 读身份、不解析 JWT。
+
+| 环节 | 实现 |
+|---|---|
+| 验签 | RS256，公钥按 `kid` 缓存；未知 kid 时刷新 JWKS；拉不到 → 不放行 |
+| 公钥来源 | `http://user-service:8081/internal/jwks`（容器网络内直连服务名） |
+| 白名单 | **必须用 `@ConfigurationProperties` 绑定**，`@Value` 绑不了 YAML 列表 |
+| 作用域校验 | `exp` / `iss=kuaikan` / `typ=access`（防止拿 30 天的 refresh 当 access） |
+| 白名单校验 | 响应式 Redis 查 `auth:session:{jti}`，**不做本地缓存** |
+| 身份注入 | **先 remove 再 set** `X-User-Id` / `X-User-Roles` |
+| 放行分支 | 同样剥离身份头，否则匿名请求带 `X-User-Id` 会被下游当成已登录 |
+| 依赖不可用 | **fail-closed 503**（不是 200） |
+
+放行名单（`kuaikan.auth.whitelist` + `public-patterns`）：
+
+```
+/api/user/auth/login
+/api/user/auth/register
+/api/user/auth/register/code
+/api/user/auth/refresh
+^/api/[^/]+/ping(/.*)?$        ← P0/P0.5 探针端点，P1 的已知债务
+```
+
+服务侧：`kuaikan-common-web` 的 `UserContextFilter` 从 header 构造 `UserContext`，
+`finally` 里 `clear()`（ThreadLocal 不清理会在并发下把上一个请求的身份带给下一个）。
+
 ### 浏览器层验收（P1.2）
 
 ```bash
