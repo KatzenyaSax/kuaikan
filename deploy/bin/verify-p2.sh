@@ -204,7 +204,15 @@ cleanup() {
       DELETE FROM kuaikan_content.t_post WHERE author_id IN ($USER_ID, ${USER_ID2:-0})
         OR community_id IN (${COMMUNITY_ID:-0}, ${COMMUNITY_ID2:-0});
       DELETE FROM kuaikan_user.t_refresh_token WHERE user_id IN ($USER_ID, ${USER_ID2:-0});
-      DELETE FROM kuaikan_user.t_user WHERE id IN ($USER_ID, ${USER_ID2:-0});" 2>&1)
+      DELETE FROM kuaikan_user.t_user WHERE id IN ($USER_ID, ${USER_ID2:-0});
+      -- 兜底 GC：历史上出现过 cleanup 漏删（脚本被中断、SSH 抖动），
+      -- 一次漏删就会永久累积。这里清掉 1 小时前的 e2e 账号——
+      -- 一小时远长于任何单次运行，不会误删并发运行的夹具。
+      DELETE FROM kuaikan_user.t_refresh_token
+        WHERE user_id IN (SELECT id FROM kuaikan_user.t_user
+                          WHERE email LIKE 'e2e+%' AND created_at < NOW() - INTERVAL 1 HOUR);
+      DELETE FROM kuaikan_user.t_user
+        WHERE email LIKE 'e2e+%' AND created_at < NOW() - INTERVAL 1 HOUR;" 2>&1)
     case "$out" in
       *ERROR*) printf '  %s清理失败%s %s\n' "$R" "$N" "$(printf '%s' "$out" | head -2 | tr '\n' ' ')" ;;
       *) info "已清理测试账号 $EMAIL 与测试社群" ;;
