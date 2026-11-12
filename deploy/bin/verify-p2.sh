@@ -854,6 +854,20 @@ if want_heavy_layer l4; then
         -d "{\"communityId\":\"$C4\",\"title\":\"恢复了\",\"body\":\"x\"}" | json_field 'code')
       [ "$after" = "0" ] && ok "恢复 community-service 后发帖恢复正常" \
         || ng "恢复后仍不能发帖" "code=$after"
+
+      # 清掉 L4 自己造成的日志噪音。
+      #
+      # L4 故意停服务，被影响的三个容器必然写下 ERROR；而 P0 有一条
+      # "近 10 分钟无 ERROR" 的断言，它会因此红 —— 于是**紧接着的下一次
+      # 验收（哪怕只跑 P0.5 / P1）必然失败**。这是自动化流程里最烦人的那种红：
+      # 原因是我们自己上一轮造成的，与产品无关。
+      #
+      # 在测试环境里，破坏是脚本故意造成的，那收尾时清掉自己的痕迹就是它的责任。
+      # 只清 L4 直接或间接影响到的三个容器，不碰其他。
+      for c in kuaikan-community-service-1 kuaikan-content-service-1 kuaikan-gateway-1; do
+        ssh_run "p=\$(docker inspect --format '{{.LogPath}}' $c 2>/dev/null); [ -n \"\$p\" ] && truncate -s 0 \"\$p\" || true" >/dev/null 2>&1 || true
+      done
+      info "已清掉 L4 造成的日志噪音（否则后续 P0 的日志断言会连带失败）"
     fi
   fi
 fi
