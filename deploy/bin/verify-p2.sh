@@ -172,6 +172,8 @@ cleanup() {
         WHERE c.name LIKE 'e2e-%' OR c.id IN (${COMMUNITY_ID:-0}, ${COMMUNITY_ID2:-0});
       DELETE FROM t_community
         WHERE name LIKE 'e2e-%' OR id IN (${COMMUNITY_ID:-0}, ${COMMUNITY_ID2:-0});
+      DELETE FROM kuaikan_content.t_post WHERE author_id IN ($USER_ID, ${USER_ID2:-0})
+        OR community_id IN (${COMMUNITY_ID:-0}, ${COMMUNITY_ID2:-0});
       DELETE FROM kuaikan_user.t_refresh_token WHERE user_id IN ($USER_ID, ${USER_ID2:-0});
       DELETE FROM kuaikan_user.t_user WHERE id IN ($USER_ID, ${USER_ID2:-0});" 2>&1)
     case "$out" in
@@ -462,7 +464,108 @@ raise SystemExit(0 if d['items'] else 1)"; then
     fi
   fi
 
-  skip "发帖与权限边界（41004）" "P2.3 未实现"
+  # ---------------------------------------------------------------- P2.3 发帖
+  POST_BASE="$SITE/api/content/posts"
+
+  if [ -n "$TOKEN" ] && [ -n "$TOKEN2" ] && [ -n "$COMMUNITY_ID" ]; then
+    # 游客发帖
+    c=$(http_code -X POST "$POST_BASE" -H 'Content-Type: application/json' \
+      -d "{\"communityId\":\"$COMMUNITY_ID\",\"title\":\"t\",\"body\":\"b\"}")
+    [ "$c" = "401" ] && ok "游客发帖 → 401" || ng "游客发帖语义" "HTTP $c"
+
+    # 非成员发帖：让 USER_ID2 先退出，它就变成"非成员"
+    curl -s --max-time 15 -o /dev/null -X DELETE "$mem_base" -H "Authorization: Bearer $TOKEN2"
+    body=$(curl -s --max-time 15 -X POST "$POST_BASE" -H "Authorization: Bearer $TOKEN2" \
+      -H 'Content-Type: application/json' \
+      -d "{\"communityId\":\"$COMMUNITY_ID\",\"title\":\"非成员\",\"body\":\"x\"}")
+    [ "$(printf '%s' "$body" | json_field 'code')" = "41004" ] \
+      && ok "非成员发帖 → 41004" || ng "非成员发帖未被拦" "$(printf '%s' "$body" | head -c 120)"
+
+    # 成员发帖
+    body=$(curl -s --max-time 15 -X POST "$POST_BASE" -H "Authorization: Bearer $TOKEN" \
+      -H 'Content-Type: application/json' \
+      -d "{\"communityId\":\"$COMMUNITY_ID\",\"title\":\"e2e 帖子\",\"body\":\"第一行\\n第二行\"}")
+    POST_ID=$(printf '%s' "$body" | json_field 'data.id')
+    author=$(printf '%s' "$body" | json_field 'data.authorId')
+    if [ -n "$POST_ID" ]; then ok "成员发帖成功 id=$POST_ID"; else ng "发帖失败" "$(printf '%s' "$body" | head -c 160)"; fi
+    [ "$author" = "$USER_ID" ] && ok "authorId = 自己" || ng "authorId 不对" "got=$author want=$USER_ID"
+
+    # 伪造身份头：网关必须剥离，落库的仍是本人
+    body=$(curl -s --max-time 15 -X POST "$POST_BASE" -H "Authorization: Bearer $TOKEN" \
+      -H "X-User-Id: $USER_ID2" -H "X-User-Roles: ADMIN" -H 'Content-Type: application/json' \
+      -d "{\"communityId\":\"$COMMUNITY_ID\",\"title\":\"伪造身份\",\"body\":\"x\"}")
+    forged=$(printf '%s' "$body" | json_field 'data.authorId')
+    [ "$forged" = "$USER_ID" ] && ok "伪造 X-User-Id 无效，authorId 仍是本人" \
+      || ng "伪造身份头生效了（严重）" "authorId=$forged"
+
+    # 库层：author_id 真的写对了
+    row=$(sql_exec "SELECT CONCAT(author_id, ':', community_id)
+      FROM kuaikan_content.t_post WHERE id = $POST_ID;")
+    row=$(printf '%s' "$row" | tr -d '\r\n ')
+    [ "$row" = "$USER_ID:$COMMUNITY_ID" ] && ok "库层 author_id / community_id 正确" \
+      || ng "库层数据不对" "got=$row want=$USER_ID:$COMMUNITY_ID"
+
+    # 不存在的社群
+    body=$(curl -s --max-time 15 -X POST "$POST_BASE" -H "Authorization: Bearer $TOKEN" \
+      -H 'Content-Type: application/json' \
+      -d '{"communityId":"123456789","title":"t","body":"b"}')
+    [ "$(printf '%s' "$body" | json_field 'code')" = "41001" ] \
+      && ok "发帖到不存在的社群 → 41001" || ng "不存在社群的发帖语义" "$(printf '%s' "$body" | head -c 120)"
+
+    # 参数校验
+    b1=$(curl -s --max-time 15 -X POST "$POST_BASE" -H "Authorization: Bearer $TOKEN" \
+      -H 'Content-Type: application/json' \
+      -d "{\"communityId\":\"$COMMUNITY_ID\",\"title\":\"$(python3 -c 'print("x"*200)')\",\"body\":\"b\"}")
+    b2=$(curl -s --max-time 15 -X POST "$POST_BASE" -H "Authorization: Bearer $TOKEN" \
+      -H 'Content-Type: application/json' \
+      -d "{\"communityId\":\"$COMMUNITY_ID\",\"title\":\"t\",\"body\":\"\"}")
+    if [ "$(printf '%s' "$b1" | json_field 'code')" = "40010" ] \
+       && [ "$(printf '%s' "$b2" | json_field 'code')" = "40010" ]; then
+      ok "标题超长 / 正文为空 → 40010"
+    else
+      ng "发帖参数校验" "超长=$(printf '%s' "$b1" | head -c 60) 空=$(printf '%s' "$b2" | head -c 60)"
+    fi
+
+    # 游客可读详情，且**不含作者昵称**
+    body=$(curl -s --max-time 15 "$POST_BASE/$POST_ID")
+    [ "$(printf '%s' "$body" | json_field 'data.id')" = "$POST_ID" ] \
+      && ok "游客可读帖子详情" || ng "游客读帖子详情" "$(printf '%s' "$body" | head -c 120)"
+    if printf '%s' "$body" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)['data']
+bad=[k for k in d if 'nick' in k.lower() or 'avatar' in k.lower() or 'authorName' in k]
+raise SystemExit(1 if bad else 0)"; then
+      ok "详情里没有作者昵称/头像字段（ADR 0009 守卫）"
+    else
+      ng "详情带了作者信息" "写快照会让发帖依赖 user-service"
+    fi
+
+    c=$(http_code "$POST_BASE/123456789")
+    [ "$c" = "404" ] && ok "不存在的帖子 → 404" || ng "不存在帖子的状态码" "HTTP $c"
+
+    # 批量作者摘要
+    body=$(curl -s --max-time 15 "$SITE/api/user/users?ids=$USER_ID,$USER_ID2")
+    if printf '%s' "$body" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)['data']
+allowed={'userId','nickname','avatarUrl'}
+bad=[k for u in d for k in u if k not in allowed]
+raise SystemExit(1 if bad else 0)"; then
+      ok "批量摘要只返回 userId/nickname/avatarUrl"
+    else
+      ng "批量摘要字段超出约定" "$(printf '%s' "$body" | head -c 160)"
+    fi
+
+    many=$(python3 -c "print(','.join(str(900000000000000000+i) for i in range(101)))")
+    body=$(curl -s --max-time 15 "$SITE/api/user/users?ids=$many")
+    [ "$(printf '%s' "$body" | json_field 'code')" = "40010" ] \
+      && ok "批量摘要超过 100 个 id → 40010" || ng "批量摘要未限流" "$(printf '%s' "$body" | head -c 120)"
+
+    # 内部接口不可从公网到达
+    c=$(http_code "$SITE/api/community/internal/memberships?communityId=$COMMUNITY_ID&userId=$USER_ID")
+    [ "$c" = "404" ] && ok "内部接口 /internal/** 公网不可达" || ng "内部接口暴露（严重）" "HTTP $c"
+  fi
+
   skip "帖子游标分页不重不漏" "P2.4 未实现"
 fi
 
