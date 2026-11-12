@@ -57,6 +57,8 @@ info() { printf '  %s%s%s\n' "$D" "$1" "$N"; }
 # macOS 自带的是 bash 3.2，没有 ${var,,} 小写展开，所以这里先归一化一次。
 ONLY_LAYER_NORM=$(printf '%s' "$ONLY_LAYER" | tr '[:upper:]' '[:lower:]')
 
+ssh_run() { ssh "${SSH_OPTS[@]}" "$SSH_HOST" "$@" 2>/dev/null; }
+
 want_layer() {
   [ -z "$ONLY_LAYER_NORM" ] && return 0
   [ "$ONLY_LAYER_NORM" = "$1" ] && return 0
@@ -143,7 +145,17 @@ fi
 
 if want_heavy_layer l5; then
   section "L5 回归（P0 / P0.5 / P1）"
-  for script in verify.sh verify-p05.sh verify-p1.sh; do
+
+  # P0 的 verify.sh 检查的是容器状态，必须在服务器上跑；
+  # --no-restart 避免后半程的断言被重启窗口里的真 500 污染。
+  out=$(ssh_run 'cd /opt/kuaikan/repo && bash deploy/bin/verify.sh --no-restart' 2>&1)
+  if printf '%s' "$out" | grep -q 'P0 验收通过'; then
+    ok "verify.sh（P0）全绿"
+  else
+    ng "verify.sh（P0）有失败" "$(printf '%s' "$out" | tail -1)"
+  fi
+
+  for script in verify-p05.sh verify-p1.sh; do
     if bash "$APP_DIR/deploy/bin/$script" --fast >/dev/null 2>&1; then
       ok "$script 全绿"
     else
