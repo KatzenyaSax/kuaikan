@@ -1,5 +1,6 @@
 package top.katzenyasax.kuaikan.community.web;
 
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -35,6 +36,7 @@ public class CommunityController {
         this.communityService = communityService;
     }
 
+    @Operation(operationId = "listCommunities")
     @PublicEndpoint
     @GetMapping
     public Result<CommunityPage> list(@RequestParam(required = false) String cursor,
@@ -42,6 +44,7 @@ public class CommunityController {
         return Result.ok(communityService.list(cursor, limit));
     }
 
+    @Operation(operationId = "createCommunity")
     @PostMapping
     public Result<CommunityDetail> create(@Valid @RequestBody CreateCommunityRequest body) {
         Long userId = UserContext.requireUserId();
@@ -53,6 +56,7 @@ public class CommunityController {
      *
      * 不带任何按查看者变化的字段：公开端点上一律匿名（见 CommunityDetail）。
      */
+    @Operation(operationId = "getCommunity")
     @PublicEndpoint
     @GetMapping("/{name}")
     public Result<CommunityDetail> detail(@PathVariable("name") String name) {
@@ -65,12 +69,14 @@ public class CommunityController {
      * 路径最后一段是 `membership`，所以不会被公开详情的放行正则误放行
      * （`GET ^/api/community/communities/[^/]+$` 只匹配"最后一段是名称"）。
      */
+    @Operation(operationId = "joinCommunity")
     @PostMapping("/{name}/membership")
     public Result<CommunityDetail> join(@PathVariable("name") String name) {
         return Result.ok(communityService.join(UserContext.requireUserId(), name));
     }
 
     /** 退出社群。幂等：本来就不在社也返回成功。所有者退出 → 41005 */
+    @Operation(operationId = "leaveCommunity")
     @DeleteMapping("/{name}/membership")
     public Result<CommunityDetail> leave(@PathVariable("name") String name) {
         return Result.ok(communityService.leave(UserContext.requireUserId(), name));

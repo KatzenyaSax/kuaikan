@@ -117,9 +117,26 @@ if (routes.length === 0) {
 const prefixOfService = new Map(routes.map((r) => [r.service, r.prefix]))
 const serviceOfPrefix = new Map(routes.map((r) => [r.prefix, r.service]))
 
+/**
+ * spec 里的路径是**模板**（`/posts/{postId}`），而网关放行规则的正则作用在
+ * **真实请求路径**（`/posts/2120789385803038721`）上。所以不能拿模板字符串
+ * 直接去匹配正则 —— 那样 `[0-9]+` 这种"只认数字 id"的精确规则会永远判为不覆盖，
+ * 而它恰恰是我们刻意写得最严的那种。
+ *
+ * 这里把模板参数替换成几个代表性取值再匹配：数字、字母、带连字符。
+ * 只要有一个能匹配就算覆盖。这是启发式，不是判定 —— 它要拦的是
+ * "忘了加放行条目 / 方法写错了" 这类粗错，不是证明正则等价。
+ */
+function concretePaths(template) {
+  const fillers = ['2120789385803038721', 'abc', 'foo-bar']
+  return fillers.map((f) => template.replace(/\{[^/}]+\}/g, f))
+}
+
 function ruleCovers(rule, method, path) {
   if (rule.method !== '*' && rule.method !== method) return false
-  return rule.regex ? new RegExp(rule.rest).test(path) : rule.rest === path
+  if (!rule.regex) return rule.rest === path
+  const re = new RegExp(rule.rest)
+  return concretePaths(path).some((p) => re.test(p))
 }
 
 // ---------------------------------------------------------------- 读 spec

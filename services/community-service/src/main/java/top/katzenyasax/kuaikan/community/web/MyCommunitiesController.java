@@ -1,5 +1,6 @@
 package top.katzenyasax.kuaikan.community.web;
 
+import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -25,6 +26,7 @@ public class MyCommunitiesController {
         this.communityService = communityService;
     }
 
+    @Operation(operationId = "listMyCommunities")
     @GetMapping("/mine")
     public Result<CommunityPage> mine(@RequestParam(required = false) String cursor,
                                       @RequestParam(required = false) Integer limit) {

@@ -1,5 +1,6 @@
 package top.katzenyasax.kuaikan.content.web;
 
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -31,11 +32,13 @@ public class PostController {
         this.postService = postService;
     }
 
+    @Operation(operationId = "createPost")
     @PostMapping
     public Result<PostDetail> create(@Valid @RequestBody CreatePostRequest body) {
         return Result.ok(postService.create(UserContext.requireUserId(), body));
     }
 
+    @Operation(operationId = "getPost")
     @PublicEndpoint
     @GetMapping("/{postId}")
     public Result<PostDetail> detail(@PathVariable("postId") Long postId) {
