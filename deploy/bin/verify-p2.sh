@@ -86,6 +86,12 @@ if want_layer l1; then
     ng "错误码契约不一致" "$(printf '%s' "$out" | head -3 | tr '\n' ' ')"
   fi
 
+  if out=$(node "$APP_DIR/deploy/bin/check-scripts.mjs" 2>&1); then
+    ok "shell 脚本静态检查通过"
+  else
+    ng "shell 脚本静态检查" "$(printf '%s' "$out" | sed -n '2p')"
+  fi
+
   if out=$(node "$APP_DIR/deploy/bin/check-openapi.mjs" 2>&1); then
     ok "OpenAPI 与网关白名单一致（$(printf '%s' "$out" | grep -oE 'operationId 唯一（[0-9]+ 个' | grep -oE '[0-9]+' | head -1) 个 operationId）"
   else
@@ -655,7 +661,7 @@ if want_heavy_layer l4; then
       a=$(curl -s --max-time 10 -o /dev/null -w '%{http_code}' "$SITE/api/community/communities")
       [ "$a" = "503" ] || [ "$a" = "504" ] || [ "$a" = "500" ] \
         && ok "kill community-service → 社群列表确实不可用（证明真的停了）" \
-        || ng "社群列表居然还可访问" "HTTP $a，说明服务没真的停掉"
+        || ng "社群列表居然还可访问" "HTTP ${a}，说明服务没真的停掉"
 
       ssh_run 'docker start kuaikan-community-service-1' >/dev/null 2>&1
       for _ in $(seq 1 40); do
