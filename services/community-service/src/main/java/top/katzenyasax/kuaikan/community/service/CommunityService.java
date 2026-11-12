@@ -63,8 +63,11 @@ public class CommunityService {
     public CommunityDetail create(Long userId, CreateCommunityRequest req) {
         String name = req.name().trim();
         String nameKey = NameKeys.of(name);
-        if (nameKey.isEmpty()) {
-            throw new BizException(CommonErrorCode.PARAM_INVALID, "社群名不能为空");
+        // 字符集校验放在规范化**之后**：全角输入先被 NFKC 折叠成半角再判断，
+        // 否则中文输入法下的 "ＡＢＣ" 会在校验阶段就被拒，NFKC 等于没生效。
+        if (!NameKeys.isValidKey(nameKey)) {
+            throw new BizException(CommonErrorCode.PARAM_INVALID,
+                    "社群名只能包含中文、字母、数字、空格、下划线和连字符");
         }
 
         // 预检查给出友好错误；并发下仍可能撞唯一键，靠下面的 catch 兜底。

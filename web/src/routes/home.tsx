@@ -1,27 +1,77 @@
-import { Link } from 'react-router'
-import { buttonClass } from '@/shared/ui/button'
+import { useState } from 'react'
+import { useCommunityList } from '@/features/community/api'
+import { CommunityCard } from '@/features/community/community-card'
+import { CreateCommunityDialog } from '@/features/community/create-community-dialog'
+import { authErrorMessage } from '@/features/auth/auth-error'
+import { useSession } from '@/features/auth/session'
+import { Button } from '@/shared/ui/button'
+import { Card, CardDescription, CardTitle } from '@/shared/ui/card'
+import { Skeleton } from '@/shared/ui/skeleton'
 
 /**
- * 首页目前只是入口页。
+ * 首页 = 社群列表。游客可读。
  *
- * 服务状态、UI 原子自检、MQ/Sentinel 探针全部搬到了 /test ——
- * 那些是诊断内容，不该出现在产品首页上。
+ * 建社群要登录：游客看到的是"登录后可以建社群"，点了跳登录页并带上
+ * redirect，登录后回到首页——不做"先弹窗再报未登录"。
  */
 export function HomePage() {
+  const status = useSession((s) => s.status)
+  const list = useCommunityList(null)
+  const [creating, setCreating] = useState(false)
+
+  const canCreate = status === 'authenticated'
+  const items = list.data?.items ?? []
+
   return (
-    <div className="flex min-h-[60vh] flex-col items-center justify-center gap-6 text-center">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-[0.14em]">kuaikan</h1>
-        <p className="mt-2 text-xs text-muted-foreground">一个以社群为单位的讨论社区</p>
+    <div className="mx-auto max-w-3xl space-y-6">
+      <div className="flex items-end justify-between gap-4">
+        <div>
+          <h1 className="text-lg font-semibold tracking-wide">社群</h1>
+          <p className="mt-1 text-[11px] text-muted-foreground">以社群为单位组织讨论</p>
+        </div>
+        {canCreate ? (
+          <Button size="sm" onClick={() => setCreating(true)} data-testid="btn-new-community">
+            建社群
+          </Button>
+        ) : (
+          <a
+            href="/login?redirect=/"
+            className="text-[11px] text-muted-foreground underline"
+            data-testid="link-login-to-create"
+          >
+            登录后可以建社群
+          </a>
+        )}
       </div>
 
-      <Link
-        to="/register"
-        className={buttonClass({ variant: 'outline', className: 'px-6' })}
-        data-testid="btn-register"
-      >
-        注册账号
-      </Link>
+      {list.isPending ? (
+        <div className="space-y-2">
+          <Skeleton className="h-20 w-full" />
+          <Skeleton className="h-20 w-full" />
+          <Skeleton className="h-20 w-full" />
+        </div>
+      ) : list.isError ? (
+        <Card>
+          <p className="text-sm text-danger" data-testid="community-list-error">
+            {authErrorMessage(list.error)}
+          </p>
+        </Card>
+      ) : items.length === 0 ? (
+        <Card className="space-y-1 text-center">
+          <CardTitle>还没有社群</CardTitle>
+          <CardDescription>
+            {canCreate ? '点右上角「建社群」开第一个' : '登录后可以创建第一个社群'}
+          </CardDescription>
+        </Card>
+      ) : (
+        <div className="space-y-2" data-testid="community-list">
+          {items.map((c) => (
+            <CommunityCard key={c.id} community={c} />
+          ))}
+        </div>
+      )}
+
+      {creating ? <CreateCommunityDialog onClose={() => setCreating(false)} /> : null}
     </div>
   )
 }

@@ -19,6 +19,9 @@ import java.util.Locale;
  */
 public final class NameKeys {
 
+    private static final java.util.regex.Pattern VALID =
+            java.util.regex.Pattern.compile("^[\\p{IsHan}a-z0-9 _-]+$");
+
     public static String of(String name) {
         if (name == null) {
             return "";
@@ -30,6 +33,16 @@ public final class NameKeys {
         // 长度按字符算：中文一个字符可能占 3 字节，但 uk_name_key 是 VARCHAR(64)，
         // 这里再兜一层，避免规范化后变长导致插入失败
         return key.length() > 64 ? key.substring(0, 64) : key;
+    }
+
+    /**
+     * 规范化后的键是否可接受。
+     *
+     * 允许中文、字母、数字、空格、下划线、连字符。禁止 `/ ? # %` 与控制字符——
+     * 它们会破坏 URL 或被当成通配符。
+     */
+    public static boolean isValidKey(String key) {
+        return key != null && !key.isEmpty() && VALID.matcher(key).matches();
     }
 
     private NameKeys() {

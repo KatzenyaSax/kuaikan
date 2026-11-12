@@ -10,6 +10,22 @@
  */
 
 export interface paths {
+    "/communities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list"];
+        put?: never;
+        post: operations["create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/whoami": {
         parameters: {
             query?: never;
@@ -58,10 +74,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/communities/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["detail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        CreateCommunityRequest: {
+            name: string;
+            description?: string;
+        };
+        CommunityDetail: {
+            /** @description 雪花 ID，序列化为字符串避免 JS 精度丢失 */
+            id?: string;
+            name?: string;
+            description?: string;
+            /** Format: int64 */
+            memberCount?: number;
+            /** @description 所有者用户 id */
+            ownerId?: string;
+            /** Format: date-time */
+            createdAt?: string;
+        };
+        ResultCommunityDetail: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: components["schemas"]["CommunityDetail"];
+        };
         ResultMapStringObject: {
             /** Format: int32 */
             code?: number;
@@ -69,6 +123,27 @@ export interface components {
             data?: {
                 [key: string]: unknown;
             };
+        };
+        CommunityPage: {
+            items?: components["schemas"]["CommunitySummary"][];
+            /** @description 下一页游标；为 null 表示已到末页 */
+            nextCursor?: string;
+        };
+        CommunitySummary: {
+            /** @description 雪花 ID，序列化为字符串避免 JS 精度丢失 */
+            id?: string;
+            name?: string;
+            description?: string;
+            /** Format: int64 */
+            memberCount?: number;
+            /** Format: date-time */
+            createdAt?: string;
+        };
+        ResultCommunityPage: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: components["schemas"]["CommunityPage"];
         };
     };
     responses: never;
@@ -79,6 +154,53 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultCommunityPage"];
+                };
+            };
+        };
+    };
+    create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCommunityRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultCommunityDetail"];
+                };
+            };
+        };
+    };
     whoami: {
         parameters: {
             query?: never;
@@ -137,6 +259,28 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ResultMapStringObject"];
+                };
+            };
+        };
+    };
+    detail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultCommunityDetail"];
                 };
             };
         };

@@ -2,6 +2,7 @@ import type { RouteObject } from 'react-router'
 import { createBrowserRouter } from 'react-router'
 import { RootLayout } from '@/routes/root'
 import { HomePage } from '@/routes/home'
+import { CommunityPage } from '@/routes/community'
 import { RegisterPage } from '@/routes/register'
 import { TestPage } from '@/routes/test'
 import { LoginPage } from '@/routes/login'
@@ -35,6 +36,8 @@ const routes: RouteObject[] = [
     errorElement: <RootErrorBoundary />,
     children: [
       { index: true, element: <HomePage /> },
+      // 社群名本身就是标识（没有 slug），服务端按规范化后的名称查找
+      { path: 'c/:name', element: <CommunityPage /> },
       { path: 'register', element: <RegisterPage /> },
       { path: 'login', element: <LoginPage /> },
       {

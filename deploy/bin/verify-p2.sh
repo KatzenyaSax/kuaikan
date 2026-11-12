@@ -115,15 +115,222 @@ if want_layer l1; then
   fi
 fi
 
+# ================================================================ 测试夹具
+# 每次运行建一个临时账号 + 一个临时社群，结束时删干净。
+# 密码 E2eFixture-Passw0rd 的 BCrypt 哈希（cost 10，与线上一致）。
+# 这是**测试夹具**不是密钥：账号每次运行都不同且结束即删。
+FIXTURE_HASH='$2a$10$5SZSC3aIXFj9q3PyX1f3FuxLrHv4bcoXpYgRNFPj.ayJ8fUhrKBy2'
+FIXTURE_PASS='E2eFixture-Passw0rd'
+STAMP="$(date +%s)"
+EMAIL="e2e+p2${STAMP}@kuaikan.test"
+USER_ID=""
+COMMUNITY_ID=""
+COMMUNITY_NAME="e2e-社群-${STAMP}"
+COMMUNITY_NAME_LOWER="E2e-Front-${STAMP}"
+
+json_field() { python3 -c "
+import json,sys
+try: d=json.load(sys.stdin)
+except Exception: print(''); raise SystemExit(0)
+v=d
+for k in sys.argv[1].split('.'):
+    if isinstance(v,dict) and k in v: v=v[k]
+    elif isinstance(v,list) and k.isdigit() and int(k)<len(v): v=v[int(k)]
+    else: print(''); raise SystemExit(0)
+print('' if v is None else v)
+" "$1" 2>/dev/null; }
+
+http_code() { curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$@" 2>/dev/null || echo "000"; }
+
+sql_exec() {
+  # SQL 用 base64 传：直接内插进远端双引号命令会被远端 shell 展开
+  local sql="$1"
+  local b64
+  b64=$(printf '%s' "$sql" | base64 | tr -d '\n')
+  ssh_run "echo '$b64' | base64 -d > /tmp/p2-fixture.sql
+    set -a; . $ENV_FILE; set +a
+    docker exec -i kuaikan-mysql-1 mysql -uroot -p\"\$MYSQL_ROOT_PASSWORD\" -N < /tmp/p2-fixture.sql 2>/dev/null
+    rm -f /tmp/p2-fixture.sql"
+}
+
+cleanup() {
+  if [ -n "$COMMUNITY_ID" ] || [ -n "$USER_ID" ]; then
+    sql_exec "DELETE FROM kuaikan_community.t_community_member WHERE community_id=${COMMUNITY_ID:-0};
+      DELETE FROM kuaikan_community.t_community WHERE id=${COMMUNITY_ID:-0};
+      DELETE FROM kuaikan_user.t_refresh_token WHERE user_id=${USER_ID:-0};
+      DELETE FROM kuaikan_user.t_user WHERE id=${USER_ID:-0};" >/dev/null 2>&1 || true
+    info "已清理测试账号 $EMAIL 与社群 $COMMUNITY_NAME"
+  fi
+}
+trap cleanup EXIT
+
+printf '%s%s%s\n' "$B" "kuaikan · P2 验收" "$N"
+info "站点 $SITE"
+info "开始 $(date '+%F %T')"
+
 # ================================================================ L2 后端 HTTP
-# P2.1~P2.4 逐刀往这里加。当前为空。
 
 if want_layer l2; then
   section "L2 后端 HTTP"
-  skip "社群 CRUD" "P2.1 未实现"
-  skip "成员加入/退出与 member_count" "P2.2 未实现"
+
+  # ---------- 准备：临时账号 ----------
+  ssh_ok=0
+  ssh_run 'true' && ssh_ok=1
+  if [ $ssh_ok = 1 ]; then
+    out=$(sql_exec "INSERT INTO kuaikan_user.t_user (id, email, password_hash, nickname, roles, status)
+        VALUES (FLOOR(RAND()*900000000000000000)+100000000000000000, '$EMAIL', '$FIXTURE_HASH', 'e2e-p2', 'USER', 1);
+        SELECT id FROM kuaikan_user.t_user WHERE email='$EMAIL';")
+    USER_ID=$(printf '%s' "$out" | tr -d '\r\n ')
+    [ -n "$USER_ID" ] && info "临时账号 userId=$USER_ID" || ng "创建临时账号失败"
+  else
+    skip "L2 后端 HTTP" "无法 SSH 到 $SSH_HOST（需要建账号与清理）"
+  fi
+
+  TOKEN=""
+  if [ -n "$USER_ID" ]; then
+    resp=$(curl -s --max-time 15 -X POST "$SITE/api/user/auth/login" \
+      -H 'Content-Type: application/json' -d "{\"email\":\"$EMAIL\",\"password\":\"$FIXTURE_PASS\"}")
+    TOKEN=$(printf '%s' "$resp" | json_field 'data.accessToken')
+    [ -n "$TOKEN" ] || ng "夹具登录失败，后续断言会空转" "$(printf '%s' "$resp" | head -c 120)"
+  fi
+
+  if [ -n "$TOKEN" ]; then
+    # ---------- 游客读 ----------
+    body=$(curl -s --max-time 15 "$SITE/api/community/communities?limit=5")
+    [ "$(printf '%s' "$body" | json_field 'code')" = "0" ] \
+      && ok "游客可读社群列表" || ng "游客读社群列表" "$(printf '%s' "$body" | head -c 120)"
+
+    # ---------- 游客不能建 ----------
+    c=$(curl -s --max-time 15 -o /tmp/p2-guest-create.json -w '%{http_code}' \
+      -X POST "$SITE/api/community/communities" -H 'Content-Type: application/json' \
+      -d '{"name":"游客不能建"}')
+    code=$(json_field 'code' < /tmp/p2-guest-create.json)
+    [ "$c" = "401" ] && [ "$code" = "40100" ] \
+      && ok "游客建社群 → 401/40100" || ng "游客建社群语义" "HTTP $c code=$code"
+
+    # ---------- 建社群 ----------
+    body=$(curl -s --max-time 15 -X POST "$SITE/api/community/communities" \
+      -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+      -d "{\"name\":\"$COMMUNITY_NAME\",\"description\":\"第一行\\n第二行\"}")
+    COMMUNITY_ID=$(printf '%s' "$body" | json_field 'data.id')
+    owner=$(printf '%s' "$body" | json_field 'data.ownerId')
+    mc=$(printf '%s' "$body" | json_field 'data.memberCount')
+    if [ -n "$COMMUNITY_ID" ]; then
+      ok "建社群成功 id=$COMMUNITY_ID"
+    else
+      ng "建社群失败" "$(printf '%s' "$body" | head -c 160)"
+    fi
+    [ "$owner" = "$USER_ID" ] && ok "ownerId = 创建者" || ng "ownerId 不对" "got=$owner want=$USER_ID"
+    [ "$mc" = "1" ] && ok "memberCount 从 1 起" || ng "memberCount 不是 1" "got=$mc"
+
+    # memberCount 是数字而不是字符串："1" / 1 的区分靠 JSON 类型
+    if printf '%s' "$body" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)['data']
+raise SystemExit(0 if isinstance(d['memberCount'], int) and isinstance(d['id'], str) else 1)"; then
+      ok "类型正确：id 是字符串、memberCount 是数字"
+    else
+      ng "字段类型不对" "id 应为 string、memberCount 应为 number"
+    fi
+
+    # ---------- 创建者确实是成员（库层） ----------
+    row=$(sql_exec "SELECT CONCAT(COUNT(*), ':', IFNULL(SUM(role),-1), ':', IFNULL(SUM(status),-1))
+      FROM kuaikan_community.t_community_member WHERE community_id=$COMMUNITY_ID AND user_id=$USER_ID;")
+    row=$(printf '%s' "$row" | tr -d '\r\n ')
+    [ "$row" = "1:0:1" ] && ok "创建者是成员（1 行，role=0，status=1）" \
+      || ng "创建者成员行不对" "got=$row want=1:0:1"
+
+    # ---------- 名称重复 ----------
+    body=$(curl -s --max-time 15 -X POST "$SITE/api/community/communities" \
+      -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+      -d "{\"name\":\"$COMMUNITY_NAME\"}")
+    [ "$(printf '%s' "$body" | json_field 'code')" = "41002" ] \
+      && ok "名称重复 → 41002" || ng "名称重复未拦截" "$(printf '%s' "$body" | head -c 120)"
+
+    # ---------- 规范化：大小写 + 全角 ----------
+    curl -s --max-time 15 -o /dev/null -X POST "$SITE/api/community/communities" \
+      -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+      -d "{\"name\":\"$COMMUNITY_NAME_LOWER\"}"
+
+    body=$(curl -s --max-time 15 -X POST "$SITE/api/community/communities" \
+      -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+      -d "{\"name\":\"$(printf '%s' "$COMMUNITY_NAME_LOWER" | tr 'A-Z' 'a-z')\"}")
+    [ "$(printf '%s' "$body" | json_field 'code')" = "41002" ] \
+      && ok "大小写不同视为同名 → 41002" || ng "大小写未归一" "$(printf '%s' "$body" | head -c 120)"
+
+    # 全角字母：NFKC 折叠后应命中同一个 name_key。
+    # 这条同时证明"字符集校验发生在规范化之后"——若校验在之前，全角会被 40010 拒。
+    full=$(printf '%s' "$COMMUNITY_NAME_LOWER" | python3 -c "
+import sys
+s=sys.stdin.read()
+print(''.join(chr(ord(c)+0xFEE0) if '!' <= c <= '~' else c for c in s), end='')")
+    body=$(curl -s --max-time 15 -X POST "$SITE/api/community/communities" \
+      -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+      -d "{\"name\":\"$full\"}")
+    [ "$(printf '%s' "$body" | json_field 'code')" = "41002" ] \
+      && ok "全角名称 NFKC 折叠后同样视为重名 → 41002" \
+      || ng "全角未折叠" "name=$full → $(printf '%s' "$body" | head -c 120)"
+
+    # ---------- 详情与大小写不敏感的查找 ----------
+    enc=$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))" "$COMMUNITY_NAME")
+    body=$(curl -s --max-time 15 "$SITE/api/community/communities/$enc")
+    [ "$(printf '%s' "$body" | json_field 'data.id')" = "$COMMUNITY_ID" ] \
+      && ok "游客可读社群详情" || ng "游客读详情" "$(printf '%s' "$body" | head -c 120)"
+
+    # 详情里不应有任何按查看者变化的字段（公开端点上一律匿名）
+    if printf '%s' "$body" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)['data']
+raise SystemExit(1 if any(k.startswith('viewer') for k in d) else 0)"; then
+      ok "公开详情无 viewer* 字段（放行 = 匿名）"
+    else
+      ng "公开详情带了按人变化的字段"
+    fi
+
+    low=$(printf '%s' "$COMMUNITY_NAME_LOWER" | tr 'A-Z' 'a-z')
+    body=$(curl -s --max-time 15 "$SITE/api/community/communities/$low")
+    [ -n "$(printf '%s' "$body" | json_field 'data.id')" ] \
+      && ok "小写路径命中同一个社群（查找也走规范化）" \
+      || ng "小写路径查不到" "$(printf '%s' "$body" | head -c 120)"
+
+    # ---------- 不存在的社群 ----------
+    c=$(http_code "$SITE/api/community/communities/definitely-not-exist-xyz")
+    [ "$c" = "404" ] && ok "不存在的社群 → 404" || ng "不存在社群的状态码" "HTTP $c"
+
+    # ---------- 名称校验 ----------
+    b1=$(curl -s --max-time 15 -X POST "$SITE/api/community/communities" -H "Authorization: Bearer $TOKEN" \
+      -H 'Content-Type: application/json' -d '{"name":"x"}')
+    b2=$(curl -s --max-time 15 -X POST "$SITE/api/community/communities" -H "Authorization: Bearer $TOKEN" \
+      -H 'Content-Type: application/json' -d '{"name":"有/斜杠"}')
+    if [ "$(printf '%s' "$b1" | json_field 'code')" = "40010" ] \
+       && [ "$(printf '%s' "$b2" | json_field 'code')" = "40010" ]; then
+      ok "名称校验：过短 / 含斜杠 → 40010"
+    else
+      ng "名称校验" "过短=$(printf '%s' "$b1" | head -c 60) 斜杠=$(printf '%s' "$b2" | head -c 60)"
+    fi
+
+    # ---------- 游标分页 ----------
+    c1=$(curl -s --max-time 15 "$SITE/api/community/communities?limit=1" | json_field 'data.nextCursor')
+    if [ -n "$c1" ]; then
+      p1=$(curl -s --max-time 15 "$SITE/api/community/communities?limit=1" | json_field 'data.items.0.id')
+      p2=$(curl -s --max-time 15 "$SITE/api/community/communities?limit=1&cursor=$c1" | json_field 'data.items.0.id')
+      if [ -n "$p1" ] && [ -n "$p2" ] && [ "$p1" != "$p2" ]; then
+        ok "游标翻页：第 2 页与第 1 页不重叠"
+      else
+        ng "游标翻页重复" "p1=$p1 p2=$p2"
+      fi
+    else
+      skip "游标翻页" "社群不足 2 个"
+    fi
+
+    body=$(curl -s --max-time 15 "$SITE/api/community/communities?cursor=not-a-cursor")
+    [ "$(printf '%s' "$body" | json_field 'code')" = "40010" ] \
+      && ok "篡改游标 → 40010（不是 500）" || ng "篡改游标语义" "$(printf '%s' "$body" | head -c 120)"
+  fi
+
+  skip "成员加入/退出与 member_count 增量" "P2.2 未实现"
   skip "发帖与权限边界（41004）" "P2.3 未实现"
-  skip "游标分页不重不漏" "P2.4 未实现"
+  skip "帖子游标分页不重不漏" "P2.4 未实现"
 fi
 
 # ================================================================ L3 浏览器
