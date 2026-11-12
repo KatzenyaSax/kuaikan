@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/shared/api/client'
 import type { OkData, RequestBody } from '@/shared/api/typed'
 
@@ -21,22 +21,26 @@ export function usePostDetail(postId: string | undefined) {
 /**
  * 社群时间线。游标分页，最新在上。
  *
- * 游标不透明：只回传，不解析、不拼。服务端把排序标记编在里面，
- * 拿错列表的游标会被明确拒绝（40010）而不是给出乱序数据。
+ * 用 useInfiniteQuery 而不是手写"游标数组 + 多次 useQuery"：
+ * 后者每一页都是一个独立的 query，`data` 只包含**最后一页**，
+ * 于是"加载更多"会把列表替换掉而不是追加（这个 bug 是 L3 浏览器验收抓到的，
+ * HTTP 层的分页断言完全看不出来）。
  *
- * `placeholderData: keepPreviousData` 让翻页时旧数据留在屏幕上，
- * 不会闪一下空白——列表比正文更怕闪。
+ * 游标不透明：只从服务端拿、原样回传，不解析、不拼。
+ * 服务端把排序标记编在里面，拿错列表的游标会被明确拒绝（40010）。
  */
-export function usePostList(communityId: string | undefined, cursor: string | null) {
-  return useQuery({
-    queryKey: ['posts', communityId, cursor],
-    queryFn: () =>
+export function usePostList(communityId: string | undefined) {
+  return useInfiniteQuery({
+    queryKey: ['posts', communityId],
+    queryFn: ({ pageParam }) =>
       api.get<PostPage>(
         `${BASE}?communityId=${encodeURIComponent(communityId ?? '')}&limit=20` +
-          (cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''),
+          (pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : ''),
       ),
+    initialPageParam: '',
+    // nextCursor 为 null 表示没有下一页；返回 undefined 让 infiniteQuery 停下
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
     enabled: Boolean(communityId),
-    placeholderData: (prev) => prev,
   })
 }
 

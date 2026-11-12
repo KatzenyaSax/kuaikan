@@ -615,14 +615,116 @@ raise SystemExit(1 if bad else 0)"; then
     [ "$c" = "404" ] && ok "内部接口 /internal/** 公网不可达" || ng "内部接口暴露（严重）" "HTTP $c"
   fi
 
-  skip "帖子游标分页不重不漏" "P2.4 未实现"
+  # ---------------------------------------------------------------- P2.4 帖子列表
+  if [ -n "$TOKEN" ] && [ -n "$COMMUNITY_ID" ]; then
+    LIST_BASE="$SITE/api/content/posts?communityId=$COMMUNITY_ID"
+
+    # 先灌 25 帖，才能验翻页
+    for i in $(seq 1 25); do
+      curl -s --max-time 15 -o /dev/null -X POST "$POST_BASE" -H "Authorization: Bearer $TOKEN" \
+        -H 'Content-Type: application/json' \
+        -d "{\"communityId\":\"$COMMUNITY_ID\",\"title\":\"分页 $i\",\"body\":\"b\"}"
+    done
+
+    body=$(curl -s --max-time 15 "$LIST_BASE&limit=10")
+    page1=$(printf '%s' "$body" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)['data']
+print(','.join(i['id'] for i in d['items']))")
+    cur1=$(printf '%s' "$body" | json_field 'data.nextCursor')
+    n1=$(printf '%s' "$page1" | tr ',' '\n' | grep -c . || true)
+    [ "$n1" = "10" ] && ok "帖子列表第 1 页返回 10 条" || ng "第 1 页条数不对" "got=$n1"
+
+    # 列表项不含 body：一屏 20 条各带一篇正文，响应体会膨胀几十倍
+    if printf '%s' "$body" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)['data']['items'][0]
+raise SystemExit(1 if 'body' in d else 0)"; then
+      ok "列表项不含 body"
+    else
+      ng "列表项带了 body" "列表与详情应当分离"
+    fi
+
+    # **最值钱的一条**：翻页过程中插入新帖，第二页不能与第一页重复。
+    # offset 分页在这里必然重复（新帖把后面的记录整体往后推）。
+    for i in $(seq 26 28); do
+      curl -s --max-time 15 -o /dev/null -X POST "$POST_BASE" -H "Authorization: Bearer $TOKEN" \
+        -H 'Content-Type: application/json' \
+        -d "{\"communityId\":\"$COMMUNITY_ID\",\"title\":\"插入 $i\",\"body\":\"b\"}"
+    done
+    page2=$(curl -s --max-time 15 "$LIST_BASE&limit=10&cursor=$cur1" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)['data']
+print(','.join(i['id'] for i in d['items']))")
+    if [ -n "$cur1" ] && [ -n "$page2" ]; then
+      dup=$(python3 -c "
+import sys
+p1=set(sys.argv[1].split(','))
+p2=set(sys.argv[2].split(','))
+print(len(p1 & p2))" "$page1" "$page2")
+      [ "$dup" = "0" ] && ok "翻页中途插入新帖：第 2 页与第 1 页无重复（游标分页的核心性质）" \
+        || ng "翻页出现重复" "重复 $dup 条，说明游标没起作用"
+    else
+      ng "第二页拿不到" "cur1=$cur1 page2=$page2"
+    fi
+
+    # sort 只实现 new，其他值必须明确拒绝（静默降级会掩盖 P5 的 bug）
+    body=$(curl -s --max-time 15 "$LIST_BASE&sort=hot")
+    [ "$(printf '%s' "$body" | json_field 'code')" = "40010" ] \
+      && ok "sort=hot 在 P2 → 40010（不静默降级）" \
+      || ng "未知排序被静默接受" "$(printf '%s' "$body" | head -c 100)"
+
+    body=$(curl -s --max-time 15 "$LIST_BASE&cursor=garbage")
+    [ "$(printf '%s' "$body" | json_field 'code')" = "40010" ] \
+      && ok "帖子列表篡改游标 → 40010" || ng "帖子列表游标未校验" "$(printf '%s' "$body" | head -c 100)"
+
+    # 跨列表复用游标：排序标记不同，必须被拒
+    ccur=$(curl -s --max-time 15 "$SITE/api/community/communities?limit=1" | json_field 'data.nextCursor')
+    if [ -n "$ccur" ]; then
+      body=$(curl -s --max-time 15 "$LIST_BASE&cursor=$ccur")
+      [ "$(printf '%s' "$body" | json_field 'code')" = "40010" ] \
+        && ok "把社群列表的游标喂给帖子列表 → 40010（排序标记隔离）" \
+        || ng "跨列表游标未被拒" "$(printf '%s' "$body" | head -c 100)"
+    else
+      skip "跨列表游标隔离" "社群不足 2 个，拿不到社群游标"
+    fi
+
+    c=$(http_code "$LIST_BASE&limit=2")
+    [ "$c" = "200" ] && ok "游客可读帖子列表" || ng "游客读帖子列表" "HTTP $c"
+  fi
+
+  skip "双栏交互 / 冷启动深链接 / 窄屏降级" "见 L3"
 fi
 
 # ================================================================ L3 浏览器
 
 if want_heavy_layer l3; then
   section "L3 浏览器（playwright）"
-  skip "双栏交互 / 冷启动深链接 / 窄屏降级" "P2.4 未实现"
+
+  if [ -d "$WEB_DIR/node_modules" ] && command -v node >/dev/null 2>&1; then
+    if ! prepare_fixture; then
+      ng "L3 无法准备夹具"
+    else
+      # 社群名用 e2e- 前缀，cleanup 的按前缀删除会一并清掉
+      UI_COMMUNITY="e2e-ui-${STAMP}"
+      info "L3 夹具社群：${UI_COMMUNITY}"
+      if out=$(cd "$WEB_DIR" && SITE="$SITE" \
+            E2E_EMAIL="$EMAIL" E2E_PASSWORD="$FIXTURE_PASS" E2E_COMMUNITY="$UI_COMMUNITY" \
+            node scripts/e2e-content.mjs 2>&1); then
+        printf '%s\n' "$out" | grep -E '^  (✓|✗)' | sed 's/^  /  /'
+        n=$(printf '%s\n' "$out" | grep -c '^  ✓')
+        PASS=$((PASS + n))
+        [ "$n" -gt 0 ] && ok_marker=1
+      else
+        printf '%s\n' "$out" | grep -E '^  (✓|✗)' | sed 's/^  /  /'
+        n_ok=$(printf '%s\n' "$out" | grep -c '^  ✓')
+        PASS=$((PASS + n_ok))
+        ng "浏览器验收有失败" "$(printf '%s\n' "$out" | grep '^  ✗' | head -3 | tr '\n' ' ')"
+      fi
+    fi
+  else
+    skip "L3 浏览器" "缺少 web/node_modules 或 node"
+  fi
 fi
 
 # ================================================================ L5 回归
