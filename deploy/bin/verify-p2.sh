@@ -629,7 +629,11 @@ if want_heavy_layer l5; then
   #
   # 用显式开关而不是往 NOISE 正则里加例外：后者会把真正的回归一起放过。
   # 代价是这一层不再检查日志 —— 所以 P0 的日志断言必须在**单独运行 verify.sh** 时看。
-  out=$(ssh_run 'cd /opt/kuaikan/repo && bash deploy/bin/verify.sh --no-restart --skip-log-check' 2>&1)
+  # 必须先同步服务器仓库：verify.sh 是从服务器上的 checkout 跑的，
+  # 不同步就会出现"新参数在老脚本上不存在"这类假失败。
+  # 与 verify-p1.sh 的 L5 做法一致。
+  out=$(ssh_run 'cd /opt/kuaikan/repo && git fetch -q origin && git reset -q --hard origin/main \
+    && bash deploy/bin/verify.sh --no-restart --skip-log-check' 2>&1)
   if printf '%s' "$out" | grep -q 'P0 验收通过'; then
     ok "verify.sh（P0）全绿"
   else
