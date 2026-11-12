@@ -1,6 +1,7 @@
 package top.katzenyasax.kuaikan.community.web;
 
 import org.springframework.beans.factory.annotation.Value;
+import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -29,6 +30,7 @@ public class PingController {
         this.ledger = ledger;
     }
 
+    @Operation(operationId = "communityPing")
     @GetMapping
     public Result<Map<String, Object>> ping() throws Exception {
         Map<String, Object> body = new LinkedHashMap<>();
@@ -41,6 +43,7 @@ public class PingController {
     }
 
     /** P0 冒烟：回查某条消息是否被本服务消费 */
+    @Operation(operationId = "communityMqStatus")
     @GetMapping("/mq/{traceId}")
     public Result<Map<String, Object>> mqStatus(@PathVariable("traceId") String traceId) {
         return Result.ok(ledger.snapshot(traceId));

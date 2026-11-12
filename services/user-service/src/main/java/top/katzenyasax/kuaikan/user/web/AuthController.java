@@ -57,6 +57,7 @@ public class AuthController {
     }
 
     /** 发送注册验证码 */
+    @PublicEndpoint
     @PostMapping("/register/code")
     public Result<Map<String, Object>> sendRegisterCode(@Valid @RequestBody SendCodeRequest body,
                                                         HttpServletRequest request) {
@@ -69,6 +70,7 @@ public class AuthController {
     }
 
     /** 注册 */
+    @PublicEndpoint
     @PostMapping("/register")
     public Result<RegisterResponse> register(@Valid @RequestBody RegisterRequest body) {
         return Result.ok(registrationService.register(body));
@@ -82,6 +84,7 @@ public class AuthController {
      * 凭据错误返回 200 + 40206（不是 401）：401 会让前端的续期拦截器介入，
      * 变成"输错密码 → 跳登录页"的死循环。见 p1-auth.md §4。
      */
+    @PublicEndpoint
     @PostMapping("/login")
     public ResponseEntity<Result<LoginResponse>> login(@Valid @RequestBody LoginRequest body,
                                                        HttpServletRequest request) {
@@ -97,6 +100,7 @@ public class AuthController {
     }
 
     /** 续期。refresh 从 httpOnly cookie 读，JS 拿不到它 */
+    @PublicEndpoint
     @PostMapping("/refresh")
     public ResponseEntity<Result<LoginResponse>> refresh(
             @CookieValue(value = AuthCookies.REFRESH, required = false) String refreshToken,

@@ -15,17 +15,24 @@ import java.util.Map;
 public final class ErrorHttpStatus {
 
     /** 只登记 http != 200 的码；未登记的默认 200 */
-    private static final Map<Integer, Integer> SPECIAL = Map.of(
-            40100, 401,  // 未登录 / 凭证无效 —— 前端据此触发续期
-            40202, 429,  // 验证码发送过于频繁
-            40203, 403,  // 注册功能未开放
-            40205, 403,  // 账号已被封禁
-            40300, 403,  // 无权限
-            40400, 404,  // 资源不存在
-            40900, 409,  // 状态冲突
-            42900, 429,  // 请求过于频繁
-            50000, 500,  // 服务内部错误
-            50300, 503   // 依赖不可用（fail-closed）
+    //
+    // 用 Map.ofEntries 而不是 Map.of：`Map.of` 的参数上限就是 10 对
+    // （JDK 只提供到 of(K,V,...) 的 10 对重载）。P2 加两个码就到 12 对，
+    // 用 Map.of 会直接编译失败，且报错信息指向不到原因。
+    private static final Map<Integer, Integer> SPECIAL = Map.ofEntries(
+            Map.entry(40100, 401),  // 未登录 / 凭证无效 —— 前端据此触发续期
+            Map.entry(40202, 429),  // 验证码发送过于频繁
+            Map.entry(40203, 403),  // 注册功能未开放
+            Map.entry(40205, 403),  // 账号已被封禁
+            Map.entry(40300, 403),  // 无权限
+            Map.entry(40400, 404),  // 资源不存在
+            Map.entry(40900, 409),  // 状态冲突
+            Map.entry(41001, 404),  // 社群不存在
+            Map.entry(41002, 409),  // 社群标识已被占用
+            Map.entry(42001, 404),  // 帖子不存在
+            Map.entry(42900, 429),  // 请求过于频繁
+            Map.entry(50000, 500),  // 服务内部错误
+            Map.entry(50300, 503)   // 依赖不可用（fail-closed）
     );
 
     public static int of(int code) {

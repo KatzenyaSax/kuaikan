@@ -136,21 +136,6 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
     throw new Error(`请求路径必须以 /api/ 开头，实际：${path}`)
   }
 
-  // mock 模式下不发真实网络请求。
-  // 用 typeof 守卫是为了在 Node（冒烟脚本）下不抛 ReferenceError；
-  // 生产构建里 __KUIKAN_API_MOCK__ 被替换为 false，整个分支连同动态 import 一起被摇掉。
-  if (typeof __KUIKAN_API_MOCK__ !== 'undefined' && __KUIKAN_API_MOCK__) {
-    const { resolveMock } = await import('@/shared/api/mock')
-    const queryIndex = path.indexOf('?')
-    const cleanPath = queryIndex >= 0 ? path.slice(0, queryIndex) : path
-    const data = await resolveMock({
-      method: opts.method ?? 'GET',
-      path: cleanPath,
-      body: opts.body,
-    })
-    return data as T
-  }
-
   let { status, body } = await sendOnce(path, opts)
 
   // 401：先尝试续期一次，成功则重放；失败或不能续期才走登出流程

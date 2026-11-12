@@ -29,5 +29,14 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
+        <!-- springdoc 只用于 OpenApiConfig（全局 bearerAuth + @PublicEndpoint 处理）。
+             声明为 optional：common-web 的使用方不引入 springdoc 时，该类由
+             @ConditionalOnClass 自动跳过，不会因为缺类而启动失败。 -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-api</artifactId>
+            <optional>true</optional>
+        </dependency>
+
     </dependencies>
 </project>

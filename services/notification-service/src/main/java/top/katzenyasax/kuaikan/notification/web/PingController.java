@@ -1,6 +1,7 @@
 package top.katzenyasax.kuaikan.notification.web;
 
 import org.springframework.beans.factory.annotation.Value;
+import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -21,6 +22,7 @@ public class PingController {
     @Value("${server.port}")
     private String port;
 
+    @Operation(operationId = "notificationPing")
     @GetMapping
     public Result<Map<String, Object>> ping() throws Exception {
         Map<String, Object> body = new LinkedHashMap<>();

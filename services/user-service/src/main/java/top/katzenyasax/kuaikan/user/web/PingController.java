@@ -6,6 +6,7 @@ import org.apache.rocketmq.client.producer.SendResult;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -41,6 +42,7 @@ public class PingController {
         this.mqProducer = mqProducer;
     }
 
+    @Operation(operationId = "userPing")
     @GetMapping
     public Result<Map<String, Object>> ping() throws Exception {
         Map<String, Object> body = new LinkedHashMap<>();
@@ -54,6 +56,7 @@ public class PingController {
 
     // ---------------- Feign + Nacos 服务发现 ----------------
 
+    @Operation(operationId = "userFeign")
     @GetMapping("/feign")
     public Result<Map<String, Object>> feign() {
         Map<String, Object> body = new LinkedHashMap<>();
@@ -66,6 +69,7 @@ public class PingController {
     // ---------------- RocketMQ 收发 ----------------
 
     /** 发一条消息，返回 traceId；消费者收到后可通过 GET /ping/mq/{traceId} 查证 */
+    @Operation(operationId = "userSendMq")
     @PostMapping("/mq")
     public Result<Map<String, Object>> sendMq() throws Exception {
         String traceId = UUID.randomUUID().toString();
@@ -80,6 +84,7 @@ public class PingController {
     }
 
     /** 通过 Feign 问 community-service：这条消息你收到了吗？ */
+    @Operation(operationId = "userMqStatus")
     @GetMapping("/mq/{traceId}")
     public Result<Map<String, Object>> mqStatus(@PathVariable("traceId") String traceId) {
         Map<String, Object> body = new LinkedHashMap<>();
@@ -91,6 +96,7 @@ public class PingController {
 
     // ---------------- Sentinel 限流 ----------------
 
+    @Operation(operationId = "userSentinel")
     @GetMapping("/sentinel")
     @SentinelResource(value = P0SentinelConfig.RESOURCE, blockHandler = "sentinelBlocked")
     public ResponseEntity<Result<Map<String, Object>>> sentinel() {

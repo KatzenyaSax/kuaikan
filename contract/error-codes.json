@@ -14,6 +14,10 @@
     { "code": 40300, "name": "FORBIDDEN",             "http": 403, "owner": "common", "message": "没有权限" },
     { "code": 40400, "name": "NOT_FOUND",             "http": 404, "owner": "common", "message": "资源不存在" },
     { "code": 40900, "name": "CONFLICT",              "http": 409, "owner": "common", "message": "状态冲突" },
+    { "code": 41001, "name": "COMMUNITY_NOT_FOUND",    "http": 404, "owner": "community", "message": "社群不存在" },
+    { "code": 41002, "name": "COMMUNITY_SLUG_TAKEN",    "http": 409, "owner": "community", "message": "该社群标识已被占用" },
+    { "code": 41004, "name": "NOT_MEMBER",              "http": 200, "owner": "community", "message": "需要先加入社群" },
+    { "code": 42001, "name": "POST_NOT_FOUND",          "http": 404, "owner": "content",   "message": "帖子不存在" },
     { "code": 42900, "name": "RATE_LIMITED",          "http": 429, "owner": "common", "message": "请求过于频繁" },
     { "code": 50000, "name": "INTERNAL",              "http": 500, "owner": "common", "message": "服务内部错误" },
     { "code": 50300, "name": "UPSTREAM_UNAVAILABLE",  "http": 503, "owner": "common", "message": "服务暂时不可用" }

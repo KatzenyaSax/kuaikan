@@ -18,6 +18,10 @@ export const ERROR_MESSAGES: Readonly<Record<number, string>> = {
   40300: '没有权限', // FORBIDDEN
   40400: '资源不存在', // NOT_FOUND
   40900: '状态冲突', // CONFLICT
+  41001: '社群不存在', // COMMUNITY_NOT_FOUND
+  41002: '该社群标识已被占用', // COMMUNITY_SLUG_TAKEN
+  41004: '需要先加入社群', // NOT_MEMBER
+  42001: '帖子不存在', // POST_NOT_FOUND
   42900: '请求过于频繁', // RATE_LIMITED
   50000: '服务内部错误', // INTERNAL
   50300: '服务暂时不可用', // UPSTREAM_UNAVAILABLE
@@ -37,6 +41,10 @@ export const ERROR_HTTP_STATUS: Readonly<Record<number, number>> = {
   40300: 403,
   40400: 404,
   40900: 409,
+  41001: 404,
+  41002: 409,
+  41004: 200,
+  42001: 404,
   42900: 429,
   50000: 500,
   50300: 503,
