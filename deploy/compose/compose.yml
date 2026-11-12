@@ -324,7 +324,15 @@ services:
     logging: *default-logging
     environment:
       <<: *default-app-env
-    depends_on: *default-app-depends
+      # 数据层（ADR 0006：只连自己的 schema，账号只有本库权限）
+      MYSQL_HOST: mysql
+      MYSQL_USER: u_content
+      MYSQL_PASSWORD: ${MYSQL_PWD_CONTENT:?}
+      ID_WORKER_ID: "3"
+    depends_on:
+      <<: *default-app-depends
+      mysql:
+        condition: service_healthy
     networks:
       - kuaikan
     healthcheck:

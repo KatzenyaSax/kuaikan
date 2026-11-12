@@ -5,14 +5,48 @@ server:
 spring:
   application:
     name: content-service
+  datasource:
+    # 只连自己的 schema。u_content 只有 kuaikan_content.* 的权限（ADR 0006）
+    url: jdbc:mysql://${MYSQL_HOST:mysql}:${MYSQL_PORT:3306}/kuaikan_content?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USER:u_content}
+    password: ${MYSQL_PASSWORD:}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 3000
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
   cloud:
-    nacos:
-      discovery:
+    openfeign:
+      client:
+        config:
+          default:
+            # 发帖要同步问 community-service"是不是成员"。
+            # **必须设超时**：Feign 默认没有读超时，下游卡住会把 content-service
+            # 的线程池耗光 —— 故障从一个服务扩散成两个。
+            connectTimeout: 500
+            readTimeout: 500
+
+
         server-addr: ${NACOS_ADDR:127.0.0.1:8848}
         namespace: ${NACOS_NAMESPACE:}
         group: ${NACOS_GROUP:DEFAULT_GROUP}
         metadata:
           version: ${APP_VERSION:dev}
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    banner: false
+    # 每个服务必须有独立的 worker-id（user=1 community=2 content=3）。
+    # 容器内从 MAC/PID 推导不保证唯一，而 ID 冲突要等到写入时才暴露。
+    worker-id: ${ID_WORKER_ID:3}
+    datacenter-id: ${ID_DATACENTER_ID:1}
 
 management:
   endpoints:

@@ -85,6 +85,8 @@ kuaikan:
       - POST /api/user/auth/refresh
       # P2：社群列表游客可读（仅 GET）
       - GET /api/community/communities
+      # P2.3：批量作者摘要（帖子列表显示作者昵称头像用）
+      - GET /api/user/users
     # 正则放行：P0/P0.5 的探针端点，不返回任何用户数据。
     # 这是 P1 的已知债务，见 docs/project.md「P0 期间已知的公开面」。
     public-patterns:
@@ -93,6 +95,10 @@ kuaikan:
       # 两条限制叠加：只放行 GET，且只放行"最后一段是名称"的形状。
       # 少任何一条，/communities/{name}/membership 这类写端点都会被放行。
       - GET ^/api/community/communities/[^/]+$
+      # P2.3：帖子详情游客可读。刻意只认**数字 id**：
+      # 帖子 id 是雪花数字，用 [0-9]+ 把路径形状钉死，
+      # 将来在 /posts/ 下加写端点不会被这条顺带放行。
+      - GET ^/api/content/posts/[0-9]+$
 
 management:
   endpoints:
