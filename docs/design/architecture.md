@@ -66,7 +66,7 @@
 
 **A. 游客读**：浏览器 → Nginx（命中 `proxy_cache`）→ 网关（放行名单）→ 服务 → 返回。响应中不得包含任何用户相关字段。
 
-**B. 登录读**：前端并发三路 —— `GET /api/content/posts/{id}`（正文 + 作者摘要 + 计数快照）、`GET /api/content/posts/{id}/comments?cursor=`、`GET /api/interaction/states?targets=post:1,comment:2,comment:3`（批量查询多目标的"我赞过没/收藏没"）。绕过 Nginx 缓存。
+**B. 登录读**：前端并发三路 —— `GET /api/content/posts/{id}`（正文 + 计数快照）、`GET /api/user/users?ids=`（作者摘要，见 ADR 0009）、`GET /api/content/posts/{id}/comments?cursor=`、`GET /api/interaction/states?targets=post:1,comment:2,comment:3`（批量查询多目标的"我赞过没/收藏没"）。绕过 Nginx 缓存。
 
 **C. 写 + 事件**：客户端 → 网关 → 服务本地事务（业务表 + `t_outbox`）→ XXL-Job 扫 outbox 投递 RocketMQ → 消费方幂等消费。跨服务无分布式事务。
 
@@ -163,6 +163,8 @@
    `verify.sh` 有一条配置层断言守着它（除 gateway 外声明 `ports:` 就红）。
 8. **`kuaikan-common` 只放非业务代码**。
 9. **消息是自包含快照**；**存储不折叠，展示才折叠**。
+   ⚠️ 快照原则**只适用于 notification 的消息**，不适用于帖子与评论——
+   后者的作者信息实时拉取（ADR 0009）。消息是历史记录，帖子是当前状态。
 10. **所有消费者必须幂等**，幂等优先级：唯一索引 > 去重表 > 对账兜底。
 11. **列表分页一律游标**，禁止 `offset` 深分页。
 12. **游客可读的接口必须在网关放行名单中显式声明**，不得靠"忘记加鉴权"实现。
