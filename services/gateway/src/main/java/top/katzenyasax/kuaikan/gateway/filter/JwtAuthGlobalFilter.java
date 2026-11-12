@@ -17,6 +17,8 @@ import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
+import java.util.Optional;
+
 import reactor.core.publisher.Mono;
 import top.katzenyasax.kuaikan.common.api.Result;
 import top.katzenyasax.kuaikan.common.error.CommonErrorCode;
@@ -94,41 +96,70 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
             return unauthorized(exchange, CommonErrorCode.UNAUTHORIZED.message());
         }
 
+        SignedJWT parsed = jwt;
+        return authenticate(exchange, parsed, path)
+                .flatMap(claims -> claims.isPresent()
+                        ? chain.filter(withIdentity(exchange, claims.get()))
+                        : Mono.empty());
+    }
+
+    /**
+     * 解析身份。返回 {@code Optional.empty()} 表示"已拒绝并写完响应"。
+     *
+     * <b>为什么下游调用必须在这一步之外</b>：
+     * 原来的写法把 {@code chain.filter(...)} 也套在 {@code onErrorResume} 里，于是
+     * 任何下游异常（例如负载均衡器报 "Unable to find instance for community-service"）
+     * 都会被那条 catch 抓住，记成"鉴权依赖不可用"并替换成自己的 503 响应。
+     *
+     * 后果有两个：日志把"下游挂了"误导成"鉴权故障"，排查方向直接跑偏；
+     * 而且下游的真实响应被吞掉了。现在 {@code chain.filter} 在 {@code flatMap}
+     * 里调用，它的错误不会再进入这里的 {@code onErrorResume}。
+     *
+     * 这里的 {@code onErrorResume} 只覆盖两件事：取公钥、查 Redis 白名单。
+     * 两者失败时都无法判断身份，所以必须 fail-closed。
+     */
+    private Mono<Optional<JWTClaimsSet>> authenticate(
+            ServerWebExchange exchange, SignedJWT jwt, String path) {
         String kid = jwt.getHeader().getKeyID();
         return jwksProvider.keyFor(kid)
-                .switchIfEmpty(Mono.defer(() -> {
-                    log.warn("未知 kid={}，可能是密钥不匹配", kid);
-                    return Mono.empty();
-                }))
-                .flatMap(rsaKey -> {
+                .map(Optional::of)
+                .defaultIfEmpty(Optional.empty())
+                .flatMap(maybeKey -> {
+                    if (maybeKey.isEmpty()) {
+                        log.warn("未知 kid={}，可能是密钥不匹配", kid);
+                        return reject(exchange);
+                    }
                     try {
-                        if (!jwt.verify(new RSASSAVerifier(rsaKey))) {
-                            return unauthorized(exchange, CommonErrorCode.UNAUTHORIZED.message());
+                        if (!jwt.verify(new RSASSAVerifier(maybeKey.get()))) {
+                            return reject(exchange);
                         }
                         JWTClaimsSet claims = jwt.getJWTClaimsSet();
                         String problem = validate(claims);
                         if (problem != null) {
                             log.info("token 校验未通过：{} path={}", problem, path);
-                            return unauthorized(exchange, CommonErrorCode.UNAUTHORIZED.message());
+                            return reject(exchange);
                         }
-                        String jti = claims.getJWTID();
-                        return whitelist.isActive(jti).flatMap(active -> {
-                            if (!Boolean.TRUE.equals(active)) {
-                                // 已登出 / 被踢下线 / 被封禁
-                                return unauthorized(exchange, CommonErrorCode.UNAUTHORIZED.message());
-                            }
-                            return chain.filter(withIdentity(exchange, claims));
-                        });
+                        // Redis 白名单是"登出/踢下线/封禁立即失效"的全部来源
+                        return whitelist.isActive(claims.getJWTID())
+                                .flatMap(active -> Boolean.TRUE.equals(active)
+                                        ? Mono.just(Optional.of(claims))
+                                        : reject(exchange));
                     } catch (Exception e) {
                         log.warn("token 验签异常 path={} err={}", path, e.toString());
-                        return unauthorized(exchange, CommonErrorCode.UNAUTHORIZED.message());
+                        return reject(exchange);
                     }
                 })
                 .onErrorResume(e -> {
-                    // 取不到公钥 / Redis 不可用 —— 安全路径必须 fail-closed
+                    // 只可能是"公钥或 Redis 不可用"——无法判断身份，fail-closed
                     log.error("鉴权依赖不可用，拒绝请求 path={} err={}", path, e.toString());
-                    return failClosed(exchange);
+                    return failClosed(exchange).thenReturn(Optional.empty());
                 });
+    }
+
+    /** 拒绝并写完 401 响应，返回空 Optional 让调用方不再继续 */
+    private Mono<Optional<JWTClaimsSet>> reject(ServerWebExchange exchange) {
+        return unauthorized(exchange, CommonErrorCode.UNAUTHORIZED.message())
+                .thenReturn(Optional.empty());
     }
 
     /** @return null 表示通过，否则是原因 */
