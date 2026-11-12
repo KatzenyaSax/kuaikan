@@ -254,7 +254,8 @@ public class CommunityService {
     /** 待插入的成员行。id 必须在调用 mapper 前分配好，所以这里要传实体给 id 生成器 */
     private CommunityMember newMember(Long communityId, Long userId) {
         CommunityMember row = new CommunityMember();
-        row.setId(idGen.nextId(row));
+        // nextId 返回 Number（实现可返回任意数字类型），这里要 Long
+        row.setId(idGen.nextId(row).longValue());
         row.setCommunityId(communityId);
         row.setUserId(userId);
         row.setRole(CommunityMember.ROLE_MEMBER);
