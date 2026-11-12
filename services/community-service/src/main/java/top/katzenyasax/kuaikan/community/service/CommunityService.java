@@ -40,8 +40,12 @@ public class CommunityService {
 
     private static final Logger log = LoggerFactory.getLogger(CommunityService.class);
 
-    /** 排序标记，编进游标。P5 若加"按活跃度"排序，各排序各自解释自己的游标 */
-    private static final String SORT_NEW = "new";
+    /**
+     * 排序标记，编进游标。**每个列表的标记必须不同**：
+     * 社群列表是 community-new，帖子列表是 post-new。
+     * 否则把一个列表的游标喂给另一个列表时，会被当成有效游标静默解析出错误结果。
+     */
+    private static final String SORT_NEW = "community-new";
 
     /** /mine 的排序标记：按加入时间倒序，与会话游标分开 */
     private static final String SORT_MINE = "mine";

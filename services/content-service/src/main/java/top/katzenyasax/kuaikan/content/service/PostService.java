@@ -4,6 +4,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.List;
+import top.katzenyasax.kuaikan.common.api.CursorCodec;
 import top.katzenyasax.kuaikan.common.api.Result;
 import top.katzenyasax.kuaikan.common.error.BizException;
 import top.katzenyasax.kuaikan.common.error.CommonErrorCode;
@@ -15,11 +22,19 @@ import top.katzenyasax.kuaikan.content.feign.MembershipView;
 import top.katzenyasax.kuaikan.content.mapper.PostMapper;
 import top.katzenyasax.kuaikan.content.web.dto.CreatePostRequest;
 import top.katzenyasax.kuaikan.content.web.dto.PostDetail;
+import top.katzenyasax.kuaikan.content.web.dto.PostPage;
+import top.katzenyasax.kuaikan.content.web.dto.PostSummary;
 
 @Service
 public class PostService {
 
     private static final Logger log = LoggerFactory.getLogger(PostService.class);
+
+    /** 排序标记，编进游标。P5 若加热度排序，各排序各自解释自己的游标 */
+    private static final String SORT_NEW = "post-new";
+
+    private static final int DEFAULT_LIMIT = 20;
+    private static final int MAX_LIMIT = 50;
 
     private final PostMapper postMapper;
     private final CommunityMembershipClient membershipClient;
@@ -64,6 +79,52 @@ public class PostService {
             throw new BizException(ContentErrorCode.POST_NOT_FOUND);
         }
         return PostDetail.of(post);
+    }
+
+    /**
+     * 社群时间线。按发布时间倒序，游标分页。
+     *
+     * P2 只实现 {@code sort=new}，其他值**明确拒绝**（40010）而不是静默降级：
+     * 静默降级会把 bug 藏起来，P5 上线热度排序时无法证明它真的生效了。
+     *
+     * 翻页的正确性靠游标的复合键：单列时间戳在"翻页过程中有人发帖"时
+     * 会重复或跳过。verify-p2.sh 的 L2 有一条专门造这个场景的断言。
+     */
+    public PostPage list(Long communityId, String sort, String cursor, Integer limit) {
+        String effectiveSort = (sort == null || sort.isBlank()) ? "new" : sort;
+        if (!"new".equals(effectiveSort)) {
+            throw new BizException(CommonErrorCode.PARAM_INVALID, "暂不支持该排序方式");
+        }
+        int size = normalizeLimit(limit);
+        CursorCodec.Cursor c = CursorCodec.decode(cursor, SORT_NEW);
+
+        // 多取一条用来判断有没有下一页，省掉一次 count 查询
+        List<Post> rows = (c == null)
+                ? postMapper.firstPage(communityId, size + 1)
+                : postMapper.pageAfter(communityId,
+                        LocalDateTime.ofInstant(Instant.ofEpochMilli(c.timestampMillis()),
+                                ZoneId.systemDefault()),
+                        c.id(), size + 1);
+
+        List<PostSummary> items = new ArrayList<>();
+        for (int i = 0; i < rows.size() && i < size; i++) {
+            items.add(PostSummary.of(rows.get(i)));
+        }
+        String next = null;
+        if (rows.size() > size) {
+            Post last = rows.get(size - 1);
+            next = CursorCodec.encode(SORT_NEW,
+                    last.getCreatedAt().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+                    last.getId());
+        }
+        return new PostPage(items, next);
+    }
+
+    private static int normalizeLimit(Integer limit) {
+        if (limit == null || limit <= 0) {
+            return DEFAULT_LIMIT;
+        }
+        return Math.min(limit, MAX_LIMIT);
     }
 
     private void requireMembership(Long communityId, Long userId) {

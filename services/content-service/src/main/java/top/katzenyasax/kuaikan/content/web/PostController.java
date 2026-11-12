@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import top.katzenyasax.kuaikan.common.api.Result;
 import top.katzenyasax.kuaikan.common.web.UserContext;
@@ -14,6 +15,7 @@ import top.katzenyasax.kuaikan.common.web.annotation.PublicEndpoint;
 import top.katzenyasax.kuaikan.content.service.PostService;
 import top.katzenyasax.kuaikan.content.web.dto.CreatePostRequest;
 import top.katzenyasax.kuaikan.content.web.dto.PostDetail;
+import top.katzenyasax.kuaikan.content.web.dto.PostPage;
 
 /**
  * 帖子。网关剥掉 /api/content 前缀后映射到 /posts。
@@ -30,6 +32,22 @@ public class PostController {
 
     public PostController(PostService postService) {
         this.postService = postService;
+    }
+
+    /**
+     * 社群时间线。游客可读。
+     *
+     * 路径与发帖相同（都是 /posts），靠 (方法, 路径) 二元组的放行规则区分：
+     * GET 公开、POST 需要登录。
+     */
+    @Operation(operationId = "listPosts")
+    @PublicEndpoint
+    @GetMapping
+    public Result<PostPage> list(@RequestParam("communityId") Long communityId,
+                                 @RequestParam(required = false) String sort,
+                                 @RequestParam(required = false) String cursor,
+                                 @RequestParam(required = false) Integer limit) {
+        return Result.ok(postService.list(communityId, sort, cursor, limit));
     }
 
     @Operation(operationId = "createPost")
