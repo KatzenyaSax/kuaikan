@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useCommunityList } from '@/features/community/api'
+import { useCommunityList, useMyCommunities } from '@/features/community/api'
 import { CommunityCard } from '@/features/community/community-card'
 import { CreateCommunityDialog } from '@/features/community/create-community-dialog'
 import { authErrorMessage } from '@/features/auth/auth-error'
@@ -21,6 +21,9 @@ export function HomePage() {
 
   const canCreate = status === 'authenticated'
   const items = list.data?.items ?? []
+  // 我加入的社群：P2.4 的双栏里这块会挪进左栏顶部，这里先作为一个独立区块
+  const mine = useMyCommunities(canCreate)
+  const mineItems = mine.data?.items ?? []
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -43,6 +46,24 @@ export function HomePage() {
           </a>
         )}
       </div>
+
+      {canCreate && mineItems.length > 0 ? (
+        <div className="space-y-2" data-testid="my-communities">
+          <h2 className="text-[11px] font-medium text-muted-foreground">我加入的社群</h2>
+          <div className="flex flex-wrap gap-2">
+            {mineItems.map((c) => (
+              <a
+                key={c.id}
+                href={`/c/${encodeURIComponent(c.name ?? '')}`}
+                className="rounded-full border border-border px-3 py-1 text-[11px] hover:bg-muted/40"
+                data-testid="my-community-chip"
+              >
+                {c.name}
+              </a>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {list.isPending ? (
         <div className="space-y-2">

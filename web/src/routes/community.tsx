@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { Link, useParams } from 'react-router'
-import { useCommunityDetail } from '@/features/community/api'
+import { useCommunityDetail, useMembership, useMyCommunities } from '@/features/community/api'
 import { authErrorMessage } from '@/features/auth/auth-error'
 import { useSession } from '@/features/auth/session'
+import { Button } from '@/shared/ui/button'
 import { Card, CardDescription, CardTitle } from '@/shared/ui/card'
 import { Skeleton } from '@/shared/ui/skeleton'
 
@@ -18,6 +20,15 @@ export function CommunityPage() {
   const { name } = useParams<{ name: string }>()
   const detail = useCommunityDetail(name)
   const status = useSession((s) => s.status)
+  const authed = status === 'authenticated'
+  // 公开详情里没有"我加没加入"（放行 = 匿名），所以从 /mine 推导。
+  // /mine 已经缓存，按钮不会先渲染成"加入"再闪成"已加入"。
+  const mine = useMyCommunities(authed)
+  const { join, leave } = useMembership()
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  const joined = (mine.data?.items ?? []).some((c) => c.name === detail.data?.name)
+  const busy = join.isPending || leave.isPending
 
   if (detail.isPending) {
     return (
@@ -61,10 +72,51 @@ export function CommunityPage() {
         ) : (
           <CardDescription>这个社群还没有简介</CardDescription>
         )}
-        <p className="text-[11px] text-muted-foreground">
-          {/* 加入功能在 P2.2；此刻只说明为什么还没有按钮，而不是放一个假的 */}
-          {status === 'authenticated' ? '加入功能开发中' : '登录后可以加入社群'}
-        </p>
+        <div className="flex items-center gap-2 pt-1">
+          {!authed ? (
+            <a
+              href={`/login?redirect=${encodeURIComponent(`/c/${name ?? ''}`)}`}
+              className="text-[11px] text-muted-foreground underline"
+              data-testid="link-login-to-join"
+            >
+              登录后可以加入社群
+            </a>
+          ) : joined ? (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              onClick={() => {
+                setActionError(null)
+                leave.mutate(community.name ?? '', {
+                  onError: (err) => setActionError(authErrorMessage(err)),
+                })
+              }}
+              data-testid="btn-leave-community"
+            >
+              {busy ? '处理中…' : '退出社群'}
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              disabled={busy}
+              onClick={() => {
+                setActionError(null)
+                join.mutate(community.name ?? '', {
+                  onError: (err) => setActionError(authErrorMessage(err)),
+                })
+              }}
+              data-testid="btn-join-community"
+            >
+              {busy ? '处理中…' : '加入社群'}
+            </Button>
+          )}
+        </div>
+        {actionError ? (
+          <p className="text-[11px] text-danger" data-testid="membership-error">
+            {actionError}
+          </p>
+        ) : null}
       </Card>
 
       <Card className="space-y-3">
