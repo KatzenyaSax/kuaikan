@@ -675,10 +675,15 @@ if want_heavy_layer l4; then
       [ "$d" = "200" ] && ok "kill community-service → 读帖子详情仍 200（读路径零跨服务依赖）" \
         || ng "读路径被下游拖垮" "HTTP $d"
 
+      # 只断言"不可用"，不臆测具体状态码：
+      # 可能是网关 fail-closed 的 503、也可能直接连接失败（curl 报 000）。
+      # 重要的是它不是 200 —— 那才证明服务真的停了，后面的 50300 不是空转。
       a=$(curl -s --max-time 10 -o /dev/null -w '%{http_code}' "$SITE/api/community/communities")
-      [ "$a" = "503" ] || [ "$a" = "504" ] || [ "$a" = "500" ] \
-        && ok "kill community-service → 社群列表确实不可用（证明真的停了）" \
-        || ng "社群列表居然还可访问" "HTTP ${a}，说明服务没真的停掉"
+      if [ "$a" != "200" ]; then
+        ok "kill community-service → 社群列表不可用（HTTP ${a}，证明服务真的停了）"
+      else
+        ng "社群列表居然还可访问" "HTTP 200，说明服务没真的停掉，后面的断言是空转"
+      fi
 
       ssh_run 'docker start kuaikan-community-service-1' >/dev/null 2>&1
       COMMUNITY_STOPPED=0
