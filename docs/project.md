@@ -331,6 +331,54 @@ docker exec kuaikan-user-service-1 \
 - `expired`：只在"本来已登录、被动掉线"时设置（首次访问的 401 是正常的"没登录"）
 - `manual`：主动登出，不提示
 
+### 网关鉴权过滤器的一个真 bug（P2.3 修复）
+
+`JwtAuthGlobalFilter` 原来把 `chain.filter(...)` 也套在最外层的 `onErrorResume` 里，
+于是**任何下游异常**都被记成"鉴权依赖不可用"并替换成自己的 503。
+
+现场是 L4 停掉 community-service 之后，网关日志报：
+
+```
+鉴权依赖不可用，拒绝请求 path=/api/community/communities
+  err=NotFoundException: Unable to find instance for community-service
+```
+
+而 `/communities` 是公开路径、根本不需要鉴权。这条日志让排查方向直接跑偏到
+鉴权上，同时下游的真实响应被吞掉。
+
+改法：身份解析拆成 `authenticate()`，返回 `Optional<JWTClaimsSet>`，
+`Optional.empty()` 表示"已拒绝并写完响应"；`chain.filter` 移到它的 `flatMap` 里，
+下游错误不再进入鉴权那层的 `onErrorResume`。那个 `onErrorResume` 现在只覆盖
+**取公钥**和**查 Redis 白名单**——两件真正需要 fail-closed 的事。
+
+复测：无 token 401 / 有 token 200 / 篡改签名 401 / 登出后旧 token 401，
+且下游 503 原样透出、误报次数 0。
+
+### 脚本基础设施：`check-scripts.mjs`
+
+`$VAR` 后面紧跟中文时，macOS 的 bash 3.2 会把中文字节吞进变量名
+（报 `USER_ID2：(unbound variable)`）。这个坑踩了三次——`verify-p1` 的 `USER_ID2`、
+`verify.sh` 的 `expect_id`、`verify-p2` 的 `$a`——所以做成了会红的检查：
+
+```
+deploy/bin/check-scripts.mjs   →  verify-p2.sh 的 L1 调用
+```
+
+检查三条：`$VAR` 后紧跟非 ASCII 处必须写 `${VAR}`、必须 `set -u`、shebang 统一。
+
+### 验收脚本的两条纪律
+
+**① 破坏性层必须最后跑。** `verify-p2.sh` 的执行顺序是 L1 → L2 → L3 → L5 → L4。
+L4 会真的 stop 服务，被 kill 过的服务之后 10 分钟内持续写 ERROR，
+而 P0 有一条"近 10 分钟无 ERROR"的断言——先破坏再回归 = 让回归必然失败。
+
+**② L4 停掉的服务必须有兜底重启。** 用 `COMMUNITY_STOPPED` 标记，
+在 `trap cleanup EXIT` 里无条件拉起。曾经因为脚本在中途报错退出，
+community-service 被留在停止状态——**一个能把环境停掉的验收脚本，比没有验收脚本更糟**。
+
+配套地，`verify.sh` 增加了显式的 `--skip-log-check`（只有 verify-p2 的 L5 用）。
+用开关而不是往 `NOISE` 正则里加例外：后者会把真正的回归一起放过。
+
 ### P2.3 发帖（已完成）
 
 `POST /api/content/posts`、`GET /api/content/posts/{id}`、
