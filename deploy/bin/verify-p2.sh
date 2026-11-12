@@ -158,14 +158,21 @@ cleanup() {
   # 按 id + 名称前缀双保险：一次运行会建两个社群（大小写归一那条断言也要一个），
   # 只记一个 id 会漏删。夹具名统一以 e2e- 开头，前缀匹配能兜住漏记的情况。
   if [ -n "$USER_ID" ]; then
-    sql_exec "DELETE m FROM kuaikan_community.t_community_member m
-        JOIN kuaikan_community.t_community c ON c.id = m.community_id
+    # 必须先 USE：MySQL 的多表 DELETE 即使表名全限定也要求有默认库
+    # （ERROR 1046 No database selected）。这里不吞 stderr——
+    # 清理失败必须看得见，否则测试数据会一点点攒进"生产"库。
+    out=$(sql_exec "USE kuaikan_community;
+      DELETE m FROM t_community_member m
+        JOIN t_community c ON c.id = m.community_id
         WHERE c.name LIKE 'e2e-%' OR c.id IN (${COMMUNITY_ID:-0}, ${COMMUNITY_ID2:-0});
-      DELETE FROM kuaikan_community.t_community
+      DELETE FROM t_community
         WHERE name LIKE 'e2e-%' OR id IN (${COMMUNITY_ID:-0}, ${COMMUNITY_ID2:-0});
       DELETE FROM kuaikan_user.t_refresh_token WHERE user_id=$USER_ID;
-      DELETE FROM kuaikan_user.t_user WHERE id=$USER_ID;" >/dev/null 2>&1 || true
-    info "已清理测试账号 $EMAIL 与测试社群"
+      DELETE FROM kuaikan_user.t_user WHERE id=$USER_ID;" 2>&1)
+    case "$out" in
+      *ERROR*) printf '  %s清理失败%s %s\n' "$R" "$N" "$(printf '%s' "$out" | head -2 | tr '\n' ' ')" ;;
+      *) info "已清理测试账号 $EMAIL 与测试社群" ;;
+    esac
   fi
 }
 trap cleanup EXIT
