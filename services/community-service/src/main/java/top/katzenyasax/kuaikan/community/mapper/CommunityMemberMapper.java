@@ -1,39 +1,40 @@
 package top.katzenyasax.kuaikan.community.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Update;
 import top.katzenyasax.kuaikan.community.domain.CommunityMember;
 
+import java.time.LocalDateTime;
+
 @Mapper
 public interface CommunityMemberMapper extends BaseMapper<CommunityMember> {
 
     /**
-     * 加入社群（幂等）。**返回值决定 member_count 要不要 +1**：
+     * 复活：把已退出的行重新置为在社。**返回 1 才是"真的复活了"**。
      *
-     * <pre>
-     *   1 = 新插入        → +1
-     *   2 = 复活（0→1）   → +1   行数没变，但成员数增加了
-     *   0 = 本来就是成员   → 不动
-     * </pre>
+     * 为什么用"先 insert、撞键再调这个"而不是一条 ON DUPLICATE KEY UPDATE：
+     * upsert 需要自己先分配雪花 id，那就得注入 IdentifierGenerator；而
+     * MyBatis-Plus 的生成器是挂在 GlobalConfig 上的，不一定以 bean 形式暴露。
+     * 更关键的是——**自己生成 id 有绕开 compose 里 ID_WORKER_ID 分配的风险**，
+     * 而 worker-id 冲突要等到写入时才暴露。
      *
-     * 为什么必须 upsert 而不是"先查再插"或 DELETE+INSERT：
-     * `uk_community_user` 让同一个 (社群, 用户) 只能有一行；退出用软删（status=0）
-     * 保留这一行，所以"退出再加入"必须是复活而不是插入。
-     * 先查再插在并发下会两个请求都查到"不存在"，然后一个成功一个撞唯一键。
+     * 让 BaseMapper.insert 去分配 id，就等于沿用了服务级配置。
      *
-     * joined_at 用参数传而不是 VALUES()——MySQL 8.0.20 起 VALUES() 已废弃。
+     * 并发安全：两个请求同时加入时，一个 insert 成功、另一个撞唯一键后落到这里，
+     * updated=0（本来就是 active）→ 不会重复计数。真正由唯一键做裁判，
+     * 不是"先查再插"那种会产生竞态的写法。
      */
-    @Insert("""
-            INSERT INTO t_community_member (id, community_id, user_id, role, status, joined_at)
-            VALUES (#{id}, #{communityId}, #{userId}, #{role}, 1, #{joinedAt})
-            ON DUPLICATE KEY UPDATE status = 1, joined_at = #{joinedAt}
+    @Update("""
+            UPDATE t_community_member SET status = 1, joined_at = #{joinedAt}
+            WHERE community_id = #{communityId} AND user_id = #{userId} AND status = 0
             """)
-    int upsertActive(CommunityMember member);
+    int revive(@Param("communityId") Long communityId,
+               @Param("userId") Long userId,
+               @Param("joinedAt") LocalDateTime joinedAt);
 
-    /** 退出社群（幂等）。返回 1 才是真的从"在社"变成"已退出"，才需要 member_count -1 */
+    /** 退出（幂等）。返回 1 才是真的从"在社"变成"已退出"，才需要 member_count -1 */
     @Update("""
             UPDATE t_community_member SET status = 0
             WHERE community_id = #{communityId} AND user_id = #{userId} AND status = 1

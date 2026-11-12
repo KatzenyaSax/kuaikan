@@ -1,7 +1,6 @@
 package top.katzenyasax.kuaikan.community.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.incrementer.IdentifierGenerator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
@@ -51,14 +50,10 @@ public class CommunityService {
 
     private final CommunityMapper communityMapper;
     private final CommunityMemberMapper memberMapper;
-    private final IdentifierGenerator idGen;
 
-    public CommunityService(CommunityMapper communityMapper,
-                            CommunityMemberMapper memberMapper,
-                            IdentifierGenerator idGen) {
+    public CommunityService(CommunityMapper communityMapper, CommunityMemberMapper memberMapper) {
         this.communityMapper = communityMapper;
         this.memberMapper = memberMapper;
-        this.idGen = idGen;
     }
 
     /**
@@ -103,9 +98,8 @@ public class CommunityService {
             throw new BizException(CommunityErrorCode.COMMUNITY_NAME_TAKEN);
         }
 
-        // 创建者成为第一个成员。这里也走 upsertActive：与"加入"是同一条代码路径，
-        // 不会出现"建社群插的成员行"和"加入时插的成员行"两套逻辑不一致
-        memberMapper.upsertActive(newMember(community.getId(), userId));
+        // 创建者成为第一个成员。与"加入"走同一条代码路径，不会出现两套插入逻辑
+        insertMember(community.getId(), userId);
 
         log.info("社群已创建 id={} name={} ownerId={}", community.getId(), name, userId);
         return CommunityDetail.of(community);
@@ -172,14 +166,20 @@ public class CommunityService {
     public CommunityDetail join(Long userId, String name) {
         Community community = requireByName(name);
 
-        // affectedRows 的语义见 CommunityMemberMapper#upsertActive
-        int affected = memberMapper.upsertActive(newMember(community.getId(), userId));
-        if (affected == 1 || affected == 2) {
+        CommunityMember row = newMember(community.getId(), userId);
+        boolean added;
+        try {
+            memberMapper.insert(row);
+            added = true;                     // 新插入
+        } catch (DuplicateKeyException e) {
+            // 已有一行（可能 status=0 已退出，也可能 status=1 本来就在）
+            added = memberMapper.revive(community.getId(), userId, row.getJoinedAt()) == 1;
+        }
+        if (added) {
             communityMapper.incrementMemberCount(community.getId());
-            log.info("加入社群 id={} userId={} affected={}", community.getId(), userId, affected);
+            log.info("加入社群 id={} userId={}", community.getId(), userId);
         } else {
-            log.info("已在社群，幂等返回 id={} userId={} affected={}",
-                    community.getId(), userId, affected);
+            log.info("已在社群，幂等返回 id={} userId={}", community.getId(), userId);
         }
         return CommunityDetail.of(requireById(community.getId()));
     }
@@ -251,17 +251,23 @@ public class CommunityService {
         return new CommunityPage(items, next);
     }
 
-    /** 待插入的成员行。id 必须在调用 mapper 前分配好，所以这里要传实体给 id 生成器 */
+    /**
+     * 待插入的成员行。**id 留空**，由 BaseMapper.insert 按服务配置的
+     * ID_WORKER_ID 分配 —— 自己生成会绕开那个分配，而 worker-id 冲突
+     * 要等到写入时才暴露。
+     */
     private CommunityMember newMember(Long communityId, Long userId) {
         CommunityMember row = new CommunityMember();
-        // nextId 返回 Number（实现可返回任意数字类型），这里要 Long
-        row.setId(idGen.nextId(row).longValue());
         row.setCommunityId(communityId);
         row.setUserId(userId);
         row.setRole(CommunityMember.ROLE_MEMBER);
         row.setStatus(CommunityMember.STATUS_ACTIVE);
         row.setJoinedAt(LocalDateTime.now().truncatedTo(ChronoUnit.MILLIS));
         return row;
+    }
+
+    private void insertMember(Long communityId, Long userId) {
+        memberMapper.insert(newMember(communityId, userId));
     }
 
     private Community requireById(Long id) {
