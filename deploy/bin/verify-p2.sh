@@ -125,6 +125,7 @@ STAMP="$(date +%s)"
 EMAIL="e2e+p2${STAMP}@kuaikan.test"
 USER_ID=""
 COMMUNITY_ID=""
+COMMUNITY_ID2=""
 COMMUNITY_NAME="e2e-社群-${STAMP}"
 COMMUNITY_NAME_LOWER="E2e-Front-${STAMP}"
 
@@ -154,12 +155,17 @@ sql_exec() {
 }
 
 cleanup() {
-  if [ -n "$COMMUNITY_ID" ] || [ -n "$USER_ID" ]; then
-    sql_exec "DELETE FROM kuaikan_community.t_community_member WHERE community_id=${COMMUNITY_ID:-0};
-      DELETE FROM kuaikan_community.t_community WHERE id=${COMMUNITY_ID:-0};
-      DELETE FROM kuaikan_user.t_refresh_token WHERE user_id=${USER_ID:-0};
-      DELETE FROM kuaikan_user.t_user WHERE id=${USER_ID:-0};" >/dev/null 2>&1 || true
-    info "已清理测试账号 $EMAIL 与社群 $COMMUNITY_NAME"
+  # 按 id + 名称前缀双保险：一次运行会建两个社群（大小写归一那条断言也要一个），
+  # 只记一个 id 会漏删。夹具名统一以 e2e- 开头，前缀匹配能兜住漏记的情况。
+  if [ -n "$USER_ID" ]; then
+    sql_exec "DELETE m FROM kuaikan_community.t_community_member m
+        JOIN kuaikan_community.t_community c ON c.id = m.community_id
+        WHERE c.name LIKE 'e2e-%' OR c.id IN (${COMMUNITY_ID:-0}, ${COMMUNITY_ID2:-0});
+      DELETE FROM kuaikan_community.t_community
+        WHERE name LIKE 'e2e-%' OR id IN (${COMMUNITY_ID:-0}, ${COMMUNITY_ID2:-0});
+      DELETE FROM kuaikan_user.t_refresh_token WHERE user_id=$USER_ID;
+      DELETE FROM kuaikan_user.t_user WHERE id=$USER_ID;" >/dev/null 2>&1 || true
+    info "已清理测试账号 $EMAIL 与测试社群"
   fi
 }
 trap cleanup EXIT
@@ -248,9 +254,10 @@ raise SystemExit(0 if isinstance(d['memberCount'], int) and isinstance(d['id'], 
       && ok "名称重复 → 41002" || ng "名称重复未拦截" "$(printf '%s' "$body" | head -c 120)"
 
     # ---------- 规范化：大小写 + 全角 ----------
-    curl -s --max-time 15 -o /dev/null -X POST "$SITE/api/community/communities" \
+    body=$(curl -s --max-time 15 -X POST "$SITE/api/community/communities" \
       -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-      -d "{\"name\":\"$COMMUNITY_NAME_LOWER\"}"
+      -d "{\"name\":\"$COMMUNITY_NAME_LOWER\"}")
+    COMMUNITY_ID2=$(printf '%s' "$body" | json_field 'data.id')
 
     body=$(curl -s --max-time 15 -X POST "$SITE/api/community/communities" \
       -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \

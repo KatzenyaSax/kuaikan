@@ -321,6 +321,86 @@ docker exec kuaikan-user-service-1 \
 - `expired`：只在"本来已登录、被动掉线"时设置（首次访问的 401 是正常的"没登录"）
 - `manual`：主动登出，不提示
 
+### P2.1 社群（已完成）
+
+#### 社群名就是标识，没有 slug
+
+```
+name     = 展示名，用户输入原文（trim 后），创建后不可改
+name_key = 规范化唯一键，系统生成：NFKC + trim + toLowerCase + 连续空白转 "-"
+URL      = /c/{name_key}
+```
+
+用户只填名字和简介，其他什么都不用管。重名返回 `41002`。
+
+**校验顺序是硬要求：先 NFKC 折叠，再校验字符集。** 如果先按 ASCII 校验原始名称，
+全角输入（`ＡＢＣ`）会被 `40010` 拒掉，NFKC 就成了死代码。现在 `ＡＢＣ` 能建，
+且与 `ABC` 视为同名——`verify-p2.sh` 有断言守着。
+
+**社群名创建后不可改**：名字成了 URL，改名等于让所有旧链接失效。贴吧与 Reddit 同规则。
+
+#### 所有者是社群的属性，管理员是成员的身份
+
+| 概念 | 存在哪 | 数量 |
+|---|---|---|
+| 所有者 | `t_community.owner_id` | 每个社群恰好一个 |
+| 管理员 | `t_community_member.role = 1` | 可多个（P7 才有写入者） |
+
+不用 `role = OWNER`：MySQL 没有"每社群只能有一行 owner"的部分唯一索引，那份唯一性
+只能靠应用层保证，而 `owner_id` 是单列，天然唯一。所有者也是成员（建社群时同一事务
+插 member 行）。
+
+#### 建社群 = 建社群 + 成为第一个成员
+
+`t_community` 与 `t_community_member` 必须**同一刀引入**：没有成员表就表达不了创建者，
+`member_count` 也对不上。三件事在同一个本地事务里。
+
+#### 网关放行规则必须是 (方法, 路径)
+
+这条是 P2.1 踩出来的。原来只按路径匹配，于是 `GET /communities`（公开）把
+`POST /communities`（需要登录）也一起放行了——网关走"放行分支"、跳过身份注入，
+下游 `requireUserId()` 抛 401。**症状是"带着 token 反而说没登录"**，极易误判成
+token 问题。
+
+现在规则格式是 `<METHOD> <路径或正则>`，方法位写 `*` 表示任意方法；格式错误
+**在网关启动时抛异常**（一条写错的放行规则意味着某端点悄悄对全网开放，
+必须部署时就炸）。`PublicEndpointRules` 负责解析与预编译。
+
+P2.3 的 `/posts`（GET 公开 + POST 需要登录）会再验证一次这套机制。
+
+#### 公开端点上一律匿名
+
+网关的放行分支**永远剥离身份**，所以公开 endpoint 上 `UserContext.userId()` 恒为 null。
+原打算在社群详情里带 `viewerJoined` 省一个请求，做不到；与其把网关改成
+"公开路径吞掉验签失败"（多一条难测的分支），不如保持一条无例外的规则：
+**放行 = 匿名，永远。**"我加没加入"由 P2.2 的 `/mine` 回答。
+
+#### 三次踩到同一个坑：跨服务共用的 Web 设施必须在 common-web
+
+| 设施 | 原本只在 | 后果 |
+|---|---|---|
+| `MybatisAuditHandler` | user-service | 新服务插入后实体上 `createdAt` 为 null |
+| `GlobalExceptionHandler` | user-service | **所有 BizException 漏成 Spring 默认 500 页面**，前端拿不到 code |
+| `JacksonConfig` / `OpenApiConfig` | 已在 common-web | — |
+
+后两者现在都在 `kuaikan-common-web`，由 `WebAutoConfiguration` / 独立 AutoConfiguration
+以 `@Bean` 注册（它们不在各服务的 `@ComponentScan` 包下，光有注解扫不到）。
+**新增服务时先确认这三样是否已生效**，否则会以"静默失效"的方式重犯。
+
+#### Jackson 只把包装类型 Long 转成字符串
+
+新规矩：**`Long`（包装）= 可能是 ID → 字符串；`long`（原始）= 计数/时长 → 数字。**
+
+一开始两者都转，于是 `memberCount`、`expiresIn` 在 JSON 里是 `"1"`，
+而 OpenAPI 契约写 `integer` —— 生成的 TS 类型说 number、实际拿到 string，
+前端任何算术都会静默出错。
+
+#### 审计时间戳截到毫秒
+
+库里是 `DATETIME(3)`，`LocalDateTime.now()` 带纳秒。不截断的话，
+"创建接口返回的 `createdAt`"是 `...646746906`、"详情读回来的"是 `...647`，
+同一个字段两种格式。
+
 ### P2.0 契约闸门（已完成）
 
 P2 有 11 个端点、2 个新 schema、3 个服务同时改。P2.0 **不写任何业务代码**，
