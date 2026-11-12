@@ -394,6 +394,18 @@ raise SystemExit(1 if any(k.startswith('viewer') for k in d) else 0)"; then
     c5=$(member_count "$enc")
     [ "$c5" = "2" ] && ok "退出再加入走复活路径：回到 2（不是 3）" || ng "复活路径计数错" "got=$c5 want=2"
 
+    # 并发加入：10 个请求同时打，member_count 只能 +1。
+    # 这条才是"相对更新 + 唯一键裁判"真正要证明的东西：
+    # 先读再写的实现在这里必然加出 3 以上的计数。
+    curl -s --max-time 15 -o /dev/null -X DELETE "$mem_base" -H "Authorization: Bearer $TOKEN2"
+    for _ in $(seq 1 10); do
+      curl -s --max-time 15 -o /dev/null -X POST "$mem_base" -H "Authorization: Bearer $TOKEN2" &
+    done
+    wait
+    cc=$(member_count "$enc")
+    [ "$cc" = "2" ] && ok "10 个并发加入只 +1（不丢更新、不重复计数）" \
+      || ng "并发加入计数错" "got=$cc want=2"
+
     # 所有者不能退出
     body=$(curl -s --max-time 15 -X DELETE "$mem_base" -H "Authorization: Bearer $TOKEN")
     code=$(printf '%s' "$body" | json_field 'code')
