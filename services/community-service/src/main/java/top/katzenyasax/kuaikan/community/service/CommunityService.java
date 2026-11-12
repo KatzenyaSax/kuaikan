@@ -18,6 +18,7 @@ import top.katzenyasax.kuaikan.community.web.dto.CommunityDetail;
 import top.katzenyasax.kuaikan.community.web.dto.CommunityPage;
 import top.katzenyasax.kuaikan.community.web.dto.CommunitySummary;
 import top.katzenyasax.kuaikan.community.web.dto.CreateCommunityRequest;
+import top.katzenyasax.kuaikan.community.web.dto.MembershipResponse;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -270,6 +271,33 @@ public class CommunityService {
 
     private void insertMember(Long communityId, Long userId) {
         memberMapper.insert(newMember(communityId, userId));
+    }
+
+    /**
+     * 内部查询：这个用户是不是这个社群的成员。
+     *
+     * 不加行锁、不开事务：纯读，而且调用方（发帖校验）需要的是"此刻大概是什么状态"，
+     * 强一致到毫秒没有意义 —— 用户退出社群的瞬间正好发出一个帖子，允许它成功。
+     */
+    public MembershipResponse membership(Long communityId, Long userId) {
+        Community community = communityMapper.selectById(communityId);
+        if (community == null || Community.STATUS_NORMAL != community.getStatus()) {
+            return MembershipResponse.notFound();
+        }
+        // 所有者一定算成员：owner_id 是社群属性，不是成员行（见 p2-content.md §3.1）。
+        // 理论上建社群时已经插了成员行，但这里不依赖那个不变量 ——
+        // 所有者不能发帖是个荒谬的失败模式，不值得为省一次判断去赌数据一致性。
+        if (community.getOwnerId().equals(userId)) {
+            return MembershipResponse.of(true, CommunityMember.ROLE_MEMBER);
+        }
+        CommunityMember member = memberMapper.selectOne(new LambdaQueryWrapper<CommunityMember>()
+                .eq(CommunityMember::getCommunityId, communityId)
+                .eq(CommunityMember::getUserId, userId)
+                .eq(CommunityMember::getStatus, CommunityMember.STATUS_ACTIVE));
+        if (member == null) {
+            return MembershipResponse.of(false, null);
+        }
+        return MembershipResponse.of(true, member.getRole());
     }
 
     /** 加行锁的按名查找，供成员变更写路径使用 */
