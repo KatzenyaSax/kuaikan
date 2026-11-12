@@ -9,8 +9,15 @@
 #   L1 契约与构建   check-contract / check-openapi / gen:types 无漂移 / typecheck / build
 #   L2 后端 HTTP    社群、成员、帖子、游标分页、权限边界（经公网网关）
 #   L3 浏览器       双栏交互、冷启动深链接、窄屏降级（playwright）
-#   L4 破坏性动作   kill 服务验读路径边界、非法游标、并发加入（经 SSH）
+#   L4 破坏性动作   kill 服务验读路径边界（经 SSH）—— **执行顺序上排在最后**
 #   L5 回归         verify.sh(P0) + verify-p05.sh(P0.5) + verify-p1.sh(P1)
+#
+# 注意执行顺序是 L1 → L2 → L3 → L5 → L4：L4 会真的停掉服务，
+# 被 kill 过的服务之后 10 分钟内会持续写 ERROR，而 P0 有一条
+# "近 10 分钟无 ERROR" 的断言。先破坏再回归 = 让回归必然失败。
+#
+# 同理：**跑完 verify-p2.sh 之后 10 分钟内单独跑 verify.sh 也会红**，
+# 那是 L4 的预期副作用，不是产品问题。
 #
 # P2.0 阶段只实现 L1，其余层为空壳并如实报「跳过」——
 # 每完成一刀就往对应层加断言，不攒到 P2.5。
@@ -609,7 +616,35 @@ if want_heavy_layer l3; then
   skip "双栏交互 / 冷启动深链接 / 窄屏降级" "P2.4 未实现"
 fi
 
-# ================================================================ L4 破坏性动作
+# ================================================================ L5 回归
+
+if want_heavy_layer l5; then
+  section "L5 回归（P0 / P0.5 / P1）"
+
+  # P0 的 verify.sh 检查的是容器状态，必须在服务器上跑；
+  # --no-restart 避免后半程的断言被重启窗口里的真 500 污染。
+  out=$(ssh_run 'cd /opt/kuaikan/repo && bash deploy/bin/verify.sh --no-restart' 2>&1)
+  if printf '%s' "$out" | grep -q 'P0 验收通过'; then
+    ok "verify.sh（P0）全绿"
+  else
+    ng "verify.sh（P0）有失败" "$(printf '%s' "$out" | tail -1)"
+  fi
+
+  for script in verify-p05.sh verify-p1.sh; do
+    if bash "$APP_DIR/deploy/bin/$script" --fast >/dev/null 2>&1; then
+      ok "$script 全绿"
+    else
+      ng "$script 有失败" "单独运行看详情"
+    fi
+  done
+fi
+
+# ================================================================ L4 破坏性动作（**必须最后跑**）
+#
+# 这一层会真的 stop 掉 community-service。它排在这里而不是 L5 之前，是因为
+# 被 kill 过的服务会在接下来 10 分钟里持续往日志里写 ERROR，而 P0 的 verify.sh
+# 有一条"近 10 分钟无 ERROR"的断言——先破坏再回归，等于让回归必然失败。
+
 
 if want_heavy_layer l4; then
   section "L4 破坏性动作（经 SSH）"
@@ -699,29 +734,6 @@ if want_heavy_layer l4; then
         || ng "恢复后仍不能发帖" "code=$after"
     fi
   fi
-fi
-
-# ================================================================ L5 回归
-
-if want_heavy_layer l5; then
-  section "L5 回归（P0 / P0.5 / P1）"
-
-  # P0 的 verify.sh 检查的是容器状态，必须在服务器上跑；
-  # --no-restart 避免后半程的断言被重启窗口里的真 500 污染。
-  out=$(ssh_run 'cd /opt/kuaikan/repo && bash deploy/bin/verify.sh --no-restart' 2>&1)
-  if printf '%s' "$out" | grep -q 'P0 验收通过'; then
-    ok "verify.sh（P0）全绿"
-  else
-    ng "verify.sh（P0）有失败" "$(printf '%s' "$out" | tail -1)"
-  fi
-
-  for script in verify-p05.sh verify-p1.sh; do
-    if bash "$APP_DIR/deploy/bin/$script" --fast >/dev/null 2>&1; then
-      ok "$script 全绿"
-    else
-      ng "$script 有失败" "单独运行看详情"
-    fi
-  done
 fi
 
 # ================================================================ 汇总
