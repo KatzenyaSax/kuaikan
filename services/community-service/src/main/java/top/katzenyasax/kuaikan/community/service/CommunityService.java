@@ -72,7 +72,7 @@ public class CommunityService {
         Long exists = communityMapper.selectCount(new LambdaQueryWrapper<Community>()
                 .eq(Community::getNameKey, nameKey));
         if (exists != null && exists > 0) {
-            throw new BizException(CommunityErrorCode.COMMUNITY_SLUG_TAKEN);
+            throw new BizException(CommunityErrorCode.COMMUNITY_NAME_TAKEN);
         }
 
         Community community = new Community();
@@ -86,7 +86,7 @@ public class CommunityService {
             communityMapper.insert(community);
         } catch (DuplicateKeyException e) {
             // 并发建同名社群：唯一键是最终裁判
-            throw new BizException(CommunityErrorCode.COMMUNITY_SLUG_TAKEN);
+            throw new BizException(CommunityErrorCode.COMMUNITY_NAME_TAKEN);
         }
 
         CommunityMember owner = new CommunityMember();
@@ -97,7 +97,7 @@ public class CommunityService {
         memberMapper.insert(owner);
 
         log.info("社群已创建 id={} name={} ownerId={}", community.getId(), name, userId);
-        return CommunityDetail.of(community, true, true);
+        return CommunityDetail.of(community);
     }
 
     /** 社群列表，按创建时间倒序（游标分页） */
@@ -129,19 +129,14 @@ public class CommunityService {
         return new CommunityPage(items, next);
     }
 
-    /** 按名称取社群详情。名称经同一套规范化，所以 /c/FRONTEND 与 /c/frontend 等价 */
-    public CommunityDetail getByName(String name, Long viewerUserId) {
-        Community community = requireByName(name);
-        Boolean joined = null;
-        Boolean isOwner = null;
-        if (viewerUserId != null) {
-            joined = memberMapper.selectCount(new LambdaQueryWrapper<CommunityMember>()
-                    .eq(CommunityMember::getCommunityId, community.getId())
-                    .eq(CommunityMember::getUserId, viewerUserId)
-                    .eq(CommunityMember::getStatus, CommunityMember.STATUS_ACTIVE)) > 0;
-            isOwner = community.getOwnerId().equals(viewerUserId);
-        }
-        return CommunityDetail.of(community, joined, isOwner);
+    /**
+     * 按名称取社群详情。名称经同一套规范化，所以 /c/FRONTEND 与 /c/frontend 等价。
+     *
+     * 不接收查看者身份：这是公开端点，网关的放行分支一律剥离身份，
+     * 传进来也永远是 null。响应里因此没有任何按人变化的字段（见 CommunityDetail）。
+     */
+    public CommunityDetail getByName(String name) {
+        return CommunityDetail.of(requireByName(name));
     }
 
     /** 供后续阶段（发帖校验、加入/退出）复用的按名查找 */

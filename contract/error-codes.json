@@ -15,7 +15,7 @@
     { "code": 40400, "name": "NOT_FOUND",             "http": 404, "owner": "common", "message": "资源不存在" },
     { "code": 40900, "name": "CONFLICT",              "http": 409, "owner": "common", "message": "状态冲突" },
     { "code": 41001, "name": "COMMUNITY_NOT_FOUND",    "http": 404, "owner": "community", "message": "社群不存在" },
-    { "code": 41002, "name": "COMMUNITY_SLUG_TAKEN",    "http": 409, "owner": "community", "message": "该社群标识已被占用" },
+    { "code": 41002, "name": "COMMUNITY_NAME_TAKEN",    "http": 409, "owner": "community", "message": "该社群名称已被使用" },
     { "code": 41004, "name": "NOT_MEMBER",              "http": 200, "owner": "community", "message": "需要先加入社群" },
     { "code": 41005, "name": "OWNER_CANNOT_LEAVE",      "http": 200, "owner": "community", "message": "社群创建者不能退出" },
     { "code": 42001, "name": "POST_NOT_FOUND",          "http": 404, "owner": "content",   "message": "帖子不存在" },

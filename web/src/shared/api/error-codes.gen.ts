@@ -19,7 +19,7 @@ export const ERROR_MESSAGES: Readonly<Record<number, string>> = {
   40400: '资源不存在', // NOT_FOUND
   40900: '状态冲突', // CONFLICT
   41001: '社群不存在', // COMMUNITY_NOT_FOUND
-  41002: '该社群标识已被占用', // COMMUNITY_SLUG_TAKEN
+  41002: '该社群名称已被使用', // COMMUNITY_NAME_TAKEN
   41004: '需要先加入社群', // NOT_MEMBER
   41005: '社群创建者不能退出', // OWNER_CANNOT_LEAVE
   42001: '帖子不存在', // POST_NOT_FOUND

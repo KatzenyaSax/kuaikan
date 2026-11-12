@@ -26,8 +26,8 @@ public class JacksonConfig {
     public Jackson2ObjectMapperBuilderCustomizer longToStringCustomizer() {
         return builder -> {
             SimpleModule module = new SimpleModule("kuaikan-long-to-string");
+            // 只注册包装类型：原始 long 是计数/时长，不能被转成字符串
             module.addSerializer(Long.class, ToStringSerializer.instance);
-            module.addSerializer(Long.TYPE, ToStringSerializer.instance);
             builder.modulesToInstall(module);
         };
     }

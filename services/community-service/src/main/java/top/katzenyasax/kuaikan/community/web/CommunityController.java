@@ -50,11 +50,11 @@ public class CommunityController {
     /**
      * 按名称取详情。名称经规范化后查找，所以大小写不同也能命中。
      *
-     * viewerJoined 让社群页不必多发一个请求判断"我加没加入"。
+     * 不带任何按查看者变化的字段：公开端点上一律匿名（见 CommunityDetail）。
      */
     @PublicEndpoint
     @GetMapping("/{name}")
     public Result<CommunityDetail> detail(@PathVariable("name") String name) {
-        return Result.ok(communityService.getByName(name, UserContext.userId()));
+        return Result.ok(communityService.getByName(name));
     }
 }

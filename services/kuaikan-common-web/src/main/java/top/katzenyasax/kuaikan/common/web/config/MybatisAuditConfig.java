@@ -7,6 +7,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.context.annotation.Bean;
 
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 
 /**
  * 审计字段自动填充，全服务共用一份。
@@ -27,14 +28,17 @@ public class MybatisAuditConfig {
         return new MetaObjectHandler() {
             @Override
             public void insertFill(MetaObject metaObject) {
-                LocalDateTime now = LocalDateTime.now();
+                // 截到毫秒：库里是 DATETIME(3)，不截会得到 646746906 这样的纳秒，
+                // 于是"创建返回的 createdAt"和"详情读回来的 createdAt"格式不同
+                LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.MILLIS);
                 strictInsertFill(metaObject, "createdAt", LocalDateTime.class, now);
                 strictInsertFill(metaObject, "updatedAt", LocalDateTime.class, now);
             }
 
             @Override
             public void updateFill(MetaObject metaObject) {
-                strictUpdateFill(metaObject, "updatedAt", LocalDateTime.class, LocalDateTime.now());
+                strictUpdateFill(metaObject, "updatedAt", LocalDateTime.class,
+                        LocalDateTime.now().truncatedTo(ChronoUnit.MILLIS));
             }
         };
     }
