@@ -715,6 +715,13 @@ if [ "$FAIL" -gt 0 ]; then
   exit 1
 fi
 
+# 单层模式不能宣称"整段验收通过"：其余层根本没跑。
+# 这和"空跑也是绿灯"是同一类问题 —— 通过的范围必须和实际执行的范围一致。
+if [ -n "$ONLY_LAYER_NORM" ]; then
+  printf '  %s%s 层通过%s（单层模式，不代表整段验收）\n' "$G" "$ONLY_LAYER_NORM" "$N"
+  exit 0
+fi
+
 if [ "$SKIP" -gt 0 ]; then
   printf '  %sP2 尚未完成：有 %d 项因未实现而跳过%s\n' "$Y" "$SKIP" "$N"
   exit 0

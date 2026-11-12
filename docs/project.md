@@ -331,6 +331,64 @@ docker exec kuaikan-user-service-1 \
 - `expired`：只在"本来已登录、被动掉线"时设置（首次访问的 401 是正常的"没登录"）
 - `manual`：主动登出，不提示
 
+### P2.3 发帖（已完成）
+
+`POST /api/content/posts`、`GET /api/content/posts/{id}`、
+`GET /internal/memberships`（community）、`GET /api/user/users?ids=`（user）。
+
+#### t_post 里没有的东西比有的更重要
+
+| 没有 | 理由 |
+|---|---|
+| 作者昵称/头像 | 存快照会让**发帖依赖 user-service 的同步可用性**（ADR 0009） |
+| 计数列 | P2 没有写入者；口径（comment_count 含不含 tombstone？）要 P3 才定 |
+| slug | 标题会变、会重复、会很长；帖子用 id 做 URL |
+
+也**不做 `view_count`**：最容易被刷的计数，又必须配一套对账，收益远小于维护成本。
+
+#### 发帖是唯一依赖 community-service 的写路径
+
+```
+content-service 发帖前 → GET /internal/memberships?communityId=&userId=
+```
+
+身份**显式传参**（ADR 0008），超时 500ms，失败一律 `50300`，**不重试**——重试会把
+500ms 变成 1.5s，而后端不可用时重试收益为零、代价是多占两倍线程。
+
+内部接口用 `{exists, member, role}` 正常返回表达两种"不满足"，**不用异常跨服务传错误码**。
+它回答的是"是什么"，不是"做什么"，所以总是成功返回。
+
+`kill community-service` 的实测结果：发帖 `50300` 且 **1 秒内返回**，同时读帖子详情仍 `200`。
+这条对照就是 ADR 0009 边界的证明，已写进 `verify-p2.sh` 的 L4。
+
+#### 批量作者摘要：新开的公网可见面
+
+`GET /api/user/users?ids=1,2,3`，游客可读。三条约束写死在实现里：
+
+1. **只返回 `userId` / `nickname` / `avatarUrl`** —— 不给 email（撞库）、
+   不给 status（泄露封禁）、不给时间戳（推断注册/活跃）
+2. **单次最多 100 个 id** —— 它长得像"用户目录"，不设上限等于开放拖库
+3. **不存在的 id 直接不返回**，调用方降级成"已注销用户"
+
+#### operationId 必须显式命名
+
+community 与 content 都有 `create` / `detail` → 前端 `typed.ts` 交叉合并后**静默指向
+其中一个**（两个形状兼容时 TypeScript 照常编译通过）。已全部改成自带领域前缀的名字：
+`listCommunities` / `createCommunity` / `getCommunity` / `joinCommunity` /
+`leaveCommunity` / `listMyCommunities` / `getMembership` / `createPost` / `getPost` /
+`batchUserSummaries`。
+
+**新增端点必须显式写 `@Operation(operationId = ...)`**，不靠方法名兜底。
+
+#### `check-openapi.mjs` 的模板路径问题
+
+它原来拿 spec 的**模板路径**（`/posts/{postId}`）去匹配网关正则，于是
+`^/api/content/posts/[0-9]+$` 这种"只认数字 id"的精确规则永远判为不覆盖——
+而我们刻意写得最严的恰恰是这种。
+
+改成先把模板参数替换成代表性取值（数字 / 字母 / 连字符）再匹配。
+这是启发式：拦的是"忘了加条目 / 方法写错"，不是证明正则等价。
+
 ### P2.2 加入社群（已完成）
 
 `POST|DELETE /api/community/communities/{name}/membership`（都幂等）、`GET /mine`。
