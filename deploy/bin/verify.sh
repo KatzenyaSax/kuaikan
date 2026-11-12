@@ -23,11 +23,17 @@ DOMAIN="www.katzenyasax.top"
 
 DO_RESTART=1
 DO_COLD=0
+# 跳过"近 10 分钟无 ERROR"这条断言。
+# 唯一合法用途：verify-p2.sh 的 L4 会**故意** stop 掉服务来验降级边界，
+# 被 kill 过的服务之后 10 分钟内持续写 ERROR，那和产品是否健康无关。
+# 用显式开关而不是悄悄放宽 NOISE 正则 —— 后者会把真正的回归也一起放过。
+SKIP_LOG_CHECK=0
 
 for arg in "$@"; do
   case "$arg" in
     --no-restart) DO_RESTART=0 ;;
     --cold)       DO_COLD=1 ;;
+    --skip-log-check) SKIP_LOG_CHECK=1 ;;
     -h|--help)    sed -n '2,20p' "$0"; exit 0 ;;
     *) echo "未知参数：$arg" >&2; exit 2 ;;
   esac
