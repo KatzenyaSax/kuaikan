@@ -5,6 +5,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplicat
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.Ordered;
+import top.katzenyasax.kuaikan.common.web.error.GlobalExceptionHandler;
 import top.katzenyasax.kuaikan.common.web.filter.UserContextFilter;
 
 /**
@@ -29,5 +30,19 @@ public class WebAutoConfiguration {
         // 尽早执行：后面的任何过滤器/拦截器都可能需要身份
         bean.setOrder(Ordered.HIGHEST_PRECEDENCE + 10);
         return bean;
+    }
+
+    /**
+     * 统一异常出口。
+     *
+     * 必须在这里用 @Bean 注册：GlobalExceptionHandler 不在各服务的 @ComponentScan
+     * 包下，光有 @RestControllerAdvice 注解不会被扫描到。
+     *
+     * 少了它的后果是**静默**的：BizException 会漏成 Spring 默认的 500 页面，
+     * 前端拿不到 code，"业务错误一律走 code" 的契约直接失效。
+     */
+    @Bean
+    public GlobalExceptionHandler globalExceptionHandler() {
+        return new GlobalExceptionHandler();
     }
 }

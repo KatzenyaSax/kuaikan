@@ -1,4 +1,4 @@
-package top.katzenyasax.kuaikan.user.web;
+package top.katzenyasax.kuaikan.common.web.error;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,11 +13,19 @@ import top.katzenyasax.kuaikan.common.error.CommonErrorCode;
 import top.katzenyasax.kuaikan.common.error.ErrorHttpStatus;
 
 /**
- * 统一异常出口。
+ * 统一异常出口，全服务共用一份。
  *
  * HTTP 状态码来自 {@link ErrorHttpStatus}（与 contract/error-codes.json 对齐）。
  * 关键：401 只留给"凭证无效"，**登录失败不是 401**——否则前端 401 拦截器
  * 会去调 refresh，形成"输错密码 → 跳登录页"的死循环（见 p1-auth.md §4）。
+ *
+ * 这个类原本在 user-service 里，P2.1 把它移到 common-web：**没有它的服务，
+ * 任何 BizException 都会漏成 Spring 默认的 500 页面**，前端拿不到 code，
+ * 于是"业务错误一律走 code"这条契约直接失效。它必须和 UserContextFilter
+ * 一样是"引了 common-web 就自动有"，而不是每个服务各抄一份。
+ *
+ * 注意：本类不在任何服务的 @ComponentScan 包下，靠 WebAutoConfiguration 里的
+ * @Bean 注册（Spring 会识别 bean 上的 @RestControllerAdvice）。
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -32,13 +40,12 @@ public class GlobalExceptionHandler {
         } else {
             log.info("业务异常 code={} message={}", e.code(), e.getMessage());
         }
-        return ResponseEntity.status(status)
-                .body(Result.fail(e.code(), e.getMessage()));
+        return ResponseEntity.status(status).body(Result.fail(e.code(), e.getMessage()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Result<Void>> handleValidation(MethodArgumentNotValidException e) {
-        // 只回第一个字段错误：前端按字段定位，多字段错误列表对 P1 表单没必要
+        // 只回第一个字段错误：前端按字段定位，多字段错误列表对表单没有价值
         FieldError first = e.getBindingResult().getFieldErrors().stream().findFirst().orElse(null);
         String message = first != null && first.getDefaultMessage() != null
                 ? first.getDefaultMessage()
