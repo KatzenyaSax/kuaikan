@@ -7,8 +7,6 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Update;
 import top.katzenyasax.kuaikan.community.domain.CommunityMember;
 
-import java.time.LocalDateTime;
-
 @Mapper
 public interface CommunityMemberMapper extends BaseMapper<CommunityMember> {
 
@@ -30,13 +28,10 @@ public interface CommunityMemberMapper extends BaseMapper<CommunityMember> {
      */
     @Insert("""
             INSERT INTO t_community_member (id, community_id, user_id, role, status, joined_at)
-            VALUES (#{id}, #{communityId}, #{userId}, 0, 1, #{joinedAt})
+            VALUES (#{id}, #{communityId}, #{userId}, #{role}, 1, #{joinedAt})
             ON DUPLICATE KEY UPDATE status = 1, joined_at = #{joinedAt}
             """)
-    int upsertActive(@Param("id") Long id,
-                     @Param("communityId") Long communityId,
-                     @Param("userId") Long userId,
-                     @Param("joinedAt") LocalDateTime joinedAt);
+    int upsertActive(CommunityMember member);
 
     /** 退出社群（幂等）。返回 1 才是真的从"在社"变成"已退出"，才需要 member_count -1 */
     @Update("""

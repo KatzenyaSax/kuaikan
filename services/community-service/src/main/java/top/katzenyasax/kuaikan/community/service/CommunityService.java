@@ -105,8 +105,7 @@ public class CommunityService {
 
         // 创建者成为第一个成员。这里也走 upsertActive：与"加入"是同一条代码路径，
         // 不会出现"建社群插的成员行"和"加入时插的成员行"两套逻辑不一致
-        memberMapper.upsertActive(idGen.nextId(), community.getId(), userId,
-                LocalDateTime.now().truncatedTo(ChronoUnit.MILLIS));
+        memberMapper.upsertActive(newMember(community.getId(), userId));
 
         log.info("社群已创建 id={} name={} ownerId={}", community.getId(), name, userId);
         return CommunityDetail.of(community);
@@ -174,8 +173,7 @@ public class CommunityService {
         Community community = requireByName(name);
 
         // affectedRows 的语义见 CommunityMemberMapper#upsertActive
-        int affected = memberMapper.upsertActive(idGen.nextId(), community.getId(), userId,
-                LocalDateTime.now().truncatedTo(ChronoUnit.MILLIS));
+        int affected = memberMapper.upsertActive(newMember(community.getId(), userId));
         if (affected == 1 || affected == 2) {
             communityMapper.incrementMemberCount(community.getId());
             log.info("加入社群 id={} userId={} affected={}", community.getId(), userId, affected);
@@ -251,6 +249,18 @@ public class CommunityService {
             next = CursorCodec.encode(SORT_MINE, toMillis(last.getJoinedAt()), last.getId());
         }
         return new CommunityPage(items, next);
+    }
+
+    /** 待插入的成员行。id 必须在调用 mapper 前分配好，所以这里要传实体给 id 生成器 */
+    private CommunityMember newMember(Long communityId, Long userId) {
+        CommunityMember row = new CommunityMember();
+        row.setId(idGen.nextId(row));
+        row.setCommunityId(communityId);
+        row.setUserId(userId);
+        row.setRole(CommunityMember.ROLE_MEMBER);
+        row.setStatus(CommunityMember.STATUS_ACTIVE);
+        row.setJoinedAt(LocalDateTime.now().truncatedTo(ChronoUnit.MILLIS));
+        return row;
     }
 
     private Community requireById(Long id) {
