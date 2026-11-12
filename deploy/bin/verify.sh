@@ -158,8 +158,10 @@ else
 fi
 
 # 用一个真实账号走完整链路：登录 → 带 token 调 whoami → 断言服务读到的就是本人
-DEV_EMAIL="developer@kuaikan.test"
-DEV_PASS="katzenyasaxDeveloper"
+# 用**测试专用账号**，不是人工 e2e 用的那个：
+# 脚本会反复登录，不该占用开发者自己的账号（会话列表、登录时间都会被搅乱）。
+DEV_EMAIL="agent@kuaikan.test"
+DEV_PASS="AgentFixture-9f3Kx2Qw"
 login_body=$(curl -s -X POST --max-time 15 "$INTERNAL/api/user/auth/login" \
   -H 'Content-Type: application/json' \
   -d "{\"email\":\"$DEV_EMAIL\",\"password\":\"$DEV_PASS\"}" 2>/dev/null)
@@ -167,7 +169,7 @@ token=$(printf '%s' "$login_body" | sed -n 's/.*"accessToken":"\([^"]*\)".*/\1/p
 expect_id=$(printf '%s' "$login_body" | sed -n 's/.*"userId":"\([0-9]*\)".*/\1/p')
 
 if [ -z "$token" ]; then
-  skip "网关注入 → 服务读取" "开发者账号登录失败（可能密码已改）"
+  skip "网关注入 → 服务读取" "测试账号 agent@kuaikan.test 登录失败（可能密码已改）"
 else
   whoami=$(curl -s --max-time 15 -H "Authorization: Bearer $token" "$INTERNAL/api/community/whoami" 2>/dev/null)
   got_id=$(printf '%s' "$whoami" | sed -n 's/.*"userId":"\([0-9]*\)".*/\1/p')
