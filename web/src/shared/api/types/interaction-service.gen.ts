@@ -17,7 +17,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["ping"];
+        get: operations["interactionPing"];
         put?: never;
         post?: never;
         delete?: never;
@@ -47,7 +47,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    ping: {
+    interactionPing: {
         parameters: {
             query?: never;
             header?: never;

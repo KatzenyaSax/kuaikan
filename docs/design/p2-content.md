@@ -54,6 +54,10 @@
 |---|---|---|---|
 | GET | `/api/user/users?ids=1,2,3` | 游客 | 批量作者摘要 |
 
+**游客可读端点必须标 `@PublicEndpoint`**（`kuaikan-common-web`）。这个注解会让端点
+在 OpenAPI 里变成 `security: []`，于是"哪些端点对游客开放"变成可机器判定的，
+`check-openapi.mjs` 才能把它和网关白名单比对。全局默认是 `bearerAuth`（需要认证）。
+
 ⚠️ **批量摘要只返回 `userId` / `nickname` / `avatarUrl`**，绝不返回 `email`、`status`、`created_at`。
 批量上限 100，超限 → `40010`。网关白名单为此单开一条**精确条目**（不复用 `/ping/**` 通配）。
 
@@ -305,7 +309,7 @@ GET /api/content/posts?communityId=…     → 才能拉列表
 
 | 子阶段 | 交付 | **唯一的新概念** | 汇合验收（一句话） |
 |---|---|---|---|
-| **P2.0 契约闸门** | 本文档、4 个新错误码、`/users` 批量接口契约、mock 基座扩展 | 无业务代码 | 契约三方一致；前端对 mock 跑通页面骨架 |
+| **P2.0 契约闸门** | 本文档、4 个新错误码（15→19）、`@PublicEndpoint` 与全局 `bearerAuth`、`check-openapi.mjs` 三条检查、`typed.ts` 跨服务合并、**删除 frontend mock**、`verify-p2.sh` 骨架 | 无业务代码 | `check-contract` + `check-openapi` + typecheck + build 全绿 |
 | **P2.1 社群** | `t_community` V1、建社群、社群列表、社群详情、首页改成社群列表 | **第一个新 schema** | 游客能看社群详情；建社群后创建者是 owner 且 `member_count=1`；slug 重复 → `41002` |
 | **P2.2 加入社群** | `t_community_member` V1、加入/退出、`/mine`、`member_count` | **第一个"两表同一事务" + 第一个计数** | 加入 `+1`、重复加入幂等不变、退出 `-1`、再加入回到 `+1` |
 | **P2.3 发帖** | `t_post` V1、发帖、最小详情 API、`/internal/memberships`、批量作者摘要、`/c/:slug/new` 页、单栏详情页 | **第一个用户生成内容 + 第一个"谁有权限写"** | 非成员 → `41004`；成员发帖后 `author_id` 是自己；`X-User-Id` 伪造无效 |
@@ -318,7 +322,9 @@ GET /api/content/posts?communityId=…     → 才能拉列表
 ## 6. 验收（`deploy/bin/verify-p2.sh`，沿用五层）
 
 ### L1 契约与构建
-契约三方一致（19 码）/ `gen:types` 无漂移 / `typecheck` / `build`
+契约三方一致（19 码）/ **OpenAPI 与网关白名单一致**（`check-openapi.mjs` 三条：
+operationId 跨服务唯一、`security: []` 端点必须在白名单内、白名单精确条目必须存在）/
+`gen:types` 无漂移 / `typecheck` / `build`
 
 ### L2 后端 HTTP（community，12 条）
 游客可读列表与详情 / 游客不能建社群(401) / 建社群成功且 slug 自动生成 /

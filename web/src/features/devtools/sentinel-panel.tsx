@@ -5,7 +5,7 @@ import type { OkData } from '@/shared/api/typed'
 import { Button } from '@/shared/ui/button'
 import { Card, CardDescription, CardTitle } from '@/shared/ui/card'
 
-type SentinelResult = OkData<'sentinel'>
+type SentinelResult = OkData<'userSentinel'>
 
 const BURST = 6
 const GAP_MS = 60

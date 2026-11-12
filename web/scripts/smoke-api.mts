@@ -14,7 +14,7 @@ import { api } from '../src/shared/api/client.ts'
 import type { operations } from '../src/shared/api/types/user-service.gen.ts'
 
 /** 后端所有 /ping 接口的返回信封相同，直接复用 user-service 的 spec 类型 */
-type PingEnvelope = operations['ping']['responses'][200]['content']['*/*']
+type PingEnvelope = operations['userPing']['responses'][200]['content']['*/*']
 type PingData = NonNullable<PingEnvelope['data']>
 
 const SERVICES = ['user', 'community', 'content', 'interaction', 'notification', 'search', 'rank']

@@ -4,8 +4,8 @@ import type { OkData } from '@/shared/api/typed'
 import { Button } from '@/shared/ui/button'
 import { Card, CardDescription, CardTitle } from '@/shared/ui/card'
 
-type SendResult = OkData<'sendMq'>
-type MqStatusResult = OkData<'mqStatus'>
+type SendResult = OkData<'userSendMq'>
+type MqStatusResult = OkData<'userMqStatus'>
 
 const POLL_INTERVAL_MS = 300
 const MAX_POLLS = 40

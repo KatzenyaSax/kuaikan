@@ -19,7 +19,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["sendMq"];
+        post: operations["userSendMq"];
         delete?: never;
         options?: never;
         head?: never;
@@ -129,7 +129,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["ping"];
+        get: operations["userPing"];
         put?: never;
         post?: never;
         delete?: never;
@@ -145,7 +145,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["sentinel"];
+        get: operations["userSentinel"];
         put?: never;
         post?: never;
         delete?: never;
@@ -161,7 +161,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["mqStatus"];
+        get: operations["userMqStatus"];
         put?: never;
         post?: never;
         delete?: never;
@@ -177,7 +177,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["feign"];
+        get: operations["userFeign"];
         put?: never;
         post?: never;
         delete?: never;
@@ -324,7 +324,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    sendMq: {
+    userSendMq: {
         parameters: {
             query?: never;
             header?: never;
@@ -506,7 +506,7 @@ export interface operations {
             };
         };
     };
-    ping: {
+    userPing: {
         parameters: {
             query?: never;
             header?: never;
@@ -526,7 +526,7 @@ export interface operations {
             };
         };
     };
-    sentinel: {
+    userSentinel: {
         parameters: {
             query?: never;
             header?: never;
@@ -546,7 +546,7 @@ export interface operations {
             };
         };
     };
-    mqStatus: {
+    userMqStatus: {
         parameters: {
             query?: never;
             header?: never;
@@ -568,7 +568,7 @@ export interface operations {
             };
         };
     };
-    feign: {
+    userFeign: {
         parameters: {
             query?: never;
             header?: never;

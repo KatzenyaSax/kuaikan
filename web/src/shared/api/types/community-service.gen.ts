@@ -33,7 +33,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["ping"];
+        get: operations["communityPing"];
         put?: never;
         post?: never;
         delete?: never;
@@ -49,7 +49,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["mqStatus"];
+        get: operations["communityMqStatus"];
         put?: never;
         post?: never;
         delete?: never;
@@ -99,7 +99,7 @@ export interface operations {
             };
         };
     };
-    ping: {
+    communityPing: {
         parameters: {
             query?: never;
             header?: never;
@@ -119,7 +119,7 @@ export interface operations {
             };
         };
     };
-    mqStatus: {
+    communityMqStatus: {
         parameters: {
             query?: never;
             header?: never;

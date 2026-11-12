@@ -321,6 +321,68 @@ docker exec kuaikan-user-service-1 \
 - `expired`：只在"本来已登录、被动掉线"时设置（首次访问的 401 是正常的"没登录"）
 - `manual`：主动登出，不提示
 
+### P2.0 契约闸门（已完成）
+
+P2 有 11 个端点、2 个新 schema、3 个服务同时改。P2.0 **不写任何业务代码**，
+只把"事后改要返工一大片"的四样东西冻结，并让冻结**可执行**。
+
+| 冻结项 | 改错的代价 |
+|---|---|
+| content 用 `communityId` 还是 `slug` | 决定有没有跨服务读依赖，改要动服务边界 |
+| 游标形状 + 排序版本位 | 改要动 SQL、索引、前后端 |
+| 错误码编号与 HTTP 映射 | 改要动三方（JSON / Java / 前端表）+ 已有断言 |
+| operationId 跨服务命名 | 改会**静默**破坏前端类型 |
+
+#### 错误码 15 → 19
+
+`41001 COMMUNITY_NOT_FOUND`(404) / `41002 COMMUNITY_SLUG_TAKEN`(409) /
+`41004 NOT_MEMBER`(200) / `42001 POST_NOT_FOUND`(404)。
+
+**没有"已是成员"这个码**：加入/退出都设计成幂等成功，幂等用
+`INSERT … ON DUPLICATE KEY UPDATE` + 判 `affectedRows`（与 P3 消费幂等同一手法）。
+
+⚠️ `ErrorHttpStatus.SPECIAL` 必须用 `Map.ofEntries` 而不是 `Map.of`——
+`Map.of` 的参数上限就是 **10 对**，P1 结束时正好 10 个，加两个会直接编译失败，
+且报错信息指向不到原因。
+
+#### `@PublicEndpoint` + 全局 `bearerAuth`
+
+`kuaikan-common-web` 里的 `OpenApiConfig` 给所有服务统一声明 `bearerAuth` 作为全局安全要求，
+被 `@PublicEndpoint` 标记的端点则显式清空成 `security: []`。
+
+这样"哪些端点对游客开放"从**只在网关 YAML 里的一份手抄清单**，变成
+**controller 上声明 + spec 里可见 + 脚本可比对**。没有全局 `bearerAuth` 时
+`security: []` 毫无意义，白名单也就失去了可比对的对手。
+
+springdoc 在 `kuaikan-common-web` 里是 `optional` 依赖 + `@ConditionalOnClass`，
+不引入 springdoc 的服务（gateway）不会因此启动失败。
+
+#### `check-openapi.mjs` 三条检查
+
+| 检查 | 防的是什么 |
+|---|---|
+| operationId 跨服务唯一 | `typed.ts` 用交叉类型合并 7 个服务的 `operations`；同名会被合并成 `A & B`，两个形状兼容时 **TypeScript 照常编译通过**，类型却悄悄指到另一个服务 |
+| `security: []` 端点 ⊆ 网关白名单 | 漏配白名单 = 游客拿到 401，且要等到浏览器验收才发现 |
+| 白名单精确条目必须存在 | 防白名单腐化（端点改名/删除，白名单还留着） |
+
+**上线第一天就抓到两个真实冲突**：`ping` 在 7 个服务里重名、`mqStatus` 在 2 个服务里重名。
+已全部改成 `<service>Ping` / `<service>MqStatus` 形式。
+
+三条检查都**验证过能红**（删白名单条目 → 报"公开端点未被覆盖"；加假条目 → 报"白名单已腐化"；制造 opId 冲突 → 报重复）。不能失败的断言不是断言。
+
+通配白名单（`^/api/[^/]+/ping(/.*)?$`）不做存在性校验，但每次运行都**列出来**——
+那是 P1 的已知债务，藏起来比列出来更糟。
+
+#### 删除 frontend mock 基座
+
+P1.0 起的 `web/src/shared/api/mock/`（221 行 + `__KUIKAN_API_MOCK__` define + 全局声明）已删除。
+
+mock 的收益是**并行开发**（前端不等后端），而本项目是单人开发、后端只能跑在服务器上，
+没有并行可言。成本则是维护第二套实现，P2 要再加 11 个端点。
+前端本地开发循环由 `vite.config.ts` 的 proxy 保证（早已配好，直连线上真后端）。
+
+副作用为零：生产构建本来就把 mock 整块摇掉了，删除前后 bundle 哈希相同。
+
 ### 个人资料（P1.6）
 
 `PATCH /api/user/auth/me`，body `{nickname?, avatarUrl?}`，部分更新。
