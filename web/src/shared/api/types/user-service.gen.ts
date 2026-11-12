@@ -122,6 +122,22 @@ export interface paths {
         patch: operations["updateProfile"];
         trace?: never;
     };
+    "/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["batchUserSummaries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ping": {
         parameters: {
             query?: never;
@@ -298,6 +314,18 @@ export interface components {
             code?: number;
             message?: string;
             data?: components["schemas"]["UserProfile"];
+        };
+        ResultListUserSummary: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: components["schemas"]["UserSummary"][];
+        };
+        UserSummary: {
+            /** @description 雪花 ID，序列化为字符串避免 JS 精度丢失 */
+            userId?: string;
+            nickname?: string;
+            avatarUrl?: string;
         };
         ResultListSessionItem: {
             /** Format: int32 */
@@ -502,6 +530,28 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ResultUserProfile"];
+                };
+            };
+        };
+    };
+    batchUserSummaries: {
+        parameters: {
+            query: {
+                ids: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultListUserSummary"];
                 };
             };
         };

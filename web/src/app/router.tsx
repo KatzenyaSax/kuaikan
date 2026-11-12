@@ -3,6 +3,8 @@ import { createBrowserRouter } from 'react-router'
 import { RootLayout } from '@/routes/root'
 import { HomePage } from '@/routes/home'
 import { CommunityPage } from '@/routes/community'
+import { NewPostPage } from '@/routes/new-post'
+import { PostPage } from '@/routes/post'
 import { RegisterPage } from '@/routes/register'
 import { TestPage } from '@/routes/test'
 import { LoginPage } from '@/routes/login'
@@ -38,6 +40,13 @@ const routes: RouteObject[] = [
       { index: true, element: <HomePage /> },
       // 社群名本身就是标识（没有 slug），服务端按规范化后的名称查找
       { path: 'c/:name', element: <CommunityPage /> },
+      // 发帖与帖子详情：帖子用 id 做 URL（标题会变、会重复，不适合进 URL）
+      { path: 'c/:name/new', element: (
+        <RequireAuth>
+          <NewPostPage />
+        </RequireAuth>
+      ) },
+      { path: 'c/:name/p/:postId', element: <PostPage /> },
       { path: 'register', element: <RegisterPage /> },
       { path: 'login', element: <LoginPage /> },
       {

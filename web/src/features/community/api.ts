@@ -2,10 +2,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/shared/api/client'
 import type { OkData, RequestBody } from '@/shared/api/typed'
 
-export type CommunityPage = OkData<'list'>
+export type CommunityPage = OkData<'listCommunities'>
 export type CommunitySummary = NonNullable<CommunityPage['items']>[number]
-export type CommunityDetail = OkData<'detail'>
-export type CreateCommunityBody = RequestBody<'create'>
+export type CommunityDetail = OkData<'getCommunity'>
+export type CreateCommunityBody = RequestBody<'createCommunity'>
 
 const BASE = '/api/community/communities'
 
@@ -63,12 +63,12 @@ export function useMembership() {
   }
   const join = useMutation({
     mutationFn: (name: string) =>
-      api.post<CommunityDetail>(`${BASE}/${encodeURIComponent(name)}/membership`),
+      api.post<OkData<'joinCommunity'>>(`${BASE}/${encodeURIComponent(name)}/membership`),
     onSuccess: invalidate,
   })
   const leave = useMutation({
     mutationFn: (name: string) =>
-      api.del<CommunityDetail>(`${BASE}/${encodeURIComponent(name)}/membership`),
+      api.del<OkData<'leaveCommunity'>>(`${BASE}/${encodeURIComponent(name)}/membership`),
     onSuccess: invalidate,
   })
   return { join, leave }

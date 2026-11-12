@@ -72,7 +72,16 @@ export function CommunityPage() {
         ) : (
           <CardDescription>这个社群还没有简介</CardDescription>
         )}
-        <div className="flex items-center gap-2 pt-1">
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          {authed && joined ? (
+            <Link
+              to={`/c/${encodeURIComponent(name ?? '')}/new`}
+              className="text-[11px] underline"
+              data-testid="link-new-post"
+            >
+              发帖
+            </Link>
+          ) : null}
           {!authed ? (
             <a
               href={`/login?redirect=${encodeURIComponent(`/c/${name ?? ''}`)}`}
@@ -121,7 +130,7 @@ export function CommunityPage() {
 
       <Card className="space-y-3">
         <CardTitle>帖子</CardTitle>
-        <CardDescription>发帖与帖子列表在 P2.3 / P2.4 实现</CardDescription>
+        <CardDescription>帖子列表在 P2.4 实现（双栏布局同时落地）</CardDescription>
       </Card>
     </div>
   )

@@ -17,9 +17,9 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list"];
+        get: operations["listCommunities"];
         put?: never;
-        post: operations["create"];
+        post: operations["createCommunity"];
         delete?: never;
         options?: never;
         head?: never;
@@ -35,8 +35,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["join"];
-        delete: operations["leave"];
+        post: operations["joinCommunity"];
+        delete: operations["leaveCommunity"];
         options?: never;
         head?: never;
         patch?: never;
@@ -97,7 +97,23 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["mine"];
+        get: operations["listMyCommunities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/internal/memberships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getMembership"];
         put?: never;
         post?: never;
         delete?: never;
@@ -113,7 +129,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["detail"];
+        get: operations["getCommunity"];
         put?: never;
         post?: never;
         delete?: never;
@@ -177,6 +193,18 @@ export interface components {
             message?: string;
             data?: components["schemas"]["CommunityPage"];
         };
+        MembershipResponse: {
+            exists?: boolean;
+            member?: boolean;
+            /** Format: int32 */
+            role?: number;
+        };
+        ResultMembershipResponse: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: components["schemas"]["MembershipResponse"];
+        };
     };
     responses: never;
     parameters: never;
@@ -186,7 +214,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    list: {
+    listCommunities: {
         parameters: {
             query?: {
                 cursor?: string;
@@ -209,7 +237,7 @@ export interface operations {
             };
         };
     };
-    create: {
+    createCommunity: {
         parameters: {
             query?: never;
             header?: never;
@@ -233,7 +261,7 @@ export interface operations {
             };
         };
     };
-    join: {
+    joinCommunity: {
         parameters: {
             query?: never;
             header?: never;
@@ -255,7 +283,7 @@ export interface operations {
             };
         };
     };
-    leave: {
+    leaveCommunity: {
         parameters: {
             query?: never;
             header?: never;
@@ -339,7 +367,7 @@ export interface operations {
             };
         };
     };
-    mine: {
+    listMyCommunities: {
         parameters: {
             query?: {
                 cursor?: string;
@@ -362,7 +390,30 @@ export interface operations {
             };
         };
     };
-    detail: {
+    getMembership: {
+        parameters: {
+            query: {
+                communityId: number;
+                userId: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultMembershipResponse"];
+                };
+            };
+        };
+    };
+    getCommunity: {
         parameters: {
             query?: never;
             header?: never;

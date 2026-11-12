@@ -10,6 +10,38 @@
  */
 
 export interface paths {
+    "/posts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["createPost"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/posts/{postId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getPost"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ping": {
         parameters: {
             query?: never;
@@ -30,6 +62,30 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        CreatePostRequest: {
+            /** @description 社群 id */
+            communityId: string;
+            title: string;
+            body: string;
+        };
+        PostDetail: {
+            /** @description 雪花 id */
+            id?: string;
+            /** @description 社群 id */
+            communityId?: string;
+            /** @description 作者 id，昵称头像需另行批量获取 */
+            authorId?: string;
+            title?: string;
+            body?: string;
+            /** Format: date-time */
+            createdAt?: string;
+        };
+        ResultPostDetail: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: components["schemas"]["PostDetail"];
+        };
         ResultMapStringObject: {
             /** Format: int32 */
             code?: number;
@@ -47,6 +103,52 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    createPost: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePostRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultPostDetail"];
+                };
+            };
+        };
+    };
+    getPost: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                postId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultPostDetail"];
+                };
+            };
+        };
+    };
     contentPing: {
         parameters: {
             query?: never;
