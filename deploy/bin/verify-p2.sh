@@ -475,7 +475,7 @@ fi
 if want_heavy_layer l4; then
   section "L4 破坏性动作（经 SSH）"
   skip "kill 服务验读路径边界" "P2.4 未实现"
-  skip "非法游标 / 并发加入" "P2.4 未实现"
+  skip "kill 服务验读路径边界（content / community）" "P2.3/P2.4 未实现"
 fi
 
 # ================================================================ L5 回归
