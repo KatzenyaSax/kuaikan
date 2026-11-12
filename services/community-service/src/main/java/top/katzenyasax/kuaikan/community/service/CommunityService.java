@@ -164,7 +164,9 @@ public class CommunityService {
      */
     @Transactional
     public CommunityDetail join(Long userId, String name) {
-        Community community = requireByName(name);
+        // 先用 FOR UPDATE 锁住社群行：成员变更的写路径必须先拿到这个锁，
+        // 否则"插入撞唯一键（留下 S 锁）+ 更新成 X 锁"会死锁（见 CommunityMapper）
+        Community community = requireByNameForUpdate(name);
 
         CommunityMember row = newMember(community.getId(), userId);
         boolean added;
@@ -192,7 +194,7 @@ public class CommunityService {
      */
     @Transactional
     public CommunityDetail leave(Long userId, String name) {
-        Community community = requireByName(name);
+        Community community = requireByNameForUpdate(name);
         if (community.getOwnerId().equals(userId)) {
             throw new BizException(CommunityErrorCode.OWNER_CANNOT_LEAVE);
         }
@@ -268,6 +270,15 @@ public class CommunityService {
 
     private void insertMember(Long communityId, Long userId) {
         memberMapper.insert(newMember(communityId, userId));
+    }
+
+    /** 加行锁的按名查找，供成员变更写路径使用 */
+    private Community requireByNameForUpdate(String name) {
+        Community community = communityMapper.selectByNameKeyForUpdate(NameKeys.of(name));
+        if (community == null) {
+            throw new BizException(CommunityErrorCode.COMMUNITY_NOT_FOUND);
+        }
+        return community;
     }
 
     private Community requireById(Long id) {
