@@ -172,7 +172,7 @@ else
   whoami=$(curl -s --max-time 15 -H "Authorization: Bearer $token" "$INTERNAL/api/community/whoami" 2>/dev/null)
   got_id=$(printf '%s' "$whoami" | sed -n 's/.*"userId":"\([0-9]*\)".*/\1/p')
   if [ "$got_id" = "$expect_id" ]; then
-    ok "community-service 读到的身份就是本人（userId=$expect_id）"
+    ok "community-service 读到的身份就是本人（userId=${expect_id}）"
   else
     ng "网关注入未生效" "服务读到 '${got_id:-空}'，期望 $expect_id"
   fi

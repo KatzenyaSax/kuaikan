@@ -200,12 +200,12 @@ if want_layer l2; then
     USER_ID=$(printf '%s' "$out" | sed -n '1p' | tr -d '\r\n ')
     USER_ID2=$(printf '%s' "$out" | sed -n '2p' | tr -d '\r\n ')
     if [ -n "$USER_ID" ] && [ -n "$USER_ID2" ]; then
-      info "临时账号 userId=$USER_ID / $USER_ID2（第二个用于验证加入，不能自己加自己）"
+      info "临时账号 userId=$USER_ID / ${USER_ID2}（第二个用于验证加入，不能自己加自己）"
     else
       ng "创建临时账号失败" "USER_ID=$USER_ID USER_ID2=$USER_ID2"
     fi
   else
-    skip "L2 后端 HTTP" "无法 SSH 到 $SSH_HOST（需要建账号与清理）"
+    skip "L2 后端 HTTP" "无法 SSH 到 ${SSH_HOST}（需要建账号与清理）"
   fi
 
   TOKEN=""
@@ -441,7 +441,7 @@ raise SystemExit(0 if d['items'] else 1)"; then
     lhs=${row%%:*}
     rhs=${row##*:}
     if [ -n "$lhs" ] && [ "$lhs" = "$rhs" ]; then
-      ok "库层一致：member_count = 在社行数（$lhs）"
+      ok "库层一致：member_count = 在社行数（${lhs}）"
     else
       ng "member_count 与成员行数不一致" "count:rows = $row"
     fi
