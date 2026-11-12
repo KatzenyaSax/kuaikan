@@ -188,29 +188,40 @@ printf '%s%s%s\n' "$B" "kuaikan · P2 验收" "$N"
 info "站点 $SITE"
 info "开始 $(date '+%F %T')"
 
+# ================================================================ 夹具（L2 / L4 共用）
+
+# 抽成函数是因为 L4 也要用真数据：单独跑 --layer l4 时不能因为"L2 没跑"
+# 就跳过破坏性验证 —— 那正是最需要跑的一层。
+FIXTURE_READY=0
+prepare_fixture() {
+  [ "$FIXTURE_READY" = "1" ] && return 0
+  ssh_ok=0
+  ssh_run 'true' && ssh_ok=1
+  if [ $ssh_ok != 1 ]; then
+    return 1
+  fi
+  out=$(sql_exec "INSERT INTO kuaikan_user.t_user (id, email, password_hash, nickname, roles, status)
+      VALUES (FLOOR(RAND()*900000000000000000)+100000000000000000, '$EMAIL', '$FIXTURE_HASH', 'e2e-p2', 'USER', 1),
+             (FLOOR(RAND()*900000000000000000)+100000000000000000, '$EMAIL2', '$FIXTURE_HASH', 'e2e-p2b', 'USER', 1);
+      SELECT id FROM kuaikan_user.t_user WHERE email='$EMAIL';
+      SELECT id FROM kuaikan_user.t_user WHERE email='$EMAIL2';")
+  USER_ID=$(printf '%s' "$out" | sed -n '1p' | tr -d '\r\n ')
+  USER_ID2=$(printf '%s' "$out" | sed -n '2p' | tr -d '\r\n ')
+  if [ -z "$USER_ID" ] || [ -z "$USER_ID2" ]; then
+    return 1
+  fi
+  info "临时账号 userId=$USER_ID / ${USER_ID2}（第二个用于验证加入，不能自己加自己）"
+  FIXTURE_READY=1
+  return 0
+}
+
 # ================================================================ L2 后端 HTTP
 
 if want_layer l2; then
   section "L2 后端 HTTP"
 
-  # ---------- 准备：临时账号 ----------
-  ssh_ok=0
-  ssh_run 'true' && ssh_ok=1
-  if [ $ssh_ok = 1 ]; then
-    out=$(sql_exec "INSERT INTO kuaikan_user.t_user (id, email, password_hash, nickname, roles, status)
-        VALUES (FLOOR(RAND()*900000000000000000)+100000000000000000, '$EMAIL', '$FIXTURE_HASH', 'e2e-p2', 'USER', 1),
-               (FLOOR(RAND()*900000000000000000)+100000000000000000, '$EMAIL2', '$FIXTURE_HASH', 'e2e-p2b', 'USER', 1);
-        SELECT id FROM kuaikan_user.t_user WHERE email='$EMAIL';
-        SELECT id FROM kuaikan_user.t_user WHERE email='$EMAIL2';")
-    USER_ID=$(printf '%s' "$out" | sed -n '1p' | tr -d '\r\n ')
-    USER_ID2=$(printf '%s' "$out" | sed -n '2p' | tr -d '\r\n ')
-    if [ -n "$USER_ID" ] && [ -n "$USER_ID2" ]; then
-      info "临时账号 userId=$USER_ID / ${USER_ID2}（第二个用于验证加入，不能自己加自己）"
-    else
-      ng "创建临时账号失败" "USER_ID=$USER_ID USER_ID2=$USER_ID2"
-    fi
-  else
-    skip "L2 后端 HTTP" "无法 SSH 到 ${SSH_HOST}（需要建账号与清理）"
+  if ! prepare_fixture; then
+    ng "创建临时账号失败" "无法 SSH 或建号失败，L2 无法进行"
   fi
 
   TOKEN=""
@@ -580,8 +591,85 @@ fi
 
 if want_heavy_layer l4; then
   section "L4 破坏性动作（经 SSH）"
-  skip "kill 服务验读路径边界" "P2.4 未实现"
-  skip "kill 服务验读路径边界（content / community）" "P2.3/P2.4 未实现"
+
+  if ! prepare_fixture; then
+    ng "L4 无法准备夹具" "需要 SSH 与建号"
+  else
+    TOKEN4=""
+    if [ -n "$USER_ID" ]; then
+      TOKEN4=$(curl -s --max-time 15 -X POST "$SITE/api/user/auth/login" \
+        -H 'Content-Type: application/json' \
+        -d "{\"email\":\"$EMAIL\",\"password\":\"$FIXTURE_PASS\"}" | json_field 'data.accessToken')
+    fi
+
+    # L4 不复用 L2 建好的社群：单独跑 --layer l4 时 L2 没跑过。
+    # 建一个自己的社群与帖子，保证这一层自给自足。
+    C4=""
+    P4=""
+    if [ -n "$TOKEN4" ]; then
+      NAME4="e2e-l4-${STAMP}"
+      C4=$(curl -s --max-time 15 -X POST "$SITE/api/community/communities" \
+        -H "Authorization: Bearer $TOKEN4" -H 'Content-Type: application/json' \
+        -d "{\"name\":\"$NAME4\"}" | json_field 'data.id')
+      [ -n "$C4" ] && COMMUNITY_ID=${COMMUNITY_ID:-$C4}
+      if [ -n "$C4" ]; then
+        P4=$(curl -s --max-time 15 -X POST "$SITE/api/content/posts" \
+          -H "Authorization: Bearer $TOKEN4" -H 'Content-Type: application/json' \
+          -d "{\"communityId\":\"$C4\",\"title\":\"L4 帖子\",\"body\":\"x\"}" | json_field 'data.id')
+      fi
+    fi
+
+    if [ -z "$TOKEN4" ] || [ -z "$C4" ] || [ -z "$P4" ]; then
+      ng "L4 前置条件不成立" "token/社群/帖子没建出来，后面的断言会空转"
+    else
+      info "L4 夹具：communityId=$C4 postId=$P4"
+
+      # 先确认基线：服务在的时候发帖是成功的
+      base=$(curl -s --max-time 15 -X POST "$SITE/api/content/posts" -H "Authorization: Bearer $TOKEN4" \
+        -H 'Content-Type: application/json' \
+        -d "{\"communityId\":\"$C4\",\"title\":\"基线\",\"body\":\"x\"}" | json_field 'code')
+      [ "$base" = "0" ] && ok "基线：community-service 正常时发帖成功" \
+        || ng "L4 基线不成立" "发帖 code=$base"
+
+      # ---- kill community-service ----
+      ssh_run 'docker stop kuaikan-community-service-1' >/dev/null 2>&1
+      sleep 2
+
+      start_ms=$(date +%s)
+      body=$(curl -s --max-time 10 -X POST "$SITE/api/content/posts" -H "Authorization: Bearer $TOKEN4" \
+        -H 'Content-Type: application/json' \
+        -d "{\"communityId\":\"$C4\",\"title\":\"下游挂了\",\"body\":\"x\"}")
+      elapsed=$(( $(date +%s) - start_ms ))
+      code=$(printf '%s' "$body" | json_field 'code')
+      if [ "$code" = "50300" ] && [ "$elapsed" -le 3 ]; then
+        ok "kill community-service → 发帖 50300（${elapsed}s 内返回，没挂住）"
+      else
+        ng "kill 后发帖语义不对" "code=$code 耗时=${elapsed}s want=50300 且 <=3s"
+      fi
+
+      # 读路径必须完好：这就是 ADR 0009 那条边界
+      d=$(curl -s --max-time 10 -o /dev/null -w '%{http_code}' "$SITE/api/content/posts/$P4")
+      [ "$d" = "200" ] && ok "kill community-service → 读帖子详情仍 200（读路径零跨服务依赖）" \
+        || ng "读路径被下游拖垮" "HTTP $d"
+
+      a=$(curl -s --max-time 10 -o /dev/null -w '%{http_code}' "$SITE/api/community/communities")
+      [ "$a" = "503" ] || [ "$a" = "504" ] || [ "$a" = "500" ] \
+        && ok "kill community-service → 社群列表确实不可用（证明真的停了）" \
+        || ng "社群列表居然还可访问" "HTTP $a，说明服务没真的停掉"
+
+      ssh_run 'docker start kuaikan-community-service-1' >/dev/null 2>&1
+      for _ in $(seq 1 40); do
+        h=$(ssh_run "docker inspect -f '{{.State.Health.Status}}' kuaikan-community-service-1" 2>/dev/null | tr -d '\r\n')
+        [ "$h" = "healthy" ] && break
+        sleep 3
+      done
+      after=$(curl -s --max-time 15 -X POST "$SITE/api/content/posts" -H "Authorization: Bearer $TOKEN4" \
+        -H 'Content-Type: application/json' \
+        -d "{\"communityId\":\"$C4\",\"title\":\"恢复了\",\"body\":\"x\"}" | json_field 'code')
+      [ "$after" = "0" ] && ok "恢复 community-service 后发帖恢复正常" \
+        || ng "恢复后仍不能发帖" "code=$after"
+    fi
+  fi
 fi
 
 # ================================================================ L5 回归
