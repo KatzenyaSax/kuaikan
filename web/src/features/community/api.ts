@@ -81,6 +81,10 @@ export function useCreateCommunity() {
     onSuccess: () => {
       // 新社群会出现在列表最前面，让首页立刻能看见
       void queryClient.invalidateQueries({ queryKey: ['community', 'list'] })
+      // **创建者同时也是第一个成员**，所以 /mine 也变了。
+      // 不失效的话，刚建完的社群页会显示"加入社群"而不是"退出社群"——
+      // 因为加入状态是从 /mine 推导的，而缓存里还是创建前的列表。
+      void queryClient.invalidateQueries({ queryKey: ['community', 'mine'] })
     },
   })
 }
