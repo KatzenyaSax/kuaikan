@@ -1,6 +1,7 @@
 package top.katzenyasax.kuaikan.community.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.incrementer.IdentifierGenerator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
@@ -22,8 +23,11 @@ import top.katzenyasax.kuaikan.community.web.dto.CreateCommunityRequest;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 社群的建与读。
@@ -39,15 +43,22 @@ public class CommunityService {
     /** 排序标记，编进游标。P5 若加"按活跃度"排序，各排序各自解释自己的游标 */
     private static final String SORT_NEW = "new";
 
+    /** /mine 的排序标记：按加入时间倒序，与会话游标分开 */
+    private static final String SORT_MINE = "mine";
+
     private static final int DEFAULT_LIMIT = 20;
     private static final int MAX_LIMIT = 50;
 
     private final CommunityMapper communityMapper;
     private final CommunityMemberMapper memberMapper;
+    private final IdentifierGenerator idGen;
 
-    public CommunityService(CommunityMapper communityMapper, CommunityMemberMapper memberMapper) {
+    public CommunityService(CommunityMapper communityMapper,
+                            CommunityMemberMapper memberMapper,
+                            IdentifierGenerator idGen) {
         this.communityMapper = communityMapper;
         this.memberMapper = memberMapper;
+        this.idGen = idGen;
     }
 
     /**
@@ -92,12 +103,10 @@ public class CommunityService {
             throw new BizException(CommunityErrorCode.COMMUNITY_NAME_TAKEN);
         }
 
-        CommunityMember owner = new CommunityMember();
-        owner.setCommunityId(community.getId());
-        owner.setUserId(userId);
-        owner.setRole(CommunityMember.ROLE_MEMBER);
-        owner.setStatus(CommunityMember.STATUS_ACTIVE);
-        memberMapper.insert(owner);
+        // 创建者成为第一个成员。这里也走 upsertActive：与"加入"是同一条代码路径，
+        // 不会出现"建社群插的成员行"和"加入时插的成员行"两套逻辑不一致
+        memberMapper.upsertActive(idGen.nextId(), community.getId(), userId,
+                LocalDateTime.now().truncatedTo(ChronoUnit.MILLIS));
 
         log.info("社群已创建 id={} name={} ownerId={}", community.getId(), name, userId);
         return CommunityDetail.of(community);
@@ -148,6 +157,104 @@ public class CommunityService {
         Community community = communityMapper.selectOne(new LambdaQueryWrapper<Community>()
                 .eq(Community::getNameKey, nameKey)
                 .eq(Community::getStatus, Community.STATUS_NORMAL));
+        if (community == null) {
+            throw new BizException(CommunityErrorCode.COMMUNITY_NOT_FOUND);
+        }
+        return community;
+    }
+
+    /**
+     * 加入社群。**幂等**：本来就是成员也返回成功，member_count 不变。
+     *
+     * 成员行与 member_count 在同一个本地事务里改（architecture §7：
+     * 每个计数只有一个写入者，community-service 是 member_count 的唯一写入者）。
+     */
+    @Transactional
+    public CommunityDetail join(Long userId, String name) {
+        Community community = requireByName(name);
+
+        // affectedRows 的语义见 CommunityMemberMapper#upsertActive
+        int affected = memberMapper.upsertActive(idGen.nextId(), community.getId(), userId,
+                LocalDateTime.now().truncatedTo(ChronoUnit.MILLIS));
+        if (affected == 1 || affected == 2) {
+            communityMapper.incrementMemberCount(community.getId());
+            log.info("加入社群 id={} userId={} affected={}", community.getId(), userId, affected);
+        } else {
+            log.info("已在社群，幂等返回 id={} userId={} affected={}",
+                    community.getId(), userId, affected);
+        }
+        return CommunityDetail.of(requireById(community.getId()));
+    }
+
+    /**
+     * 退出社群。**幂等**：本来就不在社也返回成功。
+     *
+     * 所有者不能退出 —— 退出后会变成"不是成员的所有者"：不能发帖、社群也没人管。
+     * 转让能力在 P7，这是 P2 的已知缺口（见 p2-content.md §3.1）。
+     */
+    @Transactional
+    public CommunityDetail leave(Long userId, String name) {
+        Community community = requireByName(name);
+        if (community.getOwnerId().equals(userId)) {
+            throw new BizException(CommunityErrorCode.OWNER_CANNOT_LEAVE);
+        }
+        // 只有真的从"在社"变成"已退出"（affected=1）才扣计数，避免重复扣
+        if (memberMapper.markLeft(community.getId(), userId) == 1) {
+            communityMapper.decrementMemberCount(community.getId());
+            log.info("退出社群 id={} userId={}", community.getId(), userId);
+        }
+        return CommunityDetail.of(requireById(community.getId()));
+    }
+
+    /**
+     * 我加入的社群。按加入时间倒序，游标分页。
+     *
+     * 顺序以成员行的 joined_at 为准（不是社群的创建时间）——"我刚加的"应该在前面。
+     * 游标里存的是成员行 id，与社群列表的游标含义不同，所以两者的排序标记也不同。
+     */
+    public CommunityPage mine(Long userId, String cursor, Integer limit) {
+        int size = normalizeLimit(limit);
+        CursorCodec.Cursor c = CursorCodec.decode(cursor, SORT_MINE);
+
+        LambdaQueryWrapper<CommunityMember> q = new LambdaQueryWrapper<CommunityMember>()
+                .eq(CommunityMember::getUserId, userId)
+                .eq(CommunityMember::getStatus, CommunityMember.STATUS_ACTIVE);
+        if (c != null) {
+            LocalDateTime ts = LocalDateTime.ofInstant(Instant.ofEpochMilli(c.timestampMillis()),
+                    ZoneId.systemDefault());
+            q.and(w -> w.lt(CommunityMember::getJoinedAt, ts)
+                    .or(x -> x.eq(CommunityMember::getJoinedAt, ts).lt(CommunityMember::getId, c.id())));
+        }
+        q.orderByDesc(CommunityMember::getJoinedAt).orderByDesc(CommunityMember::getId);
+
+        List<CommunityMember> rows = memberMapper.selectList(q.last("LIMIT " + (size + 1)));
+        List<CommunityMember> page = rows.size() > size ? rows.subList(0, size) : rows;
+
+        List<Long> ids = page.stream().map(CommunityMember::getCommunityId).toList();
+        Map<Long, Community> byId = new HashMap<>();
+        if (!ids.isEmpty()) {
+            for (Community community : communityMapper.selectByIds(ids)) {
+                byId.put(community.getId(), community);
+            }
+        }
+        // selectByIds 不保证顺序，这里按成员行的顺序重排（游标一致性依赖它）
+        List<CommunitySummary> items = new ArrayList<>();
+        for (CommunityMember m : page) {
+            Community community = byId.get(m.getCommunityId());
+            if (community != null && Community.STATUS_NORMAL == community.getStatus()) {
+                items.add(CommunitySummary.of(community));
+            }
+        }
+        String next = null;
+        if (rows.size() > size) {
+            CommunityMember last = page.get(page.size() - 1);
+            next = CursorCodec.encode(SORT_MINE, toMillis(last.getJoinedAt()), last.getId());
+        }
+        return new CommunityPage(items, next);
+    }
+
+    private Community requireById(Long id) {
+        Community community = communityMapper.selectById(id);
         if (community == null) {
             throw new BizException(CommunityErrorCode.COMMUNITY_NOT_FOUND);
         }

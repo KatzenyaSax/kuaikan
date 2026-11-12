@@ -1,6 +1,7 @@
 package top.katzenyasax.kuaikan.community.web;
 
 import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -56,5 +57,22 @@ public class CommunityController {
     @GetMapping("/{name}")
     public Result<CommunityDetail> detail(@PathVariable("name") String name) {
         return Result.ok(communityService.getByName(name));
+    }
+
+    /**
+     * 加入社群。幂等：重复加入返回成功且 member_count 不变。
+     *
+     * 路径最后一段是 `membership`，所以不会被公开详情的放行正则误放行
+     * （`GET ^/api/community/communities/[^/]+$` 只匹配"最后一段是名称"）。
+     */
+    @PostMapping("/{name}/membership")
+    public Result<CommunityDetail> join(@PathVariable("name") String name) {
+        return Result.ok(communityService.join(UserContext.requireUserId(), name));
+    }
+
+    /** 退出社群。幂等：本来就不在社也返回成功。所有者退出 → 41005 */
+    @DeleteMapping("/{name}/membership")
+    public Result<CommunityDetail> leave(@PathVariable("name") String name) {
+        return Result.ok(communityService.leave(UserContext.requireUserId(), name));
     }
 }
