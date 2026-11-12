@@ -3,6 +3,8 @@ import { api } from '@/shared/api/client'
 import type { OkData, RequestBody } from '@/shared/api/typed'
 
 export type PostDetail = OkData<'getPost'>
+export type PostPage = OkData<'listPosts'>
+export type PostSummary = NonNullable<PostPage['items']>[number]
 export type CreatePostBody = RequestBody<'createPost'>
 export type UserSummary = OkData<'batchUserSummaries'>[number]
 
@@ -13,6 +15,28 @@ export function usePostDetail(postId: string | undefined) {
     queryKey: ['post', postId],
     queryFn: () => api.get<PostDetail>(`${BASE}/${encodeURIComponent(postId ?? '')}`),
     enabled: Boolean(postId),
+  })
+}
+
+/**
+ * 社群时间线。游标分页，最新在上。
+ *
+ * 游标不透明：只回传，不解析、不拼。服务端把排序标记编在里面，
+ * 拿错列表的游标会被明确拒绝（40010）而不是给出乱序数据。
+ *
+ * `placeholderData: keepPreviousData` 让翻页时旧数据留在屏幕上，
+ * 不会闪一下空白——列表比正文更怕闪。
+ */
+export function usePostList(communityId: string | undefined, cursor: string | null) {
+  return useQuery({
+    queryKey: ['posts', communityId, cursor],
+    queryFn: () =>
+      api.get<PostPage>(
+        `${BASE}?communityId=${encodeURIComponent(communityId ?? '')}&limit=20` +
+          (cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''),
+      ),
+    enabled: Boolean(communityId),
+    placeholderData: (prev) => prev,
   })
 }
 

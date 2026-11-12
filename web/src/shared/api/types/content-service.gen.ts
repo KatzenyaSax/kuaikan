@@ -17,7 +17,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: operations["listPosts"];
         put?: never;
         post: operations["createPost"];
         delete?: never;
@@ -86,6 +86,28 @@ export interface components {
             message?: string;
             data?: components["schemas"]["PostDetail"];
         };
+        PostPage: {
+            items?: components["schemas"]["PostSummary"][];
+            /** @description 下一页游标；为 null 表示已到末页 */
+            nextCursor?: string;
+        };
+        PostSummary: {
+            /** @description 雪花 id */
+            id?: string;
+            /** @description 社群 id */
+            communityId?: string;
+            /** @description 作者 id */
+            authorId?: string;
+            title?: string;
+            /** Format: date-time */
+            createdAt?: string;
+        };
+        ResultPostPage: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: components["schemas"]["PostPage"];
+        };
         ResultMapStringObject: {
             /** Format: int32 */
             code?: number;
@@ -103,6 +125,31 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listPosts: {
+        parameters: {
+            query: {
+                communityId: number;
+                sort?: string;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultPostPage"];
+                };
+            };
+        };
+    };
     createPost: {
         parameters: {
             query?: never;

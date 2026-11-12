@@ -8,21 +8,20 @@ import { Card, CardDescription, CardTitle } from '@/shared/ui/card'
 import { Skeleton } from '@/shared/ui/skeleton'
 
 /**
- * 社群页。
+ * 社群概览。两个用处：
+ *   1. 双栏布局的右栏**空态**（`/c/:name` 还没选帖子时）
+ *   2. （无独立页面，只作为右栏空态）
  *
- * **P2.1 阶段是单栏骨架**：社群概览 + 帖子列表占位。
- * P2.4 会把它改成双栏（左列表 + 右正文），届时这里的概览会挪进右栏的空态，
- * 帖子列表挪进左栏——所以概览部分现在就要写成独立组件，避免 P2.4 重写。
+ * 空态放社群概览而不是"请从左边选一个帖子"：用户进来先要知道
+ * 这是个什么社群，而不是被要求做一件他还没理解的事。
  *
- * 路由参数是**社群名**（不是 id）：名称本身就是标识。
+ * "我加没加入"从 /mine 推导——公开详情里没有 viewer 字段（放行 = 匿名）。
  */
-export function CommunityPage() {
+export function CommunityOverview() {
   const { name } = useParams<{ name: string }>()
   const detail = useCommunityDetail(name)
   const status = useSession((s) => s.status)
   const authed = status === 'authenticated'
-  // 公开详情里没有"我加没加入"（放行 = 匿名），所以从 /mine 推导。
-  // /mine 已经缓存，按钮不会先渲染成"加入"再闪成"已加入"。
   const mine = useMyCommunities(authed)
   const { join, leave } = useMembership()
   const [actionError, setActionError] = useState<string | null>(null)
@@ -32,21 +31,21 @@ export function CommunityPage() {
 
   if (detail.isPending) {
     return (
-      <div className="mx-auto max-w-3xl space-y-4">
-        <Skeleton className="h-24 w-full" />
-        <Skeleton className="h-40 w-full" />
+      <div className="space-y-3 p-4">
+        <Skeleton className="h-20 w-full" />
+        <Skeleton className="h-32 w-full" />
       </div>
     )
   }
 
   if (detail.isError) {
     return (
-      <div className="mx-auto max-w-3xl">
+      <div className="p-4">
         <Card>
           <p className="text-sm text-danger" data-testid="community-error">
             {authErrorMessage(detail.error)}
           </p>
-          <Link to="/" className="mt-3 inline-block text-[11px] text-muted-foreground underline">
+          <Link to="/" className="mt-3 inline-block text-[11px] underline">
             返回社群列表
           </Link>
         </Card>
@@ -57,13 +56,11 @@ export function CommunityPage() {
   const community = detail.data
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6" data-testid="community-page">
+    <div className="space-y-4 p-4" data-testid="community-page">
       <Card className="space-y-2">
         <div className="flex items-center justify-between gap-3">
           <CardTitle data-testid="community-name">{community.name}</CardTitle>
-          <span className="text-[11px] text-muted-foreground">
-            {community.memberCount} 成员
-          </span>
+          <span className="text-[11px] text-muted-foreground">{community.memberCount} 成员</span>
         </div>
         {community.description ? (
           <CardDescription className="whitespace-pre-wrap" data-testid="community-desc">
@@ -72,6 +69,7 @@ export function CommunityPage() {
         ) : (
           <CardDescription>这个社群还没有简介</CardDescription>
         )}
+
         <div className="flex flex-wrap items-center gap-2 pt-1">
           {authed && joined ? (
             <Link
@@ -128,10 +126,7 @@ export function CommunityPage() {
         ) : null}
       </Card>
 
-      <Card className="space-y-3">
-        <CardTitle>帖子</CardTitle>
-        <CardDescription>帖子列表在 P2.4 实现（双栏布局同时落地）</CardDescription>
-      </Card>
+      <p className="text-[11px] text-muted-foreground">从左边选一篇帖子开始读，或点「发帖」。</p>
     </div>
   )
 }
