@@ -165,7 +165,23 @@ sql_exec() {
     rm -f /tmp/p2-fixture.sql"
 }
 
+# L4 会 stop community-service。**如果脚本在 stop 与 start 之间出错退出，
+# 这个标记保证 cleanup 一定会把它拉起来。**
+# 一个能把生产环境停掉的验收脚本，比没有验收脚本更糟。
+COMMUNITY_STOPPED=0
+
 cleanup() {
+  if [ "$COMMUNITY_STOPPED" = "1" ]; then
+    printf '  %s注意%s community-service 被 L4 停止过，正在恢复…\n' "$Y" "$N"
+    ssh_run 'docker start kuaikan-community-service-1' >/dev/null 2>&1 || true
+    for _ in $(seq 1 40); do
+      h=$(ssh_run "docker inspect -f '{{.State.Health.Status}}' kuaikan-community-service-1" 2>/dev/null | tr -d '\r\n')
+      [ "$h" = "healthy" ] && break
+      sleep 3
+    done
+    COMMUNITY_STOPPED=0
+  fi
+
   # 按 id + 名称前缀双保险：一次运行会建两个社群（大小写归一那条断言也要一个），
   # 只记一个 id 会漏删。夹具名统一以 e2e- 开头，前缀匹配能兜住漏记的情况。
   if [ -n "$USER_ID" ]; then
@@ -638,6 +654,7 @@ if want_heavy_layer l4; then
         || ng "L4 基线不成立" "发帖 code=$base"
 
       # ---- kill community-service ----
+      COMMUNITY_STOPPED=1
       ssh_run 'docker stop kuaikan-community-service-1' >/dev/null 2>&1
       sleep 2
 
@@ -664,6 +681,7 @@ if want_heavy_layer l4; then
         || ng "社群列表居然还可访问" "HTTP ${a}，说明服务没真的停掉"
 
       ssh_run 'docker start kuaikan-community-service-1' >/dev/null 2>&1
+      COMMUNITY_STOPPED=0
       for _ in $(seq 1 40); do
         h=$(ssh_run "docker inspect -f '{{.State.Health.Status}}' kuaikan-community-service-1" 2>/dev/null | tr -d '\r\n')
         [ "$h" = "healthy" ] && break
