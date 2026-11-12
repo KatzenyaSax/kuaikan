@@ -214,8 +214,30 @@ else
   [ "$forged" = "$MYID" ] && ok "伪造 X-User-Id 被剥离（返回自己的 id）" \
     || ng "伪造头生效（严重）" "got=$forged"
 
-  tampered=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer ${TOKEN%?}X" "$SITE/api/user/auth/me")
-  [ "$tampered" = "401" ] && ok "篡改签名 → 401" || ng "篡改签名未被拒" "HTTP $tampered"
+  # 篡改签名段**中间**的一个字符。
+  #
+  # 不能改最后一个字符：RS256 签名是 256 字节，base64url 编码后 342 个字符、
+  # 最后 4 个 bit 是填充位。改末位字符可能只动了那几个被解码器忽略的 bit，
+  # 解码出的签名与原来完全相同 —— token 依然有效，断言就"随机通过"了。
+  # 这条曾经真的红过，原因正是它自己不可靠。
+  tampered_token=$(python3 - "${TOKEN}" <<'PYEOF'
+import sys
+token = sys.argv[1]
+if token.count('.') != 2:
+    print('')
+    raise SystemExit(0)
+header, payload, sig = token.split('.')
+i = len(sig) // 2
+sig2 = sig[:i] + ('A' if sig[i] != 'A' else 'B') + sig[i + 1:]
+print(f'{header}.{payload}.{sig2}')
+PYEOF
+)
+  if [ -z "$tampered_token" ] || [ "$tampered_token" = "$TOKEN" ]; then
+    ng "篡改签名前的前置条件不成立" "构造出的 token 与原文相同"
+  else
+    tampered=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $tampered_token" "$SITE/api/user/auth/me")
+    [ "$tampered" = "401" ] && ok "篡改签名 → 401" || ng "篡改签名未被拒" "HTTP $tampered"
+  fi
 
   rt=$(grep kuaikan_refresh /tmp/p1-jar.txt | awk '{print $7}')
   used_as_access=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $rt" "$SITE/api/user/auth/me")
