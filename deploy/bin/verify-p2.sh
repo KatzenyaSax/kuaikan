@@ -123,7 +123,9 @@ FIXTURE_HASH='$2a$10$5SZSC3aIXFj9q3PyX1f3FuxLrHv4bcoXpYgRNFPj.ayJ8fUhrKBy2'
 FIXTURE_PASS='E2eFixture-Passw0rd'
 STAMP="$(date +%s)"
 EMAIL="e2e+p2${STAMP}@kuaikan.test"
+EMAIL2="e2e+p2b${STAMP}@kuaikan.test"
 USER_ID=""
+USER_ID2=""
 COMMUNITY_ID=""
 COMMUNITY_ID2=""
 COMMUNITY_NAME="e2e-社群-${STAMP}"
@@ -167,8 +169,8 @@ cleanup() {
         WHERE c.name LIKE 'e2e-%' OR c.id IN (${COMMUNITY_ID:-0}, ${COMMUNITY_ID2:-0});
       DELETE FROM t_community
         WHERE name LIKE 'e2e-%' OR id IN (${COMMUNITY_ID:-0}, ${COMMUNITY_ID2:-0});
-      DELETE FROM kuaikan_user.t_refresh_token WHERE user_id=$USER_ID;
-      DELETE FROM kuaikan_user.t_user WHERE id=$USER_ID;" 2>&1)
+      DELETE FROM kuaikan_user.t_refresh_token WHERE user_id IN ($USER_ID, ${USER_ID2:-0});
+      DELETE FROM kuaikan_user.t_user WHERE id IN ($USER_ID, ${USER_ID2:-0});" 2>&1)
     case "$out" in
       *ERROR*) printf '  %s清理失败%s %s\n' "$R" "$N" "$(printf '%s' "$out" | head -2 | tr '\n' ' ')" ;;
       *) info "已清理测试账号 $EMAIL 与测试社群" ;;
@@ -191,10 +193,17 @@ if want_layer l2; then
   ssh_run 'true' && ssh_ok=1
   if [ $ssh_ok = 1 ]; then
     out=$(sql_exec "INSERT INTO kuaikan_user.t_user (id, email, password_hash, nickname, roles, status)
-        VALUES (FLOOR(RAND()*900000000000000000)+100000000000000000, '$EMAIL', '$FIXTURE_HASH', 'e2e-p2', 'USER', 1);
-        SELECT id FROM kuaikan_user.t_user WHERE email='$EMAIL';")
-    USER_ID=$(printf '%s' "$out" | tr -d '\r\n ')
-    [ -n "$USER_ID" ] && info "临时账号 userId=$USER_ID" || ng "创建临时账号失败"
+        VALUES (FLOOR(RAND()*900000000000000000)+100000000000000000, '$EMAIL', '$FIXTURE_HASH', 'e2e-p2', 'USER', 1),
+               (FLOOR(RAND()*900000000000000000)+100000000000000000, '$EMAIL2', '$FIXTURE_HASH', 'e2e-p2b', 'USER', 1);
+        SELECT id FROM kuaikan_user.t_user WHERE email='$EMAIL';
+        SELECT id FROM kuaikan_user.t_user WHERE email='$EMAIL2';")
+    USER_ID=$(printf '%s' "$out" | sed -n '1p' | tr -d '\r\n ')
+    USER_ID2=$(printf '%s' "$out" | sed -n '2p' | tr -d '\r\n ')
+    if [ -n "$USER_ID" ] && [ -n "$USER_ID2" ]; then
+      info "临时账号 userId=$USER_ID / $USER_ID2（第二个用于验证加入，不能自己加自己）"
+    else
+      ng "创建临时账号失败" "USER_ID=$USER_ID USER_ID2=$USER_ID2"
+    fi
   else
     skip "L2 后端 HTTP" "无法 SSH 到 $SSH_HOST（需要建账号与清理）"
   fi
@@ -205,6 +214,11 @@ if want_layer l2; then
       -H 'Content-Type: application/json' -d "{\"email\":\"$EMAIL\",\"password\":\"$FIXTURE_PASS\"}")
     TOKEN=$(printf '%s' "$resp" | json_field 'data.accessToken')
     [ -n "$TOKEN" ] || ng "夹具登录失败，后续断言会空转" "$(printf '%s' "$resp" | head -c 120)"
+
+    resp2=$(curl -s --max-time 15 -X POST "$SITE/api/user/auth/login" \
+      -H 'Content-Type: application/json' -d "{\"email\":\"$EMAIL2\",\"password\":\"$FIXTURE_PASS\"}")
+    TOKEN2=$(printf '%s' "$resp2" | json_field 'data.accessToken')
+    [ -n "$TOKEN2" ] || ng "第二个夹具账号登录失败" "$(printf '%s' "$resp2" | head -c 120)"
   fi
 
   if [ -n "$TOKEN" ]; then
@@ -342,7 +356,97 @@ raise SystemExit(1 if any(k.startswith('viewer') for k in d) else 0)"; then
       && ok "篡改游标 → 40010（不是 500）" || ng "篡改游标语义" "$(printf '%s' "$body" | head -c 120)"
   fi
 
-  skip "成员加入/退出与 member_count 增量" "P2.2 未实现"
+  # ---------------------------------------------------------------- P2.2 成员
+  member_count() {
+    curl -s --max-time 15 "$SITE/api/community/communities/$1" | json_field 'data.memberCount'
+  }
+  mem_base="$SITE/api/community/communities/$enc/membership"
+
+  if [ -n "$TOKEN" ] && [ -n "$TOKEN2" ] && [ -n "$COMMUNITY_ID" ]; then
+    c0=$(member_count "$enc")
+    [ "$c0" = "1" ] && ok "初始 member_count = 1（只有所有者）" || ng "初始计数" "got=$c0"
+
+    curl -s --max-time 15 -o /dev/null -X POST "$mem_base" -H "Authorization: Bearer $TOKEN2"
+    c1=$(member_count "$enc")
+    [ "$c1" = "2" ] && ok "加入后 member_count +1" || ng "加入未加计数" "got=$c1 want=2"
+
+    # 幂等：重复加入必须返回成功且计数不变
+    body=$(curl -s --max-time 15 -X POST "$mem_base" -H "Authorization: Bearer $TOKEN2")
+    c2=$(member_count "$enc")
+    code=$(printf '%s' "$body" | json_field 'code')
+    if [ "$code" = "0" ] && [ "$c2" = "2" ]; then
+      ok "重复加入幂等（code 0 且计数不变）"
+    else
+      ng "重复加入不幂等" "code=$code count=$c2 want=0/2"
+    fi
+
+    curl -s --max-time 15 -o /dev/null -X DELETE "$mem_base" -H "Authorization: Bearer $TOKEN2"
+    c3=$(member_count "$enc")
+    [ "$c3" = "1" ] && ok "退出后 member_count -1" || ng "退出未减计数" "got=$c3 want=1"
+
+    # 幂等：重复退出不重复扣
+    curl -s --max-time 15 -o /dev/null -X DELETE "$mem_base" -H "Authorization: Bearer $TOKEN2"
+    c4=$(member_count "$enc")
+    [ "$c4" = "1" ] && ok "重复退出幂等（计数不再减）" || ng "重复退出重复扣" "got=$c4 want=1"
+
+    # 复活路径：退出再加入必须是 +1（回到 2），不是 +2（变成 3）
+    curl -s --max-time 15 -o /dev/null -X POST "$mem_base" -H "Authorization: Bearer $TOKEN2"
+    c5=$(member_count "$enc")
+    [ "$c5" = "2" ] && ok "退出再加入走复活路径：回到 2（不是 3）" || ng "复活路径计数错" "got=$c5 want=2"
+
+    # 所有者不能退出
+    body=$(curl -s --max-time 15 -X DELETE "$mem_base" -H "Authorization: Bearer $TOKEN")
+    code=$(printf '%s' "$body" | json_field 'code')
+    c6=$(member_count "$enc")
+    if [ "$code" = "41005" ] && [ "$c6" = "2" ]; then
+      ok "所有者退出 → 41005，计数不变"
+    else
+      ng "所有者退出未被拦" "code=$code count=$c6"
+    fi
+
+    # 游客不能加入
+    c=$(http_code -X POST "$mem_base")
+    [ "$c" = "401" ] && ok "游客加入 → 401" || ng "游客加入语义" "HTTP $c"
+
+    # /mine
+    body=$(curl -s --max-time 15 -H "Authorization: Bearer $TOKEN2" "$SITE/api/community/mine")
+    if printf '%s' "$body" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)['data']
+ids=[i['id'] for i in d['items']]
+raise SystemExit(0 if sys.argv[1] in ids else 1)" "$COMMUNITY_ID"; then
+      ok "/mine 只返回自己加入的社群"
+    else
+      ng "/mine 内容不对" "$(printf '%s' "$body" | head -c 160)"
+    fi
+
+    body=$(curl -s --max-time 15 -H "Authorization: Bearer $TOKEN" "$SITE/api/community/mine")
+    if printf '%s' "$body" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)['data']
+raise SystemExit(0 if d['items'] else 1)"; then
+      ok "所有者也算成员（/mine 里有自己建的社群）"
+    else
+      ng "所有者不在 /mine 里" "$(printf '%s' "$body" | head -c 160)"
+    fi
+
+    c=$(http_code "$SITE/api/community/mine")
+    [ "$c" = "401" ] && ok "/mine 无 token → 401" || ng "/mine 未鉴权" "HTTP $c"
+
+    # 库层一致性：member_count 必须等于 status=1 的行数
+    row=$(sql_exec "SELECT CONCAT(c.member_count, ':', (SELECT COUNT(*) FROM kuaikan_community.t_community_member m
+        WHERE m.community_id = c.id AND m.status = 1))
+      FROM kuaikan_community.t_community c WHERE c.id = $COMMUNITY_ID;")
+    row=$(printf '%s' "$row" | tr -d '\r\n ')
+    lhs=${row%%:*}
+    rhs=${row##*:}
+    if [ -n "$lhs" ] && [ "$lhs" = "$rhs" ]; then
+      ok "库层一致：member_count = 在社行数（$lhs）"
+    else
+      ng "member_count 与成员行数不一致" "count:rows = $row"
+    fi
+  fi
+
   skip "发帖与权限边界（41004）" "P2.3 未实现"
   skip "帖子游标分页不重不漏" "P2.4 未实现"
 fi
