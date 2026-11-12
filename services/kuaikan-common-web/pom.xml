@@ -38,5 +38,13 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- 同上：只用于 MybatisAuditConfig。不连库的服务不引入 mybatis-plus，
+             @ConditionalOnClass 会让该配置自动跳过。 -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+            <optional>true</optional>
+        </dependency>
+
     </dependencies>
 </project>

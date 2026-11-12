@@ -5,6 +5,21 @@ server:
 spring:
   application:
     name: community-service
+  datasource:
+    # 只连自己的 schema。u_community 只有 kuaikan_community.* 的权限（ADR 0006）
+    url: jdbc:mysql://${MYSQL_HOST:mysql}:${MYSQL_PORT:3306}/kuaikan_community?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USER:u_community}
+    password: ${MYSQL_PASSWORD:}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 3000
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
   cloud:
     nacos:
       discovery:
@@ -13,6 +28,16 @@ spring:
         group: ${NACOS_GROUP:DEFAULT_GROUP}
         metadata:
           version: ${APP_VERSION:dev}
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    banner: false
+    # 与 user-service 用不同的 worker-id：容器内从 MAC/PID 推导不保证唯一，
+    # 而 ID 冲突要等到写入时才暴露
+    worker-id: ${ID_WORKER_ID:2}
+    datacenter-id: ${ID_DATACENTER_ID:1}
 
 management:
   endpoints:

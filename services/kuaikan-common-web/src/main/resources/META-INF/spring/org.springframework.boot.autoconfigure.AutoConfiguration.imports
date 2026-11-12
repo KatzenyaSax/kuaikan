@@ -1,3 +1,4 @@
 top.katzenyasax.kuaikan.common.web.config.JacksonConfig
 top.katzenyasax.kuaikan.common.web.config.WebAutoConfiguration
 top.katzenyasax.kuaikan.common.web.config.OpenApiConfig
+top.katzenyasax.kuaikan.common.web.config.MybatisAuditConfig

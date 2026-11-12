@@ -76,6 +76,8 @@ kuaikan:
     jwks-uri: ${JWKS_URI:http://user-service:8081/internal/jwks}
     # 精确放行：登录前必然未认证的端点
     whitelist:
+      # P2：社群列表游客可读
+      - /api/community/communities
       - /api/user/auth/login
       - /api/user/auth/register
       - /api/user/auth/register/code
@@ -84,6 +86,10 @@ kuaikan:
     # 这是 P1 的已知债务，见 docs/project.md「P0 期间已知的公开面」。
     public-patterns:
       - ^/api/[^/]+/ping(/.*)?$
+      # P2：社群详情按名称取，路径里是变量，只能正则放行。
+      # 刻意不用 /communities/.* —— 那样 /communities/{name}/membership
+      # 这类写端点也会被放行。这里只放行"最后一段是名称"的形状。
+      - ^/api/community/communities/[^/]+$
 
 management:
   endpoints:

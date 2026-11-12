@@ -21,6 +21,7 @@ export const ERROR_MESSAGES: Readonly<Record<number, string>> = {
   41001: '社群不存在', // COMMUNITY_NOT_FOUND
   41002: '该社群标识已被占用', // COMMUNITY_SLUG_TAKEN
   41004: '需要先加入社群', // NOT_MEMBER
+  41005: '社群创建者不能退出', // OWNER_CANNOT_LEAVE
   42001: '帖子不存在', // POST_NOT_FOUND
   42900: '请求过于频繁', // RATE_LIMITED
   50000: '服务内部错误', // INTERNAL
@@ -44,6 +45,7 @@ export const ERROR_HTTP_STATUS: Readonly<Record<number, number>> = {
   41001: 404,
   41002: 409,
   41004: 200,
+  41005: 200,
   42001: 404,
   42900: 429,
   50000: 500,

@@ -18,7 +18,16 @@ public enum CommunityErrorCode implements ErrorCode {
     COMMUNITY_NOT_FOUND(41001, "社群不存在"),
     COMMUNITY_SLUG_TAKEN(41002, "该社群标识已被占用"),
     /** 发帖、发评论等写操作要求调用者是该社群成员 */
-    NOT_MEMBER(41004, "需要先加入社群");
+    NOT_MEMBER(41004, "需要先加入社群"),
+
+    /**
+     * 所有者退出社群。
+     *
+     * 所有者退出后会变成"不是成员的所有者"，既不能发帖、社群也没人管。
+     * 转让能力在 P7，中间这段时间只能由管理员改库——这是 P2 的已知缺口，
+     * 不是遗漏。
+     */
+    OWNER_CANNOT_LEAVE(41005, "社群创建者不能退出");
 
     private final int code;
     private final String message;

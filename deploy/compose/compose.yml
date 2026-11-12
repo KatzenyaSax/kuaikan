@@ -293,9 +293,16 @@ services:
     environment:
       <<: *default-app-env
       ROCKETMQ_NAMESRV: rmq-namesrv:9876
+      # 数据层（ADR 0006：只连自己的 schema，账号只有本库权限）
+      MYSQL_HOST: mysql
+      MYSQL_USER: u_community
+      MYSQL_PASSWORD: ${MYSQL_PWD_COMMUNITY:?}
+      ID_WORKER_ID: "2"
     depends_on:
       <<: *default-app-depends
       rmq-broker:
+        condition: service_healthy
+      mysql:
         condition: service_healthy
     networks:
       - kuaikan
