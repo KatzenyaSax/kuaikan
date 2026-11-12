@@ -18,6 +18,7 @@ import top.katzenyasax.kuaikan.common.api.Result;
 import top.katzenyasax.kuaikan.common.error.BizException;
 import top.katzenyasax.kuaikan.common.error.CommonErrorCode;
 import top.katzenyasax.kuaikan.common.web.UserContext;
+import top.katzenyasax.kuaikan.common.web.annotation.PublicEndpoint;
 import top.katzenyasax.kuaikan.user.auth.LoginService;
 import top.katzenyasax.kuaikan.user.auth.ProfileService;
 import top.katzenyasax.kuaikan.user.auth.RegistrationService;
