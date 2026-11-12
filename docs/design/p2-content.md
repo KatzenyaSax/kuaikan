@@ -435,6 +435,13 @@ P4 加置顶就是纯增量（加表 + 加端点），不改已有契约、不�
 
 ## 6. 验收（`deploy/bin/verify-p2.sh`，沿用五层）
 
+**执行顺序是 L1 → L2 → L3 → L5 → L4**（L4 破坏性动作必须最后）。
+L4 会真的 `stop` 掉 community-service，被 kill 过的服务之后 10 分钟内持续写 ERROR，
+而 P0 有一条"近 10 分钟无 ERROR"的断言——先破坏再回归，等于让回归必然失败。
+L4 停掉的服务由 `trap cleanup EXIT` 兜底重启（`COMMUNITY_STOPPED` 标记）。
+
+当前进度：L1 5 条 / L2 44 条 / L5 3 条 / L4 5 条全绿，L3 待 P2.4 实现。
+
 ### L1 契约与构建
 契约三方一致（19 码）/ **OpenAPI 与网关白名单一致**（`check-openapi.mjs` 三条：
 operationId 跨服务唯一、`security: []` 端点必须在白名单内、白名单精确条目必须存在）/
