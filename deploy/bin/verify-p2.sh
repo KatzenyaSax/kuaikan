@@ -222,6 +222,7 @@ info "开始 $(date '+%F %T')"
 # 抽成函数是因为 L4 也要用真数据：单独跑 --layer l4 时不能因为"L2 没跑"
 # 就跳过破坏性验证 —— 那正是最需要跑的一层。
 FIXTURE_READY=0
+L4_RAN=0
 prepare_fixture() {
   [ "$FIXTURE_READY" = "1" ] && return 0
   ssh_ok=0
@@ -700,6 +701,7 @@ if want_heavy_layer l4; then
 
       # ---- kill community-service ----
       COMMUNITY_STOPPED=1
+      L4_RAN=1
       ssh_run 'docker stop kuaikan-community-service-1' >/dev/null 2>&1
       sleep 2
 
@@ -754,6 +756,12 @@ if [ "$((PASS + FAIL + SKIP))" -eq 0 ]; then
   printf '\n%s脚本没有执行任何检查%s' "$R" "$N"
   printf '（--layer=%s 未匹配到任何一层）\n' "${ONLY_LAYER:-<全部>}"
   exit 3
+fi
+
+if [ "$COMMUNITY_STOPPED" = "0" ] && [ "${L4_RAN:-0}" = "1" ]; then
+  printf '\n  %s注意%s L4 故意停过 community-service，接下来约 10 分钟内单独跑\n' "$Y" "$N"
+  printf '        verify.sh / verify-p05.sh / verify-p1.sh 可能因"日志异常"而红——\n'
+  printf '        那是 L4 的预期副作用，不是产品问题。\n'
 fi
 
 printf '\n%s汇总%s\n' "$B" "$N"
