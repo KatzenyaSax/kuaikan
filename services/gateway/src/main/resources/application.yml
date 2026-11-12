@@ -75,21 +75,24 @@ kuaikan:
     # 公钥来源。同容器网络内直接用服务名，比走 lb:// 简单且少一跳。
     jwks-uri: ${JWKS_URI:http://user-service:8081/internal/jwks}
     # 精确放行：登录前必然未认证的端点
+    # 条目格式：<METHOD> <路径>。方法位写 * 表示任意方法。
+    # **必须带方法**：同一路径常常读公开、写需要登录
+    # （/communities 的 GET 游客可读、POST 需要登录；P2.3 的 /posts 同理）。
     whitelist:
-      # P2：社群列表游客可读
-      - /api/community/communities
-      - /api/user/auth/login
-      - /api/user/auth/register
-      - /api/user/auth/register/code
-      - /api/user/auth/refresh
+      - POST /api/user/auth/login
+      - POST /api/user/auth/register
+      - POST /api/user/auth/register/code
+      - POST /api/user/auth/refresh
+      # P2：社群列表游客可读（仅 GET）
+      - GET /api/community/communities
     # 正则放行：P0/P0.5 的探针端点，不返回任何用户数据。
     # 这是 P1 的已知债务，见 docs/project.md「P0 期间已知的公开面」。
     public-patterns:
-      - ^/api/[^/]+/ping(/.*)?$
+      - '* ^/api/[^/]+/ping(/.*)?$'
       # P2：社群详情按名称取，路径里是变量，只能正则放行。
-      # 刻意不用 /communities/.* —— 那样 /communities/{name}/membership
-      # 这类写端点也会被放行。这里只放行"最后一段是名称"的形状。
-      - ^/api/community/communities/[^/]+$
+      # 两条限制叠加：只放行 GET，且只放行"最后一段是名称"的形状。
+      # 少任何一条，/communities/{name}/membership 这类写端点都会被放行。
+      - GET ^/api/community/communities/[^/]+$
 
 management:
   endpoints:

@@ -22,13 +22,12 @@ import top.katzenyasax.kuaikan.common.api.Result;
 import top.katzenyasax.kuaikan.common.error.CommonErrorCode;
 import top.katzenyasax.kuaikan.common.web.Headers;
 import top.katzenyasax.kuaikan.gateway.auth.AccessWhitelist;
-import top.katzenyasax.kuaikan.gateway.auth.GatewayAuthProperties;
+import top.katzenyasax.kuaikan.gateway.auth.PublicEndpointRules;
 import top.katzenyasax.kuaikan.gateway.auth.JwksProvider;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Date;
-import java.util.List;
 
 /**
  * 身份的**唯一信任源**。
@@ -58,26 +57,26 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     private final JwksProvider jwksProvider;
     private final AccessWhitelist whitelist;
     private final ObjectMapper objectMapper;
-    private final GatewayAuthProperties props;
+    private final PublicEndpointRules publicRules;
 
     public JwtAuthGlobalFilter(
             JwksProvider jwksProvider,
             AccessWhitelist whitelist,
             ObjectMapper objectMapper,
-            GatewayAuthProperties props) {
+            PublicEndpointRules publicRules) {
         this.jwksProvider = jwksProvider;
         this.whitelist = whitelist;
         this.objectMapper = objectMapper;
-        this.props = props;
-        log.info("放行名单已加载 whitelist={} patterns={}",
-                props.getWhitelist(), props.getPublicPatterns());
+        this.publicRules = publicRules;
     }
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         String path = exchange.getRequest().getPath().value();
+        String method = exchange.getRequest().getMethod().name();
 
-        if (isPublic(path)) {
+        // 放行判断必须带方法：同一路径常常读公开、写需要登录（如 /communities）
+        if (publicRules.isPublic(method, path)) {
             // 放行也要做一件小事：把客户端伪造的身份头剥掉。
             // 否则匿名请求带着 X-User-Id: 999 打到下游，下游会当成已登录。
             return chain.filter(withStrippedIdentity(exchange));
@@ -150,22 +149,6 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
             return "missing jti/sub";
         }
         return null;
-    }
-
-    private boolean isPublic(String path) {
-        List<String> exactWhitelist = props.getWhitelist();
-        List<String> patternWhitelist = props.getPublicPatterns();
-        for (String allowed : exactWhitelist) {
-            if (allowed != null && allowed.equals(path)) {
-                return true;
-            }
-        }
-        for (String pattern : patternWhitelist) {
-            if (pattern != null && !pattern.isBlank() && path.matches(pattern)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     /** 放行分支：只剥离，不注入 */
