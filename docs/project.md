@@ -321,6 +321,59 @@ docker exec kuaikan-user-service-1 \
 - `expired`：只在"本来已登录、被动掉线"时设置（首次访问的 401 是正常的"没登录"）
 - `manual`：主动登出，不提示
 
+### P2.2 加入社群（已完成）
+
+`POST|DELETE /api/community/communities/{name}/membership`（都幂等）、`GET /mine`。
+
+#### member_count 的三条规矩
+
+1. **唯一写入者是 community-service，与成员行同一本地事务**，不跨服务不发事件。
+2. **只用相对更新**：`UPDATE ... SET member_count = member_count + 1`。先读再写在
+   并发下会丢更新（两个请求都读到 5、都写 6，实际加进来 2 个人）。
+3. **要不要 ±1 由 affectedRows 决定**，不是"成功就加"。
+
+#### 加入：insert 优先，撞唯一键就复活
+
+```
+insert 成功                      → +1（新成员）
+DuplicateKeyException → revive() → +1（原 status=0，复活）
+                       revive()=0 →  0（本来就 active）
+```
+
+**没用一条 `ON DUPLICATE KEY UPDATE`。** 那条写法要求自己先分配雪花 id，
+于是得注入 `IdentifierGenerator`——而它挂在 MyBatis-Plus 的 GlobalConfig 上，
+不一定以 bean 暴露；更关键的是**自己生成 id 会绕开 compose 里按服务分配的
+`ID_WORKER_ID`**，而 worker-id 冲突要等到写入时才暴露。
+
+让 `BaseMapper.insert` 分配 id，等于沿用了服务级配置。并发仍由唯一键裁判：
+两个请求同时加入，一个 insert 成功，另一个撞键后走 revive 返回 0，不重复计数。
+`verify-p2.sh` 里有 10 并发加入只 +1 的断言。
+
+#### 退出：只有 affected=1 才 -1
+
+`UPDATE ... SET status=0 WHERE ... AND status=1`，返回 1 才是真的从"在社"变"已退出"。
+重复退出返回 0，不扣计数。
+
+#### 所有者不能退出（41005）
+
+退出后会变成"不是成员的所有者"：不能发帖、社群也没人管。转让能力在 P7，
+这是 P2 的已知缺口——中间这段时间只能由管理员改库。
+
+#### /mine 放在 /mine 而不是 /communities/mine
+
+社群名就是标识。如果有人把社群叫作 `mine`（或 `new`），
+`/communities/mine` 会同时是"我的社群"和"那个社群"，只能靠路由优先级决定谁赢——
+那是个没人会记得的陷阱。放在 `/mine` 之后，`/communities/{name}` 的命名空间就是干净的。
+
+排序以**成员行的 joined_at** 为准（不是社群创建时间）："我刚加的"应该排在前面。
+游标里存成员行 id，与社群列表的游标含义不同，所以两者的排序标记也不同。
+
+#### 加入状态从 /mine 推导，不在详情里
+
+公开详情没有 `viewer*` 字段（放行 = 匿名，见 P2.1）。所以前端用 `/mine` 判断
+"加没加入"。**建社群后必须失效 `/mine` 缓存**——创建者同时也是第一个成员，
+漏了会让刚建完的社群页显示"加入社群"（浏览器验收发现的）。
+
 ### P2.1 社群（已完成）
 
 #### 社群名就是标识，没有 slug
