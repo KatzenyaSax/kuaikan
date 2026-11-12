@@ -623,7 +623,13 @@ if want_heavy_layer l5; then
 
   # P0 的 verify.sh 检查的是容器状态，必须在服务器上跑；
   # --no-restart 避免后半程的断言被重启窗口里的真 500 污染。
-  out=$(ssh_run 'cd /opt/kuaikan/repo && bash deploy/bin/verify.sh --no-restart' 2>&1)
+  # --skip-log-check 是必须的：L4 会故意 stop 掉 community-service，
+  # 被 kill 过的服务之后 10 分钟内持续写 ERROR（gateway 的 "Unable to find instance"、
+  # user-service 的 /ping/feign 503），那与产品健康无关。
+  #
+  # 用显式开关而不是往 NOISE 正则里加例外：后者会把真正的回归一起放过。
+  # 代价是这一层不再检查日志 —— 所以 P0 的日志断言必须在**单独运行 verify.sh** 时看。
+  out=$(ssh_run 'cd /opt/kuaikan/repo && bash deploy/bin/verify.sh --no-restart --skip-log-check' 2>&1)
   if printf '%s' "$out" | grep -q 'P0 验收通过'; then
     ok "verify.sh（P0）全绿"
   else

@@ -281,17 +281,21 @@ fi
 section "10. 日志无异常（近 10 分钟）"
 # nacos-client 在优雅关闭时会打 InterruptedException，是已知无害噪音
 NOISE='NotifyCenter|Nacos client graceful shutdown|GracefulShutdownDelegate|InterruptedException'
-dirty=""
-for s in $(printf '%s' "$SERVICES" | tr ' ' '\n' | cut -d: -f1); do
-  cid=$(cid_of "$s")
-  [ -z "$cid" ] && continue
-  n=$(docker logs --since 10m "$cid" 2>&1 | grep -E ' ERROR ' | grep -vE "$NOISE" | wc -l)
-  [ "$n" -gt 0 ] && dirty="$dirty $s($n)"
-done
-if [ -z "$dirty" ]; then
-  ok "8 个服务近期无 ERROR（已排除 nacos-client 关闭噪音）"
+if [ "$SKIP_LOG_CHECK" = "1" ]; then
+  skip "日志断言" "被 --skip-log-check 显式跳过（破坏性验证之后日志必然有噪音）"
 else
-  ng "日志异常" "$dirty"
+  dirty=""
+  for s in $(printf '%s' "$SERVICES" | tr ' ' '\n' | cut -d: -f1); do
+    cid=$(cid_of "$s")
+    [ -z "$cid" ] && continue
+    n=$(docker logs --since 10m "$cid" 2>&1 | grep -E ' ERROR ' | grep -vE "$NOISE" | wc -l)
+    [ "$n" -gt 0 ] && dirty="$dirty $s($n)"
+  done
+  if [ -z "$dirty" ]; then
+    ok "8 个服务近期无 ERROR（已排除 nacos-client 关闭噪音）"
+  else
+    ng "日志异常" "$dirty"
+  fi
 fi
 
 # ---------------------------------------------------------------- 11. 重启自愈
