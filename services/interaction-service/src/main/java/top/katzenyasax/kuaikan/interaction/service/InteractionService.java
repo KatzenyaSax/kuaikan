@@ -67,12 +67,11 @@ public class InteractionService {
     /** 设为已赞 / 已收藏。幂等：本来就是则不发事件 */
     @Transactional
     public void add(Long userId, int kind, int targetType, Long targetId) {
-        TargetView target = requireTarget(targetType, targetId);
-        // 收藏只对帖子开放：收藏一条评论在产品上没有意义，
-        // 而且会让 favorite_count 的归属变成"评论也有收藏数"，多一套没人看的字段
+        // 先做本地规则校验，再发跨服务调用 —— 参数本身就错的时候没必要问下游
         if (kind == Interaction.KIND_FAVORITE && targetType != Interaction.TARGET_POST) {
             throw new BizException(CommonErrorCode.PARAM_INVALID, "只能收藏帖子");
         }
+        TargetView target = requireTarget(targetType, targetId);
 
         Interaction row = new Interaction();
         row.setUserId(userId);

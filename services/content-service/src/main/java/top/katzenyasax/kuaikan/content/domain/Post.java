@@ -35,6 +35,10 @@ public class Post {
     /** 评论总数。强一致计数，与评论写入同一本地事务 */
     private Integer commentCount;
 
+    /** 点赞数 / 收藏数。最终一致，由 interaction 的事件投影（见 ADR 0010） */
+    private Integer likeCount;
+    private Integer favoriteCount;
+
     private Integer status;
 
     @TableField(fill = FieldFill.INSERT)
@@ -53,6 +57,10 @@ public class Post {
     public void setTitle(String title) { this.title = title; }
     public String getBody() { return body; }
     public void setBody(String body) { this.body = body; }
+    public Integer getLikeCount() { return likeCount; }
+    public void setLikeCount(Integer likeCount) { this.likeCount = likeCount; }
+    public Integer getFavoriteCount() { return favoriteCount; }
+    public void setFavoriteCount(Integer favoriteCount) { this.favoriteCount = favoriteCount; }
     public Integer getCommentCount() { return commentCount; }
     public void setCommentCount(Integer commentCount) { this.commentCount = commentCount; }
     public Integer getStatus() { return status; }

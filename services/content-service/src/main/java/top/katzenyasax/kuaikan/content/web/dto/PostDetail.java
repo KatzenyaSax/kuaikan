@@ -25,12 +25,18 @@ public record PostDetail(
         String body,
         @Schema(description = "评论总数（强一致：与评论写入同一本地事务）。0 时前端不显示")
         long commentCount,
+        @Schema(description = "点赞数（最终一致，滞后 ≤5s）")
+        long likeCount,
+        @Schema(description = "收藏数（最终一致，滞后 ≤5s）")
+        long favoriteCount,
         LocalDateTime createdAt
 ) {
     public static PostDetail of(Post post) {
         return new PostDetail(post.getId(), post.getCommunityId(), post.getAuthorId(),
                 post.getTitle(), post.getBody(),
                 post.getCommentCount() == null ? 0 : post.getCommentCount(),
+                post.getLikeCount() == null ? 0 : post.getLikeCount(),
+                post.getFavoriteCount() == null ? 0 : post.getFavoriteCount(),
                 post.getCreatedAt());
     }
 }
