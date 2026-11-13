@@ -81,32 +81,112 @@ GET ^/api/content/comments/[0-9]+/replies$
 
 ```sql
 CREATE TABLE t_comment (
-  id                BIGINT UNSIGNED NOT NULL,
-  post_id           BIGINT UNSIGNED NOT NULL,
-  root_id           BIGINT UNSIGNED NULL     COMMENT '一级评论 id；一级评论自身为 NULL',
-  parent_id         BIGINT UNSIGNED NULL     COMMENT '直接父评论 id；一级评论为 NULL',
-  author_id         BIGINT UNSIGNED NOT NULL,
-  reply_to_user_id  BIGINT UNSIGNED NULL     COMMENT '回复给谁；二级回复的第二级需要它渲染"回复 @某人"',
-  body              VARCHAR(2000)  NOT NULL,
-  like_count        INT UNSIGNED NOT NULL DEFAULT 0,
-  reply_count       INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '直接子节点数，不是后代总数',
-  status            TINYINT NOT NULL DEFAULT 1 COMMENT '1 正常 / 0 已删除（tombstone 保留行）/ 2 已隐藏(P7)',
-  created_at        DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-  updated_at        DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  id                   BIGINT UNSIGNED NOT NULL,
+  post_id              BIGINT UNSIGNED NOT NULL,
+  root_comment_id      BIGINT UNSIGNED NULL     COMMENT '所属一级评论 id；一级评论自身为 NULL',
+  reply_to_comment_id  BIGINT UNSIGNED NULL     COMMENT '直接回复的评论 id；一级评论为 NULL',
+  reply_to_user_id     BIGINT UNSIGNED NULL     COMMENT '直接回复的人；渲染"回复 @某人"用',
+  author_id            BIGINT UNSIGNED NOT NULL COMMENT '作者；来自网关注入的 UserContext',
+  body                 VARCHAR(2000) NOT NULL   COMMENT '纯文本，允许换行',
+  like_count           INT UNSIGNED NOT NULL DEFAULT 0,
+  reply_count          INT UNSIGNED NOT NULL DEFAULT 0,
+  status               TINYINT NOT NULL DEFAULT 1 COMMENT '1 正常 / 0 已删除(tombstone) / 2 已隐藏(P7)',
+  created_at           DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at           DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   PRIMARY KEY (id),
-  KEY idx_post_created (post_id, root_id, status, created_at, id),
-  KEY idx_root_created (root_id, status, created_at, id)
+  KEY idx_post_root_comment (post_id, root_comment_id, created_at, id),
+  KEY idx_root_comment_created (root_comment_id, created_at, id)
 );
 ```
 
-**`root_id` + `parent_id` 两个都要**：
-- `parent_id` 记录直接父节点（渲染"回复 @某人"）
-- `root_id` 记录所属的一级评论（**一级列表只查 `root_id IS NULL`**，二级列表只查
-  `root_id = ?`）。只靠 `parent_id` 查二级列表就得递归，而展示只要两级。
+#### 为什么叫 `reply_to_comment_id` 而不是 `parent_id`
 
-**tombstone**：删除不是物理删，是 `status = 0` 且 `body` 清空（避免已删内容还能被读到）。
-一级评论被删且**有回复**时，行要保留（否则二级回复变孤儿），展示成"该评论已删除"。
-没回复的评论可以真删——但为了逻辑统一，P3 一律软删，物理清理交给 P7 的归档任务。
+`parent_id` 描述的是**结构**（树里的父节点），而我们的展示是**两级平铺**，不是树：
+
+```
+A（一级）
+  B 回复 @A作者
+  C 回复 @B作者     ← C 的"父"是 B，但 UI 上和 B 平级
+```
+
+叫 `parent_id` 会让人第一反应写递归渲染，而正确做法是按 `root_comment_id` 一次查平。
+**名字在诱导错误的实现。** 而 `reply_to_comment_id` 描述的是语义（我回复了哪条评论），
+语义不随展示方式变化。
+
+三列连起来读是一句话：「这条评论属于 `root_comment_id` 这个主楼，回复的是
+`reply_to_comment_id`，回复给 `reply_to_user_id` 这个人」。
+
+不变量：**`root_comment_id IS NULL` ⇔ `reply_to_comment_id IS NULL`**（一级评论两个都空）。
+
+#### 为什么 `root_comment_id` 和 `reply_to_comment_id` 都要存
+
+它们回答两个不同的问题，正对应列表页的两种查法：
+
+| 字段 | 回答 | 用在 |
+|---|---|---|
+| `root_comment_id` | 我属于哪条一级评论 | 一级列表（`IS NULL`）、二级列表（`= ?`） |
+| `reply_to_comment_id` | 我直接回复的是谁 | 渲染"回复 @某人"、删除时的关联判断 |
+
+只留 `reply_to_comment_id`（纯邻接表）查二级列表要递归；只留 `root_comment_id`
+渲染不出回复关系。
+
+#### `reply_to_user_id` 不是缓存，是快照
+
+理论上能通过 `reply_to_comment_id` join 出父评论作者，但那样列表页每行都要 join，
+而且语义会错：它记录的是**"我当时回复的是谁"**。张三是被回复者、后来删号了，
+这条回复仍然应该显示"回复 @张三"。
+
+#### tombstone 不是一律软删
+
+```
+有回复的评论被删    → 软删（否则子回复的 root_comment_id 变孤儿）
+没有回复的评论被删  → 物理删（留一行"该评论已删除"的空壳毫无意义）
+```
+
+由此得到一条干净的不变量：
+
+> **`status = 0` 的评论，一定有回复。**
+
+于是列表查询**完全不用过滤 status**（tombstone 要显示、正常评论也显示），索引也不必带 status。
+（"一律软删"会导致一级列表混进一堆 `status=0 且 reply_count=0` 的空壳，
+查询被迫写成 `(status=1 OR reply_count>0)` 这种别扭条件。）
+
+#### `reply_count` 是**后代总数**（偏离 architecture §7 的原文）
+
+architecture 写的是「直接子节点数，非后代总数」。但我们的展示是两级平铺，
+用户看到的"展开 N 条回复"里的 N 必须等于展开后出现的条数：
+
+```
+A 有直接回复 B、C，B 下面还有 D
+直接子节点数 = 2  → 显示"展开 2 条回复"，展开后出现 3 条   ✗
+后代总数    = 3  → 显示"展开 3 条回复"，展开后出现 3 条   ✓
+```
+
+只有一级评论需要它（二级回复在两级展示里不再有"展开"）。
+这也让 `post.comment_count` 自洽：`Σ(一级评论的 reply_count) + 一级评论数 = comment_count`。
+
+architecture 那句话是为嵌套展示写的；我们选了平铺，所以跟着改。
+
+#### 两条索引对应两条查询
+
+| 查询 | SQL 形状 | 索引 |
+|---|---|---|
+| 一级列表 | `WHERE post_id=? AND root_comment_id IS NULL ORDER BY created_at ASC, id ASC` | `(post_id, root_comment_id, created_at, id)` |
+| 二级列表 | `WHERE root_comment_id=? ORDER BY created_at ASC, id ASC` | `(root_comment_id, created_at, id)` |
+
+评论按**时间正序**（老的在上），读起来像对话。游标是 `(created_at, id)` 复合键，向后翻。
+
+关于 status：P3 只有 1/0，列表不过滤。**P7 引入"隐藏"（status=2）时才第一次出现
+"必须排除某状态"的需求**，那时要重新评估索引——不为猜的功能预先设计。
+
+#### 权限（P3.1 定稿）
+
+| 操作 | 要求 | 理由 |
+|---|---|---|
+| 看评论 | 无（游客可读） | 与帖子一致 |
+| 发评论 / 回复 | **必须是社群成员**（`41004`） | 与发帖一致；否则"能评论但不能发帖"很怪，且给刷评论留口子。代价是多一次跨服务调用，复用 P2.3 的 `/internal/memberships` |
+| 删除评论 | **只能删自己的**（别人删 → `40300`） | 帖主不能删别人评论。版主权限是 P7 的新概念 |
+| 点赞 / 收藏 | 登录即可，**不要求成员** | 轻互动；interaction 侧已为校验目标存在调一次 content，再调 community 就是两次跨服务。贴吧里非会员也能点赞 |
 
 ### 4.2 `t_interaction`（interaction schema，P3.2）
 
