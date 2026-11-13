@@ -379,6 +379,86 @@ community-service 被留在停止状态——**一个能把环境停掉的验收
 配套地，`verify.sh` 增加了显式的 `--skip-log-check`（只有 verify-p2 的 L5 用）。
 用开关而不是往 `NOISE` 正则里加例外：后者会把真正的回归一起放过。
 
+### P3.2 点赞 + 收藏（已完成）
+
+interaction-service 从零建起数据层，`t_interaction` + `t_outbox`；
+content 侧 `t_consume_log` + 消费投影 + 对账。
+
+#### 取消点赞是**物理删**，和加入社群的软删相反
+
+```
+加入社群：软删 —— 唯一键要表达"退出过"，member_count 的增减靠状态判断
+点赞：  物理删 —— 接口语义是"设为已赞/未赞"，"没有这一行"就是唯一的事实
+```
+
+**接口语义是「设为某状态」而不是「翻转」**，这是幂等的根本：
+
+| 操作 | SQL | affectedRows | 是否产生事件 |
+|---|---|---|---|
+| 首次点赞 | `INSERT IGNORE` | 1 | 发 ADDED |
+| 重复点赞 | `INSERT IGNORE` | 0 | **不发** |
+| 取消（赞过） | `DELETE` | 1 | 发 REMOVED |
+| 取消（没赞过） | `DELETE` | 0 | **不发** |
+
+重复点赞因此**根本不产生第二个事件**，消费侧连去重都不需要。
+
+#### outbox 在事务内写，发 MQ 由轮询负责
+
+```
+✅ 同一个本地事务：写 t_interaction + 写 t_outbox
+   → 事务提交 = 事件一定被记住
+   → OutboxRelay 每秒轮询投递，失败指数退避，重试 20 次后放弃
+```
+
+**不做"提交后立即发"**：那要两套代码路径（立即发 + 轮询兜底），而轮询最坏延迟 1 秒，
+远小于计数允许的 5 秒滞后。一条路径、可测、进程崩溃也不丢。
+
+重试上限 + 对账兜底才构成完整答案——放弃之后事件就真丢了，只有对账能修。
+
+#### 对账必须由 content 发起、向 interaction 要真值
+
+第一版我写的是"content 直接 `UPDATE ... JOIN t_interaction`"——**做不到**：
+ADR 0006 规定一库一账号，content 对 interaction 的库没有任何权限。
+
+改成：
+
+```
+content 遍历自己的全部帖子/评论（按 id 游标分页）
+  → GET /internal/counts?targets=post:1,comment:2   （interaction 提供真值）
+  → 覆盖写 like_count / favorite_count
+```
+
+**必须遍历自己全部的目标**，不能只问"有互动的那些"——`GROUP BY` 天然不返回计数为 0 的目标，
+而"点赞全取消后计数卡在旧值"恰恰是最常见、也最需要修的情况。
+
+#### 点赞**依赖** content 的目标校验（方案 A）
+
+早期笔记里写过"点赞不依赖 content 的可用性"，**那是错的**。点赞前要问
+`/internal/targets`"这个目标存在吗、作者是谁"：不校验就会给不存在的目标写垃圾事实
+（对账也无从清理），而事件载荷里的 `targetOwnerId`（P4 的通知需要）只有 content 知道。
+
+代价是 content 挂掉时全站点不了赞。这是有意的取舍——那时站点主要功能本来也不可用了。
+
+L4 因此断言的是**失败必须明确且快速**（`50300`、5 秒内返回），不是 500、不是挂住。
+
+#### topic 必须在服务启动之前就存在
+
+实测：消费者在 topic 存在之前订阅，**之后不会自己拿到路由**。interaction 发出第一条事件时
+broker 自动创建了 topic，但先启动的 content 消费者一直没消费，重启后才把积压的消息读走。
+
+第一次上线时这就是"点赞了但计数永远不动"，而且所有接口都返回成功，从外面看不出问题。
+所以有了 `deploy/bin/init-topics.sh`（幂等 `updateTopic`），**topic 列表要与 `Topics.java` 同步**。
+
+#### 三层幂等，各有各的位置
+
+| 层 | 位置 | 挡什么 |
+|---|---|---|
+| 唯一键 + affectedRows | interaction 写事实 | 重复点赞（连事件都不产生） |
+| `t_consume_log(event_id, consumer)` | content 消费 | 重复投递（MQ 是 at-least-once，这是必然事件） |
+| 对账 | content 定时任务 | 事件被放弃、消费逻辑 bug、手工改库 |
+
+**去重记录与计数更新必须同事务**：先改计数再记日志，中间崩溃重投会 +2。
+
 ### P3.1 评论（已完成）
 
 `t_comment`（Flyway V2）+ `ALTER t_post` 补三个计数列、发评论、一级列表、回复列表、

@@ -19,7 +19,7 @@
 | ✅ **P0.5 前端基础设施（已完成）**（细化见 [`p05-frontend.md`](./p05-frontend.md)） | `web/` 脚手架（Vite 8 + React 19 + TypeScript 6 strict + Tailwind 4 + Router 8 + TanStack Query 5）、HTTP 层解包 `Result<T>`、**类型由后端 OpenAPI 生成**、双环境配置、`npm run build` 发布通道，以及**一个跑真实数据的空壳页面** | 前端工具链的未知数（TS 严格模式、Vite proxy、路径别名、构建产物部署、类型生成）若混在 P1 的登录功能里排查，会分不清"是登录写错了还是脚手架配错了"。与 P0 同性质：先用最小代价清零工具链风险 | `npm run typecheck` 0 error；`npm run build` 成功；`https://www.katzenyasax.top/` 显示真实 React 应用且**至少有一个请求打到后端真数据**；`/test/` 仍可用；未匹配路由显示 404 而非白屏；`types.d.ts` 由 openapi 生成而非手写 |
 | ✅ **P1 身份切片（已完成）** | 邮箱验证码注册、登录、JWT + JWKS、Redis 白名单、网关验签与注入身份头、前端登录态 | 所有后续功能都依赖身份；一次验证网关/用户/前端/Redis 四条线 | 登出立刻失效；踢下线立刻生效；后端服务端口对公网不可达 |
 | **P2 内容读路径** | 建社群、加入社群、发帖、社群帖列表、帖子详情（游客可读）、双栏阅读界面 | 详见 [`p2-content.md`](./p2-content.md) | 游客能浏览；登录能发帖；**此阶段刻意不含评论与计数** |
-| **P3 评论 + 互动（风险核心，P3.0/P3.1 已完成）** | 评论（存储任意深度/展示两级、游标分页）、点赞、收藏、outbox、RocketMQ、content 消费事件更新计数、对账 | 详见 [`p3-interaction.md`](./p3-interaction.md)；计数一致性边界见 [ADR 0010](./../adr/0010-count-consistency.md) | 点赞后计数 5 秒内变化；**kill 掉 content-service 再点赞，重启后对账任务把计数修回** |
+| ✅ **P3 评论 + 互动（已完成）** | 评论（存储任意深度/展示两级、游标分页）、点赞、收藏、outbox、RocketMQ、content 消费事件更新计数、对账 | 详见 [`p3-interaction.md`](./p3-interaction.md)；计数一致性边界见 [ADR 0010](./../adr/0010-count-consistency.md) | 点赞后计数 5 秒内变化；**kill 掉 content-service 再点赞，重启后对账任务把计数修回** |
 | **P4 消息中心** | 消费点赞/评论/@ 事件（**收藏不发消息**）、落消息快照、四分类未读计数、SSE 推送、红点、全部已读 | 依赖 P3 的事件，复用"计数 + 对账"哲学 | 别人赞我 5 秒内红点亮；"全部已读"与并发新消息的竞态不吞消息 |
 | **P5 排行** | rank-service 定时算日榜/周榜写 ZSet（Top 50 不分页）；帖子内评论按热度排序（在 content 内） | 依赖 P3 的计数稳定；评论排序不需要 rank | 榜单可全量重建，重建期间接口不报错；热度 = 点赞数 + 评论数（收藏不计入） |
 | **P6 搜索** | search-service + ES + IK，消费内容事件建索引 | 需要 P2 的内容事件稳定，且是**最该被砍**的功能 | 建索引幂等；删帖后搜不到 |
