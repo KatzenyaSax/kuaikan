@@ -36,7 +36,14 @@ public class CountReconciler {
 
     private static final Logger log = LoggerFactory.getLogger(CountReconciler.class);
 
-    /** 一次问 interaction 多少个目标。太小则往返多，太大则 URL 过长 */
+    /**
+     * 一次问 interaction 多少个目标。
+     *
+     * **不能超过 interaction 侧的上限**（那边是 200）：这批目标走 GET 的 query string，
+     * 一个雪花 id 的 token 约 24 字节，200 个约 5KB，接近但低于 Tomcat 默认 8KB 的
+     * header 上限；500 个会直接 400。
+     * 如果以后要放大，得先把那个内部接口改成 POST + body。
+     */
     private static final int BATCH = 200;
 
     private final CountReconcileMapper mapper;
@@ -92,7 +99,9 @@ public class CountReconciler {
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("fixed", fixed);
-        result.put("elapsedMs", System.currentTimeMillis() - start);
+        // 用 int 而不是 long：Map 里放的 boxed Long 会被全局 Long→String 规则
+        // 序列化成 "120" 而不是 120，看返回值的人会以为哪里出错了。
+        result.put("elapsedMs", (int) (System.currentTimeMillis() - start));
         log.info("对账完成 {}", result);
         return result;
     }
