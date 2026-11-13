@@ -328,9 +328,12 @@ services:
       MYSQL_HOST: mysql
       MYSQL_USER: u_content
       MYSQL_PASSWORD: ${MYSQL_PWD_CONTENT:?}
+      ROCKETMQ_NAMESRV: rmq-namesrv:9876
       ID_WORKER_ID: "3"
     depends_on:
       <<: *default-app-depends
+      rmq-broker:
+        condition: service_healthy
       mysql:
         condition: service_healthy
     networks:

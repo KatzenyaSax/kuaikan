@@ -39,6 +39,15 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: true
 
+kuaikan:
+  mq:
+    # 只用 Remoting 接入，不走 Proxy
+    namesrv-addr: ${ROCKETMQ_NAMESRV:127.0.0.1:9876}
+  reconcile:
+    # 计数对账周期。它兜住三类事件管不了的情况：
+    # 事件超过重试上限被放弃、消费逻辑有 bug、有人手工改过计数
+    interval: 10m
+
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
