@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 import top.katzenyasax.kuaikan.content.domain.Post;
 
 import java.time.LocalDateTime;
@@ -42,4 +43,17 @@ public interface PostMapper extends BaseMapper<Post> {
                          @Param("createdAt") LocalDateTime createdAt,
                          @Param("id") Long id,
                          @Param("limit") int limit);
+
+    /**
+     * 评论数 ±1。**相对更新，绝不读-改-写**（同 member_count 的理由）。
+     * 强一致计数：与评论的插入/删除在同一个本地事务里。
+     */
+    @Update("UPDATE t_post SET comment_count = comment_count + 1 WHERE id = #{id}")
+    int incrementCommentCount(@Param("id") Long id);
+
+    @Update("""
+            UPDATE t_post SET comment_count = comment_count - 1
+            WHERE id = #{id} AND comment_count > 0
+            """)
+    int decrementCommentCount(@Param("id") Long id);
 }
