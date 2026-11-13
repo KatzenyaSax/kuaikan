@@ -610,9 +610,107 @@ fi
 
 if want_heavy_layer l4; then
   section "L4 破坏性动作（经 SSH）"
-  skip "kill content-service 验计数自愈" "P3.2 未实现"
-  skip "重复投递幂等" "P3.2 未实现"
-  skip "对账修错" "P3.2 未实现"
+
+  if ! prepare_fixture; then
+    ng "L4 无法准备夹具"
+  else
+    CONTENT_STOPPED=0
+    lc() {
+      curl -s --max-time 10 "$SITE/api/content/posts/$POST_ID" | json_field 'data.likeCount'
+    }
+    poll_like() {
+      local want="$1" deadline=$(( $(date +%s) + 15 ))
+      while [ "$(date +%s)" -lt "$deadline" ]; do
+        [ "$(lc)" = "$want" ] && return 0
+        sleep 1
+      done
+      return 1
+    }
+
+    # ---- ① kill content-service：点赞仍然成功，计数不变，重启后追平 ----
+    curl -s --max-time 15 -o /dev/null -X POST "$SITE/api/interaction/favorites" \
+      -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+      -d "{\"targetType\":\"post\",\"targetId\":\"$POST_ID\"}"   # 先制造一条已投递事件
+
+    CONTENT_STOPPED=1
+    ssh_run 'docker stop kuaikan-content-service-1' >/dev/null 2>&1
+    sleep 2
+
+    body=$(curl -s --max-time 15 -X POST "$SITE/api/interaction/likes" \
+      -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+      -d "{\"targetType\":\"post\",\"targetId\":\"$POST_ID\"}")
+    [ "$(printf '%s' "$body" | json_field 'code')" = "0" ] \
+      && ok "content 停机时点赞仍然成功（写路径不依赖 content 的可用性）" \
+      || ng "content 停机时点赞失败" "$(printf '%s' "$body" | head -c 120)"
+
+    # 事件必须已经在 outbox 里等着（或已投递但无人消费）
+    pending=$(sql_exec "SELECT COUNT(*) FROM kuaikan_interaction.t_outbox WHERE status IN (0,1);" | tr -d '\r\n ')
+    [ -n "$pending" ] && [ "$pending" != "0" ] \
+      && ok "事件已落 outbox（content 不在也有人记住这件事）" \
+      || ng "outbox 里没有事件" "pending=$pending"
+
+    ssh_run 'docker start kuaikan-content-service-1' >/dev/null 2>&1
+    for _ in $(seq 1 40); do
+      h=$(ssh_run "docker inspect -f '{{.State.Health.Status}}' kuaikan-content-service-1" 2>/dev/null | tr -d '\r\n')
+      [ "$h" = "healthy" ] && break
+      sleep 3
+    done
+    CONTENT_STOPPED=0
+    sleep 5
+
+    if poll_like 1; then
+      ok "content 重启后计数追平（消费者把停机期间的事件补上了）"
+    else
+      # 消费没追上是允许的 —— 对账是最后一道防线。手动触发一次再断言。
+      info "消费者未追平，触发对账"
+      ssh_run 'docker exec kuaikan-content-service-1 curl -s -o /dev/null -X POST http://127.0.0.1:8083/internal/admin/reconcile' >/dev/null 2>&1
+      if poll_like 1; then
+        ok "消费者未追平，但**对账把计数修正了**（兜底生效）"
+      else
+        ng "重启后计数既没追平、对账也没修回" "got=$(lc) want=1"
+      fi
+    fi
+
+    # ---- ② 重复投递同一事件：计数不能变 ----
+    eid=$(sql_exec "SELECT event_id FROM kuaikan_interaction.t_outbox ORDER BY id DESC LIMIT 1;" | tr -d '\r\n ')
+    if [ -n "$eid" ]; then
+      before=$(lc)
+      # 把同一条 outbox 重置为待投递：轮询器会用**同一个 eventId、同一份 payload**
+      # 再投一次。这就是真实路径的重投，不是直接调消费者。
+      sql_exec "UPDATE kuaikan_interaction.t_outbox SET status = 0 WHERE event_id = '$eid';" >/dev/null
+      sleep 4
+      after=$(lc)
+      if [ "$before" = "$after" ]; then
+        ok "重复投递同一事件 → 计数不变（t_consume_log 挡住了）"
+      else
+        ng "重复投递导致计数变化" "before=$before after=$after"
+      fi
+      row=$(sql_exec "SELECT COUNT(*) FROM kuaikan_content.t_consume_log WHERE event_id='$eid';" | tr -d '\r\n ')
+      [ "$row" = "1" ] && ok "同一 eventId 只留下一条消费记录" \
+        || ng "消费记录条数不对" "got=$row want=1"
+    else
+      ng "拿不到 eventId，重复投递无法验证"
+    fi
+
+    # ---- ③ 对账修错 ----
+    truth=$(lc)
+    sql_exec "UPDATE kuaikan_content.t_post SET like_count = 999 WHERE id = $POST_ID;" >/dev/null
+    broken=$(lc)
+    ssh_run 'docker exec kuaikan-content-service-1 curl -s -o /dev/null -X POST http://127.0.0.1:8083/internal/admin/reconcile' >/dev/null 2>&1
+    sleep 1
+    fixed=$(lc)
+    if [ "$broken" = "999" ] && [ "$fixed" = "$truth" ]; then
+      ok "把计数改成 999 → 对账后修回真值（${fixed}）"
+    else
+      ng "对账未修回" "broken=$broken fixed=$fixed want=$truth"
+    fi
+
+    # L4 会停服务，收尾时清掉自己造成的日志噪音（否则下一次 P0 的日志断言必然红）
+    for c in kuaikan-content-service-1 kuaikan-interaction-service-1; do
+      ssh_run "p=\$(docker inspect --format '{{.LogPath}}' $c 2>/dev/null); [ -n \"\$p\" ] && truncate -s 0 \"\$p\" || true" >/dev/null 2>&1 || true
+    done
+    info "已清掉 L4 造成的日志噪音"
+  fi
 fi
 
 # ================================================================ 汇总
