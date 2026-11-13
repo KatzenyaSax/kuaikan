@@ -1,9 +1,12 @@
 import { Link, useParams } from 'react-router'
 import { useCommunityDetail } from '@/features/community/api'
+import { useInteractionStates } from '@/features/interaction/api'
+import { FavoriteButton, LikeButton } from '@/features/interaction/interaction-buttons'
 import { pickAuthor, usePostDetail, useUserSummaries } from '@/features/content/api'
 import { PostContent } from '@/features/content/post-content'
 import { CommentSection } from '@/features/content/comment-section'
 import { authErrorMessage } from '@/features/auth/auth-error'
+import { useSession } from '@/features/auth/session'
 import { Avatar } from '@/shared/ui/avatar'
 import { Card } from '@/shared/ui/card'
 import { Skeleton } from '@/shared/ui/skeleton'
@@ -23,6 +26,9 @@ export function PostPage() {
   // 单个作者也走批量接口：列表页会有多个作者，接口只有一个，
   // 不要为"单个"再造一条只有自己用的路径
   const authors = useUserSummaries([post.data?.authorId])
+  const status = useSession((s) => s.status)
+  const targets = post.data?.id ? [`post:${post.data.id}`] : []
+  const states = useInteractionStates(targets, status === 'authenticated')
   const author = pickAuthor(authors.data, post.data?.authorId)
 
   if (post.isPending) {
@@ -82,8 +88,21 @@ export function PostPage() {
         )}
       </div>
 
-      <Card>
+      <Card className="space-y-3">
         <PostContent post={data} />
+        <div className="flex items-center gap-4 border-t border-border pt-2">
+          <LikeButton
+            targetType="post"
+            targetId={data.id ?? ''}
+            count={data.likeCount ?? 0}
+            states={states.data}
+          />
+          <FavoriteButton
+            targetId={data.id ?? ''}
+            count={data.favoriteCount ?? 0}
+            states={states.data}
+          />
+        </div>
       </Card>
 
       <CommentSection postId={data.id ?? ''} commentCount={data.commentCount ?? 0} />

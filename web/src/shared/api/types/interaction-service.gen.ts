@@ -10,6 +10,54 @@
  */
 
 export interface paths {
+    "/likes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["likeTarget"];
+        delete: operations["unlikeTarget"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/favorites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["favoriteTarget"];
+        delete: operations["unfavoriteTarget"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/states": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["interactionStates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ping": {
         parameters: {
             query?: never;
@@ -26,10 +74,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/internal/counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["counts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        TargetRequest: {
+            targetType: string;
+            targetId: string;
+        };
+        ResultVoid: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: unknown;
+        };
+        InteractionState: {
+            /** @description post 或 comment */
+            targetType?: string;
+            targetId?: string;
+            liked?: boolean;
+            favorited?: boolean;
+        };
+        ResultListInteractionState: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: components["schemas"]["InteractionState"][];
+        };
         ResultMapStringObject: {
             /** Format: int32 */
             code?: number;
@@ -37,6 +124,21 @@ export interface components {
             data?: {
                 [key: string]: unknown;
             };
+        };
+        ResultListTargetCount: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: components["schemas"]["TargetCount"][];
+        };
+        TargetCount: {
+            /** @description post 或 comment */
+            targetType?: string;
+            targetId?: string;
+            /** Format: int64 */
+            likeCount?: number;
+            /** Format: int64 */
+            favoriteCount?: number;
         };
     };
     responses: never;
@@ -47,6 +149,124 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    likeTarget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TargetRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultVoid"];
+                };
+            };
+        };
+    };
+    unlikeTarget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TargetRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultVoid"];
+                };
+            };
+        };
+    };
+    favoriteTarget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TargetRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultVoid"];
+                };
+            };
+        };
+    };
+    unfavoriteTarget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TargetRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultVoid"];
+                };
+            };
+        };
+    };
+    interactionStates: {
+        parameters: {
+            query: {
+                targets: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultListInteractionState"];
+                };
+            };
+        };
+    };
     interactionPing: {
         parameters: {
             query?: never;
@@ -63,6 +283,28 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ResultMapStringObject"];
+                };
+            };
+        };
+    };
+    counts: {
+        parameters: {
+            query: {
+                targets: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultListTargetCount"];
                 };
             };
         };

@@ -11,6 +11,8 @@ import {
   type CommentView,
 } from '@/features/content/api'
 import { authErrorMessage } from '@/features/auth/auth-error'
+import { useInteractionStates } from '@/features/interaction/api'
+import { LikeButton } from '@/features/interaction/interaction-buttons'
 import { useSession } from '@/features/auth/session'
 import { Avatar } from '@/shared/ui/avatar'
 import { Button } from '@/shared/ui/button'
@@ -144,12 +146,14 @@ function CommentComposer({
 function TopLevelComment({ comment, postId }: { comment: CommentView; postId: string }) {
   const { name } = useParams<{ name: string }>()
   const session = useSession((s) => s.user)
+  const authed = useSession((s) => s.status) === 'authenticated'
   const del = useDeleteComment(postId)
   const [replying, setReplying] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const authors = useUserSummaries([comment.authorId])
   const author = pickAuthor(authors.data, comment.authorId)
   const isMine = session?.userId === comment.authorId
+  const states = useInteractionStates(comment.id ? [`comment:${comment.id}`] : [], authed)
 
   return (
     <div className="rounded-md border border-border p-2.5" data-testid="comment-item">
@@ -173,6 +177,14 @@ function TopLevelComment({ comment, postId }: { comment: CommentView; postId: st
       ) : null}
 
       <div className="mt-1.5 flex items-center gap-3 text-[11px] text-muted-foreground">
+        {!comment.deleted ? (
+          <LikeButton
+            targetType="comment"
+            targetId={comment.id ?? ''}
+            count={comment.likeCount ?? 0}
+            states={states.data}
+          />
+        ) : null}
         {!comment.deleted ? (
           <button
             type="button"
@@ -271,6 +283,7 @@ function ReplyItem({ comment, postId }: { comment: CommentView; postId: string }
   const isMine = session?.userId === comment.authorId
   const authed = useSession((st) => st.status) === 'authenticated'
   const [replying, setReplying] = useState(false)
+  const states = useInteractionStates(comment.id ? [`comment:${comment.id}`] : [], authed)
 
   return (
     <div data-testid="reply-item" className={cn('text-sm', comment.deleted && 'text-muted-foreground')}>
@@ -300,6 +313,12 @@ function ReplyItem({ comment, postId }: { comment: CommentView; postId: string }
                 回复
               </button>
             ) : null}
+            <LikeButton
+              targetType="comment"
+              targetId={comment.id ?? ''}
+              count={comment.likeCount ?? 0}
+              states={states.data}
+            />
             {isMine ? (
               <button
                 type="button"

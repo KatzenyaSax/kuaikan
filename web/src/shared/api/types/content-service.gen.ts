@@ -42,6 +42,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/internal/admin/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["reconcileCounts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/posts/{postId}": {
         parameters: {
             query?: never;
@@ -66,6 +82,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["contentPing"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/internal/targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["target"];
         put?: never;
         post?: never;
         delete?: never;
@@ -130,6 +162,16 @@ export interface components {
              * @description 评论总数（强一致：与评论写入同一本地事务）。0 时前端不显示
              */
             commentCount?: number;
+            /**
+             * Format: int64
+             * @description 点赞数（最终一致，滞后 ≤5s）
+             */
+            likeCount?: number;
+            /**
+             * Format: int64
+             * @description 收藏数（最终一致，滞后 ≤5s）
+             */
+            favoriteCount?: number;
             /** Format: date-time */
             createdAt?: string;
         };
@@ -175,6 +217,14 @@ export interface components {
             message?: string;
             data?: components["schemas"]["CommentView"];
         };
+        ResultMapStringObject: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: {
+                [key: string]: unknown;
+            };
+        };
         PostPage: {
             items?: components["schemas"]["PostSummary"][];
             /** @description 下一页游标；为 null 表示已到末页 */
@@ -208,13 +258,15 @@ export interface components {
             message?: string;
             data?: components["schemas"]["CommentPage"];
         };
-        ResultMapStringObject: {
+        ResultTargetView: {
             /** Format: int32 */
             code?: number;
             message?: string;
-            data?: {
-                [key: string]: unknown;
-            };
+            data?: components["schemas"]["TargetView"];
+        };
+        TargetView: {
+            exists?: boolean;
+            ownerId?: string;
         };
         ResultVoid: {
             /** Format: int32 */
@@ -331,6 +383,26 @@ export interface operations {
             };
         };
     };
+    reconcileCounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultMapStringObject"];
+                };
+            };
+        };
+    };
     getPost: {
         parameters: {
             query?: never;
@@ -369,6 +441,29 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ResultMapStringObject"];
+                };
+            };
+        };
+    };
+    target: {
+        parameters: {
+            query: {
+                type: string;
+                id: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultTargetView"];
                 };
             };
         };

@@ -8,6 +8,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import top.katzenyasax.kuaikan.common.api.Result;
+import top.katzenyasax.kuaikan.common.error.BizException;
+import top.katzenyasax.kuaikan.common.error.CommonErrorCode;
 import top.katzenyasax.kuaikan.common.web.UserContext;
 import top.katzenyasax.kuaikan.interaction.domain.Interaction;
 import top.katzenyasax.kuaikan.interaction.service.InteractionService;
@@ -43,11 +45,19 @@ public class InteractionController {
         return Result.ok();
     }
 
+    /**
+     * 取消点赞。参数放 query 而不是 body。
+     *
+     * HTTP 没有禁止 DELETE 带 body，但**链路上的代理不保证转发它**
+     * （nginx 会，但很多中间件不会）。把标识放 query 是稳妥的做法，
+     * 而且语义上"删除哪个资源"本来就更像 URL 的一部分。
+     */
     @Operation(operationId = "unlikeTarget")
     @DeleteMapping("/likes")
-    public Result<Void> unlike(@RequestBody TargetRequest body) {
+    public Result<Void> unlike(@RequestParam("targetType") String targetType,
+                               @RequestParam("targetId") Long targetId) {
         interactionService.remove(UserContext.requireUserId(), Interaction.KIND_LIKE,
-                body.targetTypeValue(), body.targetIdValue());
+                targetTypeOf(targetType), targetId);
         return Result.ok();
     }
 
@@ -61,10 +71,20 @@ public class InteractionController {
 
     @Operation(operationId = "unfavoriteTarget")
     @DeleteMapping("/favorites")
-    public Result<Void> unfavorite(@RequestBody TargetRequest body) {
+    public Result<Void> unfavorite(@RequestParam("targetType") String targetType,
+                                   @RequestParam("targetId") Long targetId) {
         interactionService.remove(UserContext.requireUserId(), Interaction.KIND_FAVORITE,
-                body.targetTypeValue(), body.targetIdValue());
+                targetTypeOf(targetType), targetId);
         return Result.ok();
+    }
+
+    private static int targetTypeOf(String targetType) {
+        return switch (targetType) {
+            case "post" -> Interaction.TARGET_POST;
+            case "comment" -> Interaction.TARGET_COMMENT;
+            default -> throw new BizException(CommonErrorCode.PARAM_INVALID,
+                    "目标类型只能是 post 或 comment");
+        };
     }
 
     /** 批量查状态。targets 形如 {@code post:1,comment:2} */
