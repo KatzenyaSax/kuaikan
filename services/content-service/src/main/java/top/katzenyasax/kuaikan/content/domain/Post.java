@@ -32,6 +32,9 @@ public class Post {
 
     private String body;
 
+    /** 评论总数。强一致计数，与评论写入同一本地事务 */
+    private Integer commentCount;
+
     private Integer status;
 
     @TableField(fill = FieldFill.INSERT)
@@ -50,6 +53,8 @@ public class Post {
     public void setTitle(String title) { this.title = title; }
     public String getBody() { return body; }
     public void setBody(String body) { this.body = body; }
+    public Integer getCommentCount() { return commentCount; }
+    public void setCommentCount(Integer commentCount) { this.commentCount = commentCount; }
     public Integer getStatus() { return status; }
     public void setStatus(Integer status) { this.status = status; }
     public LocalDateTime getCreatedAt() { return createdAt; }

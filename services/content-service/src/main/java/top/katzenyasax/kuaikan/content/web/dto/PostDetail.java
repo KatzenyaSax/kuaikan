@@ -23,10 +23,14 @@ public record PostDetail(
         Long authorId,
         String title,
         String body,
+        @Schema(description = "评论总数（强一致：与评论写入同一本地事务）。0 时前端不显示")
+        long commentCount,
         LocalDateTime createdAt
 ) {
     public static PostDetail of(Post post) {
         return new PostDetail(post.getId(), post.getCommunityId(), post.getAuthorId(),
-                post.getTitle(), post.getBody(), post.getCreatedAt());
+                post.getTitle(), post.getBody(),
+                post.getCommentCount() == null ? 0 : post.getCommentCount(),
+                post.getCreatedAt());
     }
 }
