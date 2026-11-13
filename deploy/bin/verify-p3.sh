@@ -414,8 +414,144 @@ print(len(set(sys.argv[1].split(',')) & set(sys.argv[2].split(','))))" "$p1" "$p
     fi
   fi
 
-  skip "点赞 / 收藏 toggle" "P3.2 未实现"
-  skip "计数滞后 ≤5s" "P3.2 未实现"
+  # ---------------------------------------------------------------- P3.2 点赞/收藏
+  if [ -n "$TOKEN" ] && [ -n "$POST_ID" ]; then
+    IBASE="$SITE/api/interaction"
+
+    # 轮询直到条件成立。**不用固定 sleep**：那要么慢要么脆。
+    # 这里的 deadline 就是产品承诺的"5 秒内"。
+    wait_like_count() {
+      local want="$1" deadline=$(( $(date +%s) + 6 ))
+      while [ "$(date +%s)" -lt "$deadline" ]; do
+        local cur
+        cur=$(curl -s --max-time 10 "$SITE/api/content/posts/$POST_ID" | json_field 'data.likeCount')
+        [ "$cur" = "$want" ] && return 0
+        sleep 0.5
+      done
+      return 1
+    }
+
+    outbox_rows() {
+      sql_exec "SELECT COUNT(*) FROM kuaikan_interaction.t_outbox;" | tr -d '\r\n '
+    }
+
+    # 游客点赞
+    c=$(http_code -X POST "$IBASE/likes" -H 'Content-Type: application/json' \
+      -d "{\"targetType\":\"post\",\"targetId\":\"$POST_ID\"}")
+    [ "$c" = "401" ] && ok "游客点赞 → 401" || ng "游客点赞语义" "HTTP $c"
+
+    body=$(curl -s --max-time 15 -X POST "$IBASE/likes" -H "Authorization: Bearer $TOKEN" \
+      -H 'Content-Type: application/json' -d "{\"targetType\":\"post\",\"targetId\":\"$POST_ID\"}")
+    [ "$(printf '%s' "$body" | json_field 'code')" = "0" ] \
+      && ok "点赞成功" || ng "点赞失败" "$(printf '%s' "$body" | head -c 120)"
+    # 基线取在**第一次点赞之后**：第一次点赞本来就该产生一个事件
+    before_events=$(outbox_rows)
+
+    # 计数异步投影：允许滞后，但必须在 5 秒内
+    if wait_like_count 1; then
+      ok "点赞后计数在 5 秒内 +1（最终一致，异步投影）"
+    else
+      ng "计数未在 5 秒内更新" "这是 P3 的核心承诺"
+    fi
+
+    # **重复点赞不产生新事件** —— 这条只能靠 outbox 行数验，
+    # 接口返回 code 0 两次是正常的（幂等），从外面看不出来
+    for _ in 1 2 3; do
+      curl -s --max-time 15 -o /dev/null -X POST "$IBASE/likes" -H "Authorization: Bearer $TOKEN" \
+        -H 'Content-Type: application/json' -d "{\"targetType\":\"post\",\"targetId\":\"$POST_ID\"}"
+    done
+    sleep 2
+    after_events=$(outbox_rows)
+    [ "$after_events" = "$before_events" ] \
+      && ok "重复点赞不产生新事件（outbox 行数不变：${after_events}）" \
+      || ng "重复点赞产生了新事件" "before=$before_events after=$after_events"
+
+    # states 批量
+    body=$(curl -s --max-time 15 "$IBASE/states?targets=post:$POST_ID" -H "Authorization: Bearer $TOKEN")
+    if printf '%s' "$body" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)['data']
+sys.exit(0 if len(d)==1 and d[0]['liked'] is True and d[0]['favorited'] is False else 1)"; then
+      ok "states 返回 liked=true（状态是同步的，不像计数那样滞后）"
+    else
+      ng "states 状态不对" "$(printf '%s' "$body" | head -c 160)"
+    fi
+
+    c=$(http_code "$IBASE/states?targets=post:$POST_ID")
+    [ "$c" = "401" ] && ok "states 无 token → 401" || ng "states 未鉴权" "HTTP $c"
+
+    # 取消点赞
+    body=$(curl -s --max-time 15 -X DELETE "$IBASE/likes?targetType=post&targetId=$POST_ID" \
+      -H "Authorization: Bearer $TOKEN")
+    [ "$(printf '%s' "$body" | json_field 'code')" = "0" ] \
+      && ok "取消点赞成功（参数放 query，不用 DELETE body）" \
+      || ng "取消失败" "$(printf '%s' "$body" | head -c 120)"
+    if wait_like_count 0; then
+      ok "取消后计数在 5 秒内归零"
+    else
+      ng "取消后计数未归零"
+    fi
+
+    before_events=$(outbox_rows)
+    curl -s --max-time 15 -o /dev/null -X DELETE "$IBASE/likes?targetType=post&targetId=$POST_ID" \
+      -H "Authorization: Bearer $TOKEN"
+    sleep 2
+    after_events=$(outbox_rows)
+    [ "$after_events" = "$before_events" ] \
+      && ok "重复取消不产生新事件（幂等）" || ng "重复取消产生了新事件" "before=$before_events after=$after_events"
+
+    # 收藏帖子
+    curl -s --max-time 15 -o /dev/null -X POST "$IBASE/favorites" -H "Authorization: Bearer $TOKEN" \
+      -H 'Content-Type: application/json' -d "{\"targetType\":\"post\",\"targetId\":\"$POST_ID\"}"
+    deadline=$(( $(date +%s) + 6 ))
+    fav=0
+    while [ "$(date +%s)" -lt "$deadline" ]; do
+      fav=$(curl -s --max-time 10 "$SITE/api/content/posts/$POST_ID" | json_field 'data.favoriteCount')
+      [ "$fav" = "1" ] && break
+      sleep 0.5
+    done
+    [ "$fav" = "1" ] && ok "收藏后 favoriteCount 在 5 秒内 +1" || ng "收藏计数未更新" "got=$fav"
+
+    # 收藏评论 → 40010（本地规则，先于跨服务调用）
+    body=$(curl -s --max-time 15 -X POST "$IBASE/favorites" -H "Authorization: Bearer $TOKEN" \
+      -H 'Content-Type: application/json' -d '{"targetType":"comment","targetId":"1"}')
+    [ "$(printf '%s' "$body" | json_field 'code')" = "40010" ] \
+      && ok "收藏评论 → 40010（只能收藏帖子）" || ng "收藏评论未被拒" "$(printf '%s' "$body" | head -c 120)"
+
+    # 目标不存在
+    body=$(curl -s --max-time 15 -X POST "$IBASE/likes" -H "Authorization: Bearer $TOKEN" \
+      -H 'Content-Type: application/json' -d '{"targetType":"post","targetId":"123456789"}')
+    [ "$(printf '%s' "$body" | json_field 'code')" = "42001" ] \
+      && ok "点赞不存在的帖子 → 42001" || ng "不存在目标的语义" "$(printf '%s' "$body" | head -c 120)"
+
+    # 评论点赞
+    cid=$(curl -s --max-time 15 -X POST "$SITE/api/content/posts/$POST_ID/comments" \
+      -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"body":"点赞用评论"}' \
+      | json_field 'data.id')
+    if [ -n "$cid" ]; then
+      curl -s --max-time 15 -o /dev/null -X POST "$IBASE/likes" -H "Authorization: Bearer $TOKEN" \
+        -H 'Content-Type: application/json' -d "{\"targetType\":\"comment\",\"targetId\":\"$cid\"}"
+      deadline=$(( $(date +%s) + 6 ))
+      cl=""
+      comment_like_count() {
+        curl -s --max-time 10 "$SITE/api/content/posts/$POST_ID/comments" | python3 -c "
+import json,sys
+for i in json.load(sys.stdin)['data']['items']:
+    if i['id'] == sys.argv[1]:
+        print(i['likeCount'])
+        break
+" "$1" 2>/dev/null
+      }
+      while [ "$(date +%s)" -lt "$deadline" ]; do
+        cl=$(comment_like_count "$cid")
+        [ "$cl" = "1" ] && break
+        sleep 0.5
+      done
+      [ "$cl" = "1" ] && ok "评论点赞后 likeCount 在 5 秒内 +1" || ng "评论点赞计数未更新" "got=$cl"
+    else
+      ng "建评论失败，评论点赞无法验证"
+    fi
+  fi
 fi
 
 # ================================================================ L3 浏览器
