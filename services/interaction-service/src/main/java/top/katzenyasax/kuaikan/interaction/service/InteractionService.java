@@ -167,9 +167,15 @@ public class InteractionService {
             return List.of();
         }
         // 200 而不是更大：这批 id 走的是 GET 的 query string，
-        // 一个雪花 id 的 token 约 24 字节（`post:2120789385803038721`），
-        // 500 个约 12KB —— **超过 Tomcat 默认 8KB 的 header 上限，直接 400**。
-        // 实测 500 → 400、200 → 200。要放大必须先改成 POST + body。
+        // 一个雪花 id 的 token 约 24 字节（`post:2120789385803038721`）。
+        //
+        // 实测边界（Tomcat 默认 header 上限 8KB，实际从 ~7KB 起就拒）：
+        //   200 个 → 4.8KB，200 OK
+        //   250 个 → 6.0KB，到这里还是本方法的 40010
+        //   300 个 → 7.2KB，**Tomcat 直接 400，请求到不了这里**
+        //
+        // 也就是说这个守卫只覆盖 201~约 290。再往上要靠调用方自律
+        // （content 的 BATCH 就是 200）。真要放大批量，得先把这里改成 POST + body。
         if (targets.size() > 200) {
             throw new BizException(CommonErrorCode.PARAM_INVALID, "单次最多查询 200 个目标");
         }
