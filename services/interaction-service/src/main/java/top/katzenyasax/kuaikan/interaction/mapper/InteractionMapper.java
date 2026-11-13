@@ -1,6 +1,7 @@
 package top.katzenyasax.kuaikan.interaction.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -25,7 +26,17 @@ public interface InteractionMapper extends BaseMapper<Interaction> {
             """)
     int insertIgnore(Interaction row);
 
-    /** 取消（物理删）。返回 1 才是真的删掉了 → 才发 REMOVED */
+    /**
+     * 取消（物理删）。返回 1 才是真的删掉了 → 才发 REMOVED。
+     *
+     * 物理删而不是软删：接口语义是"设为未赞"，"没有这一行"就是唯一的事实。
+     * 软删会让唯一键表达"曾经赞过"，还得写复活逻辑，而历史对业务毫无用处。
+     */
+    @Delete("""
+            DELETE FROM t_interaction
+            WHERE user_id = #{userId} AND kind = #{kind}
+              AND target_type = #{targetType} AND target_id = #{targetId}
+            """)
     int deleteByUnique(@Param("userId") Long userId,
                        @Param("kind") Integer kind,
                        @Param("targetType") Integer targetType,
