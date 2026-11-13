@@ -422,7 +422,27 @@ fi
 
 if want_heavy_layer l3; then
   section "L3 浏览器（playwright）"
-  skip "发评论 / 展开回复 / 点赞状态 / 删除占位" "P3.1、P3.2 未实现"
+
+  if [ -d "$WEB_DIR/node_modules" ] && command -v node >/dev/null 2>&1; then
+    if ! prepare_fixture; then
+      ng "L3 无法准备夹具"
+    else
+      if out=$(cd "$WEB_DIR" && SITE="$SITE" \
+            E2E_EMAIL="$EMAIL" E2E_PASSWORD="$FIXTURE_PASS" \
+            node scripts/e2e-comments.mjs 2>&1); then
+        printf '%s\n' "$out" | grep -E '^  (✓|✗)'
+        n=$(printf '%s\n' "$out" | grep -c '^  ✓')
+        PASS=$((PASS + n))
+      else
+        printf '%s\n' "$out" | grep -E '^  (✓|✗)'
+        n_ok=$(printf '%s\n' "$out" | grep -c '^  ✓')
+        PASS=$((PASS + n_ok))
+        ng "浏览器验收有失败" "$(printf '%s\n' "$out" | grep '^  ✗' | head -3 | tr '\n' ' ')"
+      fi
+    fi
+  else
+    skip "L3 浏览器" "缺少 web/node_modules 或 node"
+  fi
 fi
 
 # ================================================================ L5 回归
