@@ -379,6 +379,43 @@ community-service 被留在停止状态——**一个能把环境停掉的验收
 配套地，`verify.sh` 增加了显式的 `--skip-log-check`（只有 verify-p2 的 L5 用）。
 用开关而不是往 `NOISE` 正则里加例外：后者会把真正的回归一起放过。
 
+### P3.0 契约闸门（已完成）
+
+P3.0 **只冻结契约，不建表、不写端点**。设计见 [`design/p3-interaction.md`](./design/p3-interaction.md)，
+计数一致性的取舍见 [ADR 0010](./adr/0010-count-consistency.md)。
+
+#### 事件契约里两处容易被忽略的细节
+
+**① 载荷里的 id 一律用 `String`。** web 层的 `JacksonConfig` 把 `Long` 序列化成字符串，
+但 **MQ 序列化用的是 RocketMQ 自带的 ObjectMapper，不受那个配置影响**。
+同一个 `Long` 在两处序列化成不同类型，而消费端反序列化失败是**运行时**才暴露的。
+用 `String` 让载荷与序列化配置无关。
+
+**② `targetOwnerId` 现在就要带上。** content 侧的计数用不到它，
+但 P4 的"有人赞了你"需要。事件不可变，现在不带以后就只能换 topic。
+
+#### 点赞与收藏共用一个 topic
+
+`kuaikan_interaction_changed`，靠载荷里的 `kind` 与 `change` 区分四种情况。
+
+理由：它们的**消费边界相同**（content 两者都消费，notification 只消费 `LIKE+ADDED`）。
+拆成四个 topic 只会让消费方多订阅几份，几乎没有收益。
+
+#### 评论事件 P3 不发
+
+评论数在 content 的本地事务里就算完了，P3 没有任何消费者。
+等 P4 真正需要（通知）、P6 需要（索引）时再冻结那个契约——
+不为没人消费的东西先写规格。
+
+#### P3 的计数一致性边界
+
+| 计数 | 一致性 | 为什么 |
+|---|---|---|
+| 评论数 / 回复数 / 成员数 | **强一致** | 事实与计数同库，同一本地事务 |
+| 点赞数 / 收藏数 | **最终一致 ≤5s** | 强一致只能靠 interaction 同步调 content，而 content 挂掉时全站点不了赞 |
+
+对账不是独立阶段，它是 P3.2 完成定义的一部分：没有对账，一次丢事件就是永久错误。
+
 ### P2.4 读路径与双栏（已完成）
 
 `GET /api/content/posts?communityId=&sort=new&cursor=&limit=`，以及前端的双栏布局。
