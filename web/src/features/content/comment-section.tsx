@@ -127,7 +127,12 @@ function CommentComposer({
         className="w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary"
       />
       <div className="flex items-center gap-2">
-        <Button type="submit" size="sm" disabled={create.isPending} data-testid="btn-submit-comment">
+        <Button
+          type="submit"
+          size="sm"
+          disabled={create.isPending}
+          data-testid={replyTo ? 'btn-submit-reply' : 'btn-submit-comment'}
+        >
           {create.isPending ? '发送中…' : replyTo ? '回复' : '发表'}
         </Button>
         {error ? <span className="text-[11px] text-danger">{error}</span> : null}
