@@ -228,6 +228,11 @@ prepare_fixture() {
     -d "{\"communityId\":\"$COMMUNITY_ID\",\"title\":\"e2e 评论帖\",\"body\":\"x\"}" \
     | json_field 'data.id')
   [ -n "$POST_ID" ] || return 1
+  # 再发一条：帖子列表要至少两条才拿得到游标，
+  # "把帖子列表的游标喂给评论列表"那条断言需要它
+  curl -s --max-time 15 -o /dev/null -X POST "$SITE/api/content/posts" \
+    -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+    -d "{\"communityId\":\"$COMMUNITY_ID\",\"title\":\"e2e 第二帖\",\"body\":\"x\"}"
   info "夹具：communityId=$COMMUNITY_ID postId=$POST_ID"
   FIXTURE_READY=1
   return 0
