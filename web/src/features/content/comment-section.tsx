@@ -269,6 +269,8 @@ function ReplyItem({ comment, postId }: { comment: CommentView; postId: string }
   const author = pickAuthor(authors.data, comment.authorId)
   const replyTo = pickAuthor(authors.data, comment.replyToUserId)
   const isMine = session?.userId === comment.authorId
+  const authed = useSession((st) => st.status) === 'authenticated'
+  const [replying, setReplying] = useState(false)
 
   return (
     <div data-testid="reply-item" className={cn('text-sm', comment.deleted && 'text-muted-foreground')}>
@@ -287,6 +289,17 @@ function ReplyItem({ comment, postId }: { comment: CommentView; postId: string }
             ) : null}
             <span>·</span>
             <span>{comment.createdAt?.slice(0, 19).replace('T', ' ')}</span>
+            {/* 楼中楼里也能继续回复：不缩进，靠 replyToUserId 表达对话关系 */}
+            {authed ? (
+              <button
+                type="button"
+                onClick={() => setReplying((v) => !v)}
+                className="hover:underline"
+                data-testid="btn-reply-to-reply"
+              >
+                回复
+              </button>
+            ) : null}
             {isMine ? (
               <button
                 type="button"
@@ -306,6 +319,17 @@ function ReplyItem({ comment, postId }: { comment: CommentView; postId: string }
           {comment.body}
         </p>
       ) : null}
+
+        {replying ? (
+          <div className="mt-1.5">
+            <CommentComposer
+              postId={postId}
+              replyTo={comment.id ?? ''}
+              autoFocus
+              onDone={() => setReplying(false)}
+            />
+          </div>
+        ) : null}
     </div>
   )
 }
