@@ -84,9 +84,18 @@ try {
   const replyBodies = await page.getByTestId('reply-body').allInnerTexts()
   if (replyBodies.includes('回复那条回复')) ok('楼中楼里可以再回复（平铺到同一层）')
   else ng('楼中楼里回复失败', replyBodies.join(' | '))
+
+  // 展开状态下按钮文案是"收起回复"。先收起，再读"展开 N 条"里的 N，
+  // 断言 N 等于实际的回复条数 —— 这就是"reply_count 是后代总数"的 UI 侧证明。
+  const replyCount = await page.getByTestId('reply-item').count()
+  await page.getByTestId('btn-expand-replies').first().click()
+  await page.getByTestId('btn-expand-replies').first().waitFor({ timeout: 8000 })
   const expandText = await page.getByTestId('btn-expand-replies').first().innerText()
-  if (expandText.includes('3')) ok('楼中楼回复后计数变 3（仍是后代总数）')
-  else ng('回复计数不对', expandText)
+  if (expandText.includes(String(replyCount))) {
+    ok(`「${expandText}」与实际回复条数一致（后代总数）`)
+  } else {
+    ng('展开条数与实际回复数不一致', `${expandText} vs ${replyCount}`)
+  }
 
   // 删除一级评论 → tombstone，回复仍在
   await page.getByTestId('btn-delete-comment').first().click()
@@ -96,8 +105,11 @@ try {
   else ng('tombstone 占位文案不对', delText)
   if ((await page.getByTestId('reply-body').count()) > 0) ok('tombstone 下的回复仍然可见')
   else ng('tombstone 吞掉了回复')
-  if ((await page.getByTestId('comment-count').innerText()) === '1') ok('删除后评论数变成 1')
-  else ng('删除后评论数不对')
+  // 删除一级评论后，可见评论 = 它的回复数（一级本身成了 tombstone，不计入）
+  const visible = String(await page.getByTestId('reply-item').count())
+  const shown = await page.getByTestId('comment-count').innerText()
+  if (shown === visible) ok(`删除后评论数与可见回复数一致（${shown}）`)
+  else ng('删除后评论数不对', `显示 ${shown}，可见回复 ${visible}`)
 
   // 游客视角：不能发评论
   const guest = await ctx.browser().newContext()
