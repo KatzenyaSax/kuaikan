@@ -26,6 +26,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/posts/{postId}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listComments"];
+        put?: never;
+        post: operations["createComment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/posts/{postId}": {
         parameters: {
             query?: never;
@@ -58,6 +74,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/comments/{commentId}/replies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listReplies"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/comments/{commentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["deleteComment"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -77,6 +125,11 @@ export interface components {
             authorId?: string;
             title?: string;
             body?: string;
+            /**
+             * Format: int64
+             * @description 评论总数（强一致：与评论写入同一本地事务）。0 时前端不显示
+             */
+            commentCount?: number;
             /** Format: date-time */
             createdAt?: string;
         };
@@ -85,6 +138,42 @@ export interface components {
             code?: number;
             message?: string;
             data?: components["schemas"]["PostDetail"];
+        };
+        CreateCommentRequest: {
+            /** @description 回复的评论 id；为空表示发一级评论 */
+            replyToCommentId?: string;
+            body: string;
+        };
+        CommentView: {
+            /** @description 雪花 id */
+            id?: string;
+            /** @description 帖子 id */
+            postId?: string;
+            /** @description 所属一级评论 id；一级评论为 null */
+            rootCommentId?: string;
+            /** @description 直接回复的评论 id；一级评论为 null */
+            replyToCommentId?: string;
+            /** @description 直接回复的用户 id；一级评论为 null */
+            replyToUserId?: string;
+            /** @description 作者 id */
+            authorId?: string;
+            body?: string;
+            /** Format: int64 */
+            likeCount?: number;
+            /**
+             * Format: int64
+             * @description 该一级评论下的全部可见回复数
+             */
+            replyCount?: number;
+            deleted?: boolean;
+            /** Format: date-time */
+            createdAt?: string;
+        };
+        ResultCommentView: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: components["schemas"]["CommentView"];
         };
         PostPage: {
             items?: components["schemas"]["PostSummary"][];
@@ -108,6 +197,17 @@ export interface components {
             message?: string;
             data?: components["schemas"]["PostPage"];
         };
+        CommentPage: {
+            items?: components["schemas"]["CommentView"][];
+            /** @description 下一页游标；为 null 表示已到末页 */
+            nextCursor?: string;
+        };
+        ResultCommentPage: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: components["schemas"]["CommentPage"];
+        };
         ResultMapStringObject: {
             /** Format: int32 */
             code?: number;
@@ -115,6 +215,12 @@ export interface components {
             data?: {
                 [key: string]: unknown;
             };
+        };
+        ResultVoid: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: unknown;
         };
     };
     responses: never;
@@ -174,6 +280,57 @@ export interface operations {
             };
         };
     };
+    listComments: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                postId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultCommentPage"];
+                };
+            };
+        };
+    };
+    createComment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                postId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCommentRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultCommentView"];
+                };
+            };
+        };
+    };
     getPost: {
         parameters: {
             query?: never;
@@ -212,6 +369,53 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ResultMapStringObject"];
+                };
+            };
+        };
+    };
+    listReplies: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                commentId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultCommentPage"];
+                };
+            };
+        };
+    };
+    deleteComment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                commentId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultVoid"];
                 };
             };
         };

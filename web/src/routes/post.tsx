@@ -2,6 +2,7 @@ import { Link, useParams } from 'react-router'
 import { useCommunityDetail } from '@/features/community/api'
 import { pickAuthor, usePostDetail, useUserSummaries } from '@/features/content/api'
 import { PostContent } from '@/features/content/post-content'
+import { CommentSection } from '@/features/content/comment-section'
 import { authErrorMessage } from '@/features/auth/auth-error'
 import { Avatar } from '@/shared/ui/avatar'
 import { Card } from '@/shared/ui/card'
@@ -84,6 +85,8 @@ export function PostPage() {
       <Card>
         <PostContent post={data} />
       </Card>
+
+      <CommentSection postId={data.id ?? ''} commentCount={data.commentCount ?? 0} />
     </div>
   )
 }

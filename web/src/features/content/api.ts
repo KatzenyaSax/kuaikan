@@ -5,6 +5,9 @@ import type { OkData, RequestBody } from '@/shared/api/typed'
 export type PostDetail = OkData<'getPost'>
 export type PostPage = OkData<'listPosts'>
 export type PostSummary = NonNullable<PostPage['items']>[number]
+export type CommentPage = OkData<'listComments'>
+export type CommentView = NonNullable<CommentPage['items']>[number]
+export type CreateCommentBody = RequestBody<'createComment'>
 export type CreatePostBody = RequestBody<'createPost'>
 export type UserSummary = OkData<'batchUserSummaries'>[number]
 
@@ -82,4 +85,78 @@ export function pickAuthor(
 ): UserSummary | null {
   if (!summaries || !userId) return null
   return summaries.find((s) => s.userId === userId) ?? null
+}
+
+const COMMENT_BASE = '/api/content'
+
+/**
+ * 一级评论列表。时间正序，游标分页。
+ *
+ * 与帖子列表一样用 useInfiniteQuery —— 手写"每页一个 query + 游标数组"
+ * 会导致加载更多替换而不是追加（P2.4 踩过）。
+ */
+export function useComments(postId: string | undefined) {
+  return useInfiniteQuery({
+    queryKey: ['comments', postId],
+    queryFn: ({ pageParam }) =>
+      api.get<CommentPage>(
+        `${COMMENT_BASE}/posts/${encodeURIComponent(postId ?? '')}/comments?limit=20` +
+          (pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : ''),
+      ),
+    initialPageParam: '',
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    enabled: Boolean(postId),
+  })
+}
+
+/** 某个一级评论下的回复。两级平铺：不管嵌套多深都在这一层返回 */
+export function useReplies(rootCommentId: string | null) {
+  return useInfiniteQuery({
+    queryKey: ['replies', rootCommentId],
+    queryFn: ({ pageParam }) =>
+      api.get<CommentPage>(
+        `${COMMENT_BASE}/comments/${encodeURIComponent(rootCommentId ?? '')}/replies?limit=50` +
+          (pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : ''),
+      ),
+    initialPageParam: '',
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    enabled: Boolean(rootCommentId),
+  })
+}
+
+export function useCreateComment(postId: string | undefined) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: CreateCommentBody) =>
+      api.post<CommentView>(`${COMMENT_BASE}/posts/${encodeURIComponent(postId ?? '')}/comments`, body),
+    onSuccess: () => {
+      // commentCount 是强一致的，详情与评论列表都要刷新
+      void queryClient.invalidateQueries({ queryKey: ['comments', postId] })
+      void queryClient.invalidateQueries({ queryKey: ['replies'] })
+      void queryClient.invalidateQueries({ queryKey: ['post', postId] })
+    },
+  })
+}
+
+export function useDeleteComment(postId: string | undefined) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (commentId: string) =>
+      api.del<void>(`${COMMENT_BASE}/comments/${encodeURIComponent(commentId)}`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['comments', postId] })
+      void queryClient.invalidateQueries({ queryKey: ['replies'] })
+      void queryClient.invalidateQueries({ queryKey: ['post', postId] })
+    },
+  })
+}
+
+/** 把评论相关的 authorId / replyToUserId 一次性收集起来，用同一个批量摘要接口取 */
+export function collectCommentUserIds(comments: CommentView[]): string[] {
+  const ids = new Set<string>()
+  for (const c of comments) {
+    if (c.authorId) ids.add(c.authorId)
+    if (c.replyToUserId) ids.add(c.replyToUserId)
+  }
+  return [...ids]
 }
