@@ -5,6 +5,7 @@ server:
 spring:
   application:
     name: interaction-service
+
   cloud:
     nacos:
       discovery:
@@ -13,6 +14,52 @@ spring:
         group: ${NACOS_GROUP:DEFAULT_GROUP}
         metadata:
           version: ${APP_VERSION:dev}
+    openfeign:
+      client:
+        config:
+          default:
+            # 点赞前要问 content"这个目标存在吗、作者是谁"。
+            # 必须设超时，否则 content 卡住会把 interaction 的线程池耗光。
+            connectTimeout: 500
+            readTimeout: 500
+
+  datasource:
+    # 只连自己的 schema。u_interaction 只有 kuaikan_interaction.* 的权限（ADR 0006）
+    url: jdbc:mysql://${MYSQL_HOST:mysql}:${MYSQL_PORT:3306}/kuaikan_interaction?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USER:u_interaction}
+    password: ${MYSQL_PASSWORD:}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 3000
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    banner: false
+    # 每个服务必须有独立的 worker-id（user=1 community=2 content=3 interaction=4）。
+    # 容器内从 MAC/PID 推导不保证唯一，而 ID 冲突要等到写入时才暴露。
+    worker-id: ${ID_WORKER_ID:4}
+    datacenter-id: ${ID_DATACENTER_ID:1}
+
+kuaikan:
+  mq:
+    # 只用 Remoting 接入，不走 Proxy
+    namesrv-addr: ${ROCKETMQ_NAMESRV:127.0.0.1:9876}
+  outbox:
+    # 轮询投递。**不做"提交后立即发"**：那要两套代码路径（立即发 + 轮询兜底），
+    # 而轮询最坏延迟 1 秒，远小于计数允许的 5 秒滞后。一条路径、可测、进程崩溃也不丢。
+    relay-interval: 1s
+    batch-size: 100
+    max-retry: 20
+    # 已投递的行保留 7 天后清掉，否则表会无限增长
+    keep-delivered: 7d
 
 management:
   endpoints:
@@ -43,8 +90,7 @@ logging:
 
 springdoc:
   api-docs:
-    # 刻意放在 /internal 前缀下：与 architecture §10 不变量 7 一致，
-    # 网关不得路由 /internal/**，因此这份契约只在容器网络内可见。
+    # 刻意放在 /internal 前缀下：网关不得路由 /internal/**
     path: /internal/api-docs
     enabled: true
   swagger-ui:
