@@ -96,6 +96,9 @@ try {
   } else {
     ng('展开条数与实际回复数不一致', `${expandText} vs ${replyCount}`)
   }
+  // 刚才为了读"展开 N 条"把它收起了，后面还要验 tombstone 下的回复，重新展开
+  await page.getByTestId('btn-expand-replies').first().click()
+  await page.getByTestId('reply-item').first().waitFor({ timeout: 8000 })
 
   // 删除一级评论 → tombstone，回复仍在
   await page.getByTestId('btn-delete-comment').first().click()
