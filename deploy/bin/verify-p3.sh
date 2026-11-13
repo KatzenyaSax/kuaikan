@@ -534,7 +534,9 @@ sys.exit(0 if len(d)==1 and d[0]['liked'] is True and d[0]['favorited'] is False
       deadline=$(( $(date +%s) + 6 ))
       cl=""
       comment_like_count() {
-        curl -s --max-time 10 "$SITE/api/content/posts/$POST_ID/comments" | python3 -c "
+        # 用 limit=50 一次取全：P3.1 的翻页测试已经造了 25 条，
+        # 新评论按时间正序排在最后，默认 limit=20 的第一页里没有它
+        curl -s --max-time 10 "$SITE/api/content/posts/$POST_ID/comments?limit=50" | python3 -c "
 import json,sys
 for i in json.load(sys.stdin)['data']['items']:
     if i['id'] == sys.argv[1]:
