@@ -23,6 +23,7 @@ export const ERROR_MESSAGES: Readonly<Record<number, string>> = {
   41004: '需要先加入社群', // NOT_MEMBER
   41005: '社群创建者不能退出', // OWNER_CANNOT_LEAVE
   42001: '帖子不存在', // POST_NOT_FOUND
+  42002: '评论不存在', // COMMENT_NOT_FOUND
   42900: '请求过于频繁', // RATE_LIMITED
   50000: '服务内部错误', // INTERNAL
   50300: '服务暂时不可用', // UPSTREAM_UNAVAILABLE
@@ -47,6 +48,7 @@ export const ERROR_HTTP_STATUS: Readonly<Record<number, number>> = {
   41004: 200,
   41005: 200,
   42001: 404,
+  42002: 404,
   42900: 429,
   50000: 500,
   50300: 503,

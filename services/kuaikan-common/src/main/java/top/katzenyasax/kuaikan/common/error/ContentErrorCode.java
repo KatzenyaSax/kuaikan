@@ -12,7 +12,13 @@ package top.katzenyasax.kuaikan.common.error;
  */
 public enum ContentErrorCode implements ErrorCode {
 
-    POST_NOT_FOUND(42001, "帖子不存在");
+    POST_NOT_FOUND(42001, "帖子不存在"),
+
+    /**
+     * 已删除的评论对外一律"不存在"，不区分 404 与 403 ——
+     * 区分了就等于告诉外界"这条评论曾经存在"。
+     */
+    COMMENT_NOT_FOUND(42002, "评论不存在");
 
     private final int code;
     private final String message;

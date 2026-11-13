@@ -102,6 +102,9 @@ kuaikan:
       # 帖子 id 是雪花数字，用 [0-9]+ 把路径形状钉死，
       # 将来在 /posts/ 下加写端点不会被这条顺带放行。
       - GET ^/api/content/posts/[0-9]+$
+      # P3：评论区游客可读。同样只认数字 id，把路径形状钉死。
+      - GET ^/api/content/posts/[0-9]+/comments$
+      - GET ^/api/content/comments/[0-9]+/replies$
 
 management:
   endpoints:

@@ -15,6 +15,22 @@ public final class Topics {
     /** P0 冒烟专用 topic，P3 起由真实的领域事件取代 */
     public static final String P0_SMOKE = "kuaikan_p0_smoke";
 
+    /**
+     * 点赞 / 收藏的加与取消。载荷见 {@link InteractionChange}。
+     *
+     * <b>为什么点赞和收藏共用一个 topic</b>：它们的消费边界相同
+     * （content 两者都消费、notification 只消费 LIKE+ADDED），
+     * 拆成两个 topic 只会让消费方多订阅一份、几乎没有收益。
+     * 区分靠载荷里的 {@code kind}。
+     *
+     * <b>为什么"加"和"取消"也共用一个 topic</b>：同上。区分靠 {@code change}。
+     * 若以后取消事件要触发完全不同的下游行为，再拆不迟——那时才真有收益。
+     *
+     * <b>不兼容变更 = 新 topic</b>，新旧并行一段时间。消息没有版本化机制，
+     * 不要试图在旧 topic 上改字段。
+     */
+    public static final String INTERACTION_CHANGED = "kuaikan_interaction_changed";
+
     private Topics() {
     }
 }
