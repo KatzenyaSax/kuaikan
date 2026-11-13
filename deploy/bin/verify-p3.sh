@@ -615,6 +615,7 @@ if want_heavy_layer l4; then
     ng "L4 无法准备夹具"
   else
     CONTENT_STOPPED=0
+    IBASE="$SITE/api/interaction"
     lc() {
       curl -s --max-time 10 "$SITE/api/content/posts/$POST_ID" | json_field 'data.likeCount'
     }
@@ -627,27 +628,41 @@ if want_heavy_layer l4; then
       return 1
     }
 
-    # ---- ① kill content-service：点赞仍然成功，计数不变，重启后追平 ----
-    curl -s --max-time 15 -o /dev/null -X POST "$SITE/api/interaction/favorites" \
+    # ---- ① kill content-service：点赞被明确拒绝（目标校验依赖 content）----
+    #
+    # 这里的断言**不是**"content 挂了点赞还能成功"。
+    # 点赞走的是严格校验（点赞前问 content"这个目标存在吗、作者是谁"），
+    # 所以 content 不可用时点赞确实会失败 —— 这是有意的取舍：
+    #   * 不校验就会给不存在的目标写垃圾事实，对账也无从清理
+    #   * 事件载荷需要 targetOwnerId（P4 的"有人赞了你"），只有 content 知道
+    # 代价是 content 挂掉时全站点不了赞。content 本身还挂着的话，站点的主要功能
+    # 已经不可用了，所以这个代价可以接受。
+    #
+    # 要断言的是：**失败是明确且快速的**，不是 500、不是挂住。
+    curl -s --max-time 15 -o /dev/null -X POST "$IBASE/likes" \
       -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-      -d "{\"targetType\":\"post\",\"targetId\":\"$POST_ID\"}"   # 先制造一条已投递事件
+      -d "{\"targetType\":\"post\",\"targetId\":\"$POST_ID\"}"
+    if poll_like 1; then
+      ok "基线：content 正常时点赞后计数追平"
+    else
+      ng "基线不成立" "点赞计数没追平（got=$(lc)），后面的断言会空转"
+    fi
 
     CONTENT_STOPPED=1
     ssh_run 'docker stop kuaikan-content-service-1' >/dev/null 2>&1
     sleep 2
 
+    start_s=$(date +%s)
     body=$(curl -s --max-time 15 -X POST "$SITE/api/interaction/likes" \
       -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
       -d "{\"targetType\":\"post\",\"targetId\":\"$POST_ID\"}")
-    [ "$(printf '%s' "$body" | json_field 'code')" = "0" ] \
-      && ok "content 停机时点赞仍然成功（写路径不依赖 content 的可用性）" \
-      || ng "content 停机时点赞失败" "$(printf '%s' "$body" | head -c 120)"
-
-    # 事件必须已经在 outbox 里等着（或已投递但无人消费）
-    pending=$(sql_exec "SELECT COUNT(*) FROM kuaikan_interaction.t_outbox WHERE status IN (0,1);" | tr -d '\r\n ')
-    [ -n "$pending" ] && [ "$pending" != "0" ] \
-      && ok "事件已落 outbox（content 不在也有人记住这件事）" \
-      || ng "outbox 里没有事件" "pending=$pending"
+    elapsed=$(( $(date +%s) - start_s ))
+    code=$(printf '%s' "$body" | json_field 'code')
+    if [ "$code" = "50300" ] && [ "$elapsed" -le 5 ]; then
+      ok "content 停机 → 点赞 50300（${elapsed}s 内返回，目标校验依赖 content 是有意的）"
+    else
+      ng "content 停机时点赞语义不对" "code=$code 耗时=${elapsed}s want=50300 且 <=5s"
+    fi
 
     ssh_run 'docker start kuaikan-content-service-1' >/dev/null 2>&1
     for _ in $(seq 1 40); do
@@ -656,19 +671,22 @@ if want_heavy_layer l4; then
       sleep 3
     done
     CONTENT_STOPPED=0
-    sleep 5
+    sleep 3
 
-    if poll_like 1; then
-      ok "content 重启后计数追平（消费者把停机期间的事件补上了）"
+    # 恢复后整条链路要通：取消 → 计数归零 → 再点赞 → 计数回来
+    curl -s --max-time 15 -o /dev/null -X DELETE "$IBASE/likes?targetType=post&targetId=$POST_ID" \
+      -H "Authorization: Bearer $TOKEN"
+    if poll_like 0; then
+      ok "content 重启后取消点赞，计数归零（链路已恢复）"
     else
-      # 消费没追上是允许的 —— 对账是最后一道防线。手动触发一次再断言。
-      info "消费者未追平，触发对账"
-      ssh_run 'docker exec kuaikan-content-service-1 curl -s -o /dev/null -X POST http://127.0.0.1:8083/internal/admin/reconcile' >/dev/null 2>&1
-      if poll_like 1; then
-        ok "消费者未追平，但**对账把计数修正了**（兜底生效）"
-      else
-        ng "重启后计数既没追平、对账也没修回" "got=$(lc) want=1"
-      fi
+      ng "重启后取消点赞未生效" "got=$(lc) want=0"
+    fi
+    curl -s --max-time 15 -o /dev/null -X POST "$IBASE/likes" -H "Authorization: Bearer $TOKEN" \
+      -H 'Content-Type: application/json' -d "{\"targetType\":\"post\",\"targetId\":\"$POST_ID\"}"
+    if poll_like 1; then
+      ok "content 重启后点赞，计数追平（消费者/投影都正常）"
+    else
+      ng "重启后点赞计数未追平" "got=$(lc) want=1"
     fi
 
     # ---- ② 重复投递同一事件：计数不能变 ----
