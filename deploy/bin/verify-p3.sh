@@ -616,6 +616,18 @@ if want_heavy_layer l4; then
   else
     CONTENT_STOPPED=0
     IBASE="$SITE/api/interaction"
+
+    # **重新登录**，不能复用 L2 拿到的 token。
+    # 原因：L5 会跑 verify-p1.sh，而它的 cleanup 会 `redis-cli --scan 'auth:*'`
+    # 把**所有** access 白名单键删掉——那是它"改密码/踢人"用例的收尾动作。
+    # 于是 L2 的 token 在 L4 开始时已经失效，表现为 40100，
+    # 而所有断言都会"看起来像产品问题"。
+    TOKEN=$(curl -s --max-time 15 -X POST "$SITE/api/user/auth/login" \
+      -H 'Content-Type: application/json' \
+      -d "{\"email\":\"$EMAIL\",\"password\":\"$FIXTURE_PASS\"}" | json_field 'data.accessToken')
+    if [ -z "$TOKEN" ]; then
+      ng "L4 重新登录失败" "token 为空，L4 的断言会空转"
+    fi
     lc() {
       curl -s --max-time 10 "$SITE/api/content/posts/$POST_ID" | json_field 'data.likeCount'
     }
