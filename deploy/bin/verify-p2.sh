@@ -197,13 +197,16 @@ cleanup() {
     # （ERROR 1046 No database selected）。这里不吞 stderr——
     # 清理失败必须看得见，否则测试数据会一点点攒进"生产"库。
     out=$(sql_exec "USE kuaikan_community;
+      DELETE c FROM kuaikan_content.t_comment c JOIN kuaikan_content.t_post p ON p.id = c.post_id
+        WHERE p.author_id IN ($USER_ID, ${USER_ID2:-0})
+           OR p.community_id IN (${COMMUNITY_ID:-0}, ${COMMUNITY_ID2:-0});
+      DELETE FROM kuaikan_content.t_post WHERE author_id IN ($USER_ID, ${USER_ID2:-0})
+        OR community_id IN (${COMMUNITY_ID:-0}, ${COMMUNITY_ID2:-0});
       DELETE m FROM t_community_member m
         JOIN t_community c ON c.id = m.community_id
         WHERE c.name LIKE 'e2e-%' OR c.id IN (${COMMUNITY_ID:-0}, ${COMMUNITY_ID2:-0});
       DELETE FROM t_community
         WHERE name LIKE 'e2e-%' OR id IN (${COMMUNITY_ID:-0}, ${COMMUNITY_ID2:-0});
-      DELETE FROM kuaikan_content.t_post WHERE author_id IN ($USER_ID, ${USER_ID2:-0})
-        OR community_id IN (${COMMUNITY_ID:-0}, ${COMMUNITY_ID2:-0});
       DELETE FROM kuaikan_user.t_refresh_token WHERE user_id IN ($USER_ID, ${USER_ID2:-0});
       DELETE FROM kuaikan_user.t_user WHERE id IN ($USER_ID, ${USER_ID2:-0});
       -- 兜底 GC：历史上出现过 cleanup 漏删（脚本被中断、SSH 抖动），

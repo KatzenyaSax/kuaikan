@@ -173,11 +173,11 @@ cleanup() {
     # 必须先 USE：MySQL 的多表 DELETE 要求有默认库。
     # 不吞 stderr —— 清理失败必须看得见，否则测试数据会一点点攒进"生产"库。
     out=$(sql_exec "USE kuaikan_content;
-      DELETE c FROM t_comment c JOIN kuaikan_community.t_community co ON co.id IN
-        (SELECT id FROM kuaikan_community.t_community WHERE name LIKE 'e2e-%')
-        WHERE c.post_id IN (SELECT id FROM t_post WHERE community_id = co.id);
-      DELETE FROM t_post WHERE community_id IN
-        (SELECT id FROM kuaikan_community.t_community WHERE name LIKE 'e2e-%' OR id = ${COMMUNITY_ID:-0});
+      DELETE c FROM t_comment c JOIN t_post p ON p.id = c.post_id
+        JOIN kuaikan_community.t_community co ON co.id = p.community_id
+        WHERE co.name LIKE 'e2e-%' OR co.id = ${COMMUNITY_ID:-0};
+      DELETE p FROM t_post p JOIN kuaikan_community.t_community co ON co.id = p.community_id
+        WHERE co.name LIKE 'e2e-%' OR co.id = ${COMMUNITY_ID:-0};
       USE kuaikan_community;
       DELETE m FROM t_community_member m JOIN t_community c ON c.id = m.community_id
         WHERE c.name LIKE 'e2e-%' OR c.id = ${COMMUNITY_ID:-0};
@@ -188,7 +188,17 @@ cleanup() {
         WHERE user_id IN (SELECT id FROM kuaikan_user.t_user
                           WHERE email LIKE 'e2e+%' AND created_at < NOW() - INTERVAL 1 HOUR);
       DELETE FROM kuaikan_user.t_user
-        WHERE email LIKE 'e2e+%' AND created_at < NOW() - INTERVAL 1 HOUR;" 2>&1)
+        WHERE email LIKE 'e2e+%' AND created_at < NOW() - INTERVAL 1 HOUR;
+      -- 兜底 GC：孤儿帖子 = 社群已不存在的帖子。
+      -- 产品没有"删社群"功能（只有测试脚本直删），所以凡孤儿必是残留。
+      -- 不清理的后果是真实的：/posts/latest 是全局列表，孤儿帖会一直挂在首页。
+      DELETE c FROM kuaikan_content.t_comment c JOIN kuaikan_content.t_post p ON p.id = c.post_id
+        LEFT JOIN kuaikan_community.t_community co ON co.id = p.community_id WHERE co.id IS NULL;
+      DELETE p FROM kuaikan_content.t_post p
+        LEFT JOIN kuaikan_community.t_community co ON co.id = p.community_id WHERE co.id IS NULL;
+      DELETE FROM kuaikan_interaction.t_interaction
+        WHERE (target_type = 1 AND target_id NOT IN (SELECT id FROM kuaikan_content.t_post))
+           OR (target_type = 2 AND target_id NOT IN (SELECT id FROM kuaikan_content.t_comment));" 2>&1)
     case "$out" in
       *ERROR*) printf '  %s清理失败%s %s\n' "$R" "$N" "$(printf '%s' "$out" | head -2 | tr '\n' ' ')" ;;
       *) info "已清理测试账号与测试社群" ;;
