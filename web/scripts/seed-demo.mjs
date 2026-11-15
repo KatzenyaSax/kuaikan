@@ -25,19 +25,19 @@ const COMMUNITIES = [
     name: '前端周刊',
     owner: 'linjian',
     desc: '每周挑几篇值得读的前端长文，也聊工程实践与踩过的坑。\n不追热点，只留能复用的经验。',
-    members: ['linjian', 'xiaoman', 'kevin', 'acha'],
+    members: ['linjian', 'xiaoman', 'kevin', 'acha', 'laobai'],
   },
   {
     name: 'Rust 中文',
     owner: 'laobai',
     desc: 'Rust 语言、生态与工程化。欢迎把编译器的报错贴上来一起读——\n它骂人很有耐心。',
-    members: ['laobai', 'kevin', 'linjian'],
+    members: ['laobai', 'kevin', 'linjian', 'acha'],
   },
   {
     name: '摄影与器材',
     owner: 'acha',
     desc: '器材只是工具，照片才是目的。这里聊镜头选择、后期流程、以及\n“为什么我又买了一支 35mm”。',
-    members: ['acha', 'xiaoman', 'laobai'],
+    members: ['acha', 'xiaoman', 'laobai', 'linjian'],
   },
   {
     name: '厨房实验',
