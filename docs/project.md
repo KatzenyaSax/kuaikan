@@ -414,6 +414,18 @@ community-service 被留在停止状态——**一个能把环境停掉的验收
 - 社群切换是**高频的"找并点"** → 底部弹窗 + 2 列大卡片
   （下拉菜单一行放不下头像/成员数，社群多了要滑很久还容易误触）
 
+#### 正文渲染 Markdown 的安全边界
+
+第一版正文是纯文本 + `whitespace-pre-wrap`，注释里写的理由是
+「引入解析器 + 消毒是全新的 XSS 面」。顾虑成立，但结论错了。
+
+用 `react-markdown` + `remark-gfm`，**不启用 `rehype-raw`**：
+默认把 HTML 当纯文本，`<script>` / `<img onerror>` 不会变成 DOM 节点。
+所以"不做 Markdown"和"引入 XSS 面"之间没有必然联系——**是 `rehype-raw` 引入的，不是 Markdown 引入的**。
+
+真正的风险变成了「后来有人觉得 HTML 支持挺方便，加上 rehype-raw」。
+这条禁令写在组件注释里。真需要 HTML 时必须配 `rehype-sanitize` 并重新评估白名单。
+
 #### 示例数据（`deploy/bin/seed-demo.sh`）
 
 冷启动时只有 1 个社群 2 篇帖子，界面看起来"空得没做完"——**没法判断排版密度、
