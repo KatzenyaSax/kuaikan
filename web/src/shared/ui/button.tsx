@@ -14,7 +14,7 @@ type Size = 'sm' | 'md'
  * 否则满屏蓝色会和"克制"背道而驰。
  */
 const VARIANTS: Record<Variant, string> = {
-  primary: 'bg-foreground text-background hover:opacity-85 active:scale-[0.98]',
+  primary: 'bg-foreground text-white hover:opacity-85 active:scale-[0.98]',
   outline: 'border border-border-strong text-foreground hover:bg-surface',
   ghost: 'text-muted-foreground hover:text-foreground hover:bg-surface',
 }
