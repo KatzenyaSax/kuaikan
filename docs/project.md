@@ -55,6 +55,29 @@ services/
 
 各进程的职责与不变量见 `docs/design/architecture.md`。
 
+### 服务边界按聚合归属划，不按产品概念划
+
+一个很容易卡住的地方，写在这里免得每个新人都问一遍：
+
+**「互动」是产品概念，不是服务边界。** 评论看起来和点赞是同一类功能，但它们分属两个服务：
+
+| 产品概念 | 在哪个服务 | 本质 |
+|---|---|---|
+| 评论 / 回复 | `content-service` | 它**是内容**：正文、两级层级、进 `post.comment_count` |
+| 点赞 / 收藏 | `interaction-service` | 它是**关系**：一行「A 赞了 B」，没有正文 |
+
+⚠️ `interaction-service` 这个名字**有误导性**。它不拥有所有互动，只拥有「不含正文的二元关系」。带正文的互动（评论、回复）在 content。
+
+边界是不变量逼出来的：评论若进 interaction，`comment_count` 就无法与评论插入同事务（ADR 0010 要强一致，ADR 0004 已删 Seata），帖子详情页要多两次跨服务同步调用（违反不变量 2），且跨 schema 无法 JOIN（ADR 0006）。而点赞三条都不需要——`like_count` 允许最终一致。
+
+通记规则：**谁拥有这个聚合，谁发这个事实的事件。** 所以事件生产方天然是分散的：
+
+| 事实 | 生产方 | topic |
+|---|---|---|
+| 有人评论/回复 | content | `kuaikan_comment_created` |
+| 有人点赞/收藏 | interaction | `kuaikan_interaction_changed` |
+| 有人被封禁 | user | `kuaikan_user_banned` |
+
 ## 运行环境
 
 | 项 | 值 |

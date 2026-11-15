@@ -19,11 +19,39 @@
 | `gateway` | 无 | 路由（统一前缀 `/api/**`）、JWT 验签、Redis 白名单校验、注入身份头、限流 |
 | `user-service` | `user` schema | 注册登录、JWT 签发与 JWKS、用户资料、关注关系、封禁 |
 | `community-service` | `community` schema | 社群创建、加入/退出、成员角色、禁言 |
-| `content-service` | `content` schema | 帖子与评论读写、计数快照、评论热度排序、发布领域事件 |
-| `interaction-service` | `interaction` schema | 点赞与收藏的事实、计数增量、事件投递 |
+| `content-service` | `content` schema | 帖子与评论读写、计数快照、评论热度排序、发布评论领域事件 |
+| `interaction-service` | `interaction` schema | 点赞与收藏的事实、计数增量、发布互动领域事件 |
 | `notification-service` | `notification` schema | 消费互动事件、消息、未读计数、SSE 推送 |
 | `search-service` | ES 索引（投影） | 消费内容事件建索引、全文检索 |
 | `rank-service` | Redis ZSet（投影） | 定时拉取窗口内帖子算热榜，可随时全量重建 |
+
+### 服务边界按聚合归属划，不按产品概念划
+
+「互动」是**产品概念**，不是服务边界。真正的判据是**谁拥有这个聚合**：谁有那张表，谁发那个事件。
+
+| 产品概念 | 落在哪个服务 | 为什么 |
+|---|---|---|
+| 评论 / 回复 | **content** | 它**是内容**：有正文、有两级层级、要被列表展示、要算进 `post.comment_count` |
+| 点赞 / 收藏 | **interaction** | 它是**关系**：只有一行「A 赞了 B」，没有正文、不被展示为主体 |
+
+⚠️ **`interaction-service` 这个名字容易误导**：它**不拥有所有互动**，只拥有「不含正文的二元关系」（赞、收藏）。带正文的互动（评论、回复）属于 content。
+
+**边界是被不变量逼出来的，不是品味**。假设把评论塞进 interaction-service：
+
+1. `comment_count` 做不到强一致 —— ADR 0010 要求它与评论插入在**同一本地事务**，跨服务就只剩分布式事务，而 ADR 0004 已经删掉了 Seata。
+2. 帖子详情页要三次跨服务同步调用（帖子 + 评论 + 评论数）—— 违反不变量 2。
+3. 评论与帖子不能同库 JOIN、不能同游标翻页 —— 违反 ADR 0006。
+
+而点赞三条都不需要：`like_count` 允许最终一致（ADR 0010），点赞不需要和帖子同事务，点赞列表也不和帖子一起查。
+**所以评论留下，点赞走人。**
+
+由此，事件生产方是分散的，且这是正确的：
+
+| 事实 | 生产方 | topic |
+|---|---|---|
+| 有人评论/回复 | content | `kuaikan_comment_created` |
+| 有人点赞/收藏 | interaction | `kuaikan_interaction_changed` |
+| 有人被封禁 | user | `kuaikan_user_banned` |
 
 **`rank-service` 与 `search-service` 是读侧投影，不拥有任何事实。** 数据只来自事件订阅或对 `content-service` 的内部只读接口：
 
@@ -93,6 +121,21 @@
 **契约演进规则**：topic 命名 `kuaikan_{domain}_{event}`（**必须用下划线**——RocketMQ 的 topic 校验正则为 `^[%|a-zA-Z0-9_-]+$`，含点号会直接抛 `MQClientException: contains illegal characters`）；事件体固定携带 `eventId` / `version` / `occurredAt`；**只允许追加可选字段，禁止修改字段语义、禁止删除字段**；破坏性变更必须换新 topic 名并双写过渡。
 
 **消费幂等三件套**（优先级从高到低）：写事实用 `INSERT IGNORE` + 唯一索引看 affected rows → 消费侧 `t_consume_log(event_id, consumer)` 唯一索引 → 一切计数都有对账任务兜底。
+
+⚠️ **不要以为「改计数」天然幂等。** `content-service` 消费点赞事件做的是**相对更新**：
+
+    UPDATE t_post SET like_count = like_count + #{delta} WHERE id = #{id}
+
+重放一次 ADDED 就是 +2。它幂等**完全靠** `t_consume_log` 挡住重复投递，而且去重日志与计数更新**必须在同一事务**（先改计数再记日志，中间崩溃重投就 +2；反过来同样错）。
+
+根本原因是：**消费单个事件时不知道真值多少**（只能知道「多了一个」），所以单事件投影**必然是增量**，增量**必然需要去重**。只有能设真值的路径（对账、全量重建）才真正天然幂等。
+
+所以选哪一档不是风格问题，是**去重键和被保护的数据能不能落在同一行**：
+
+| 消费者 | 保护的数据 | 能走第一档吗 |
+|---|---|---|
+| content 改 `like_count` | `t_post.like_count` | ❌ 与事件不同行 → 只能靠 `t_consume_log` |
+| notification 写消息 | `t_message` 自己那一行 | ✅ `UNIQUE (user_id, source_event_id, type)`，一次 INSERT 搞定 |
 
 ## 7. 计数归属
 
