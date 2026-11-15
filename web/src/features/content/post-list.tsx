@@ -4,6 +4,7 @@ import { usePostList, useUserSummaries, pickAuthor } from '@/features/content/ap
 import { authErrorMessage } from '@/features/auth/auth-error'
 import { Avatar } from '@/shared/ui/avatar'
 import { Skeleton } from '@/shared/ui/skeleton'
+import { relativeTime } from '@/shared/lib/time'
 import { cn } from '@/shared/lib/cn'
 
 /**
@@ -92,6 +93,7 @@ export function PostList({ communityId }: { communityId: string | undefined }) {
                 <div className="line-clamp-2 text-body font-medium leading-[1.45]" data-testid="post-list-title">
                   {post.title}
                 </div>
+                {/* 作者 · 时间：扫视列表时人关心的是"谁写的、新不新" */}
                 <div className="mt-1 flex items-center gap-1.5 text-caption text-faint">
                   {author ? (
                     <>
@@ -101,6 +103,8 @@ export function PostList({ communityId }: { communityId: string | undefined }) {
                   ) : (
                     <span>…</span>
                   )}
+                  <span>·</span>
+                  <span>{relativeTime(post.createdAt)}</span>
                 </div>
               </Link>
             </li>

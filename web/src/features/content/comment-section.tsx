@@ -16,6 +16,7 @@ import { LikeButton } from '@/features/interaction/interaction-buttons'
 import { Avatar } from '@/shared/ui/avatar'
 import { Button } from '@/shared/ui/button'
 import { Textarea } from '@/shared/ui/field'
+import { relativeTime } from '@/shared/lib/time'
 import { cn } from '@/shared/lib/cn'
 
 /**
@@ -167,7 +168,7 @@ function TopLevelComment({ comment, postId }: { comment: CommentView; postId: st
               {author?.nickname ?? '…'}
             </span>
             <span>·</span>
-            <span>{comment.createdAt?.slice(0, 16).replace('T', ' ')}</span>
+            <span>{relativeTime(comment.createdAt)}</span>
           </>
         )}
       </div>
@@ -306,7 +307,7 @@ function ReplyItem({ comment, postId }: { comment: CommentView; postId: string }
               <span data-testid="reply-to">回复 @{replyTo?.nickname ?? '某人'}</span>
             ) : null}
             <span>·</span>
-            <span>{comment.createdAt?.slice(0, 16).replace('T', ' ')}</span>
+            <span>{relativeTime(comment.createdAt)}</span>
           </>
         )}
       </div>

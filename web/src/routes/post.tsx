@@ -9,6 +9,7 @@ import { authErrorMessage } from '@/features/auth/auth-error'
 import { useSession } from '@/features/auth/session'
 import { Avatar } from '@/shared/ui/avatar'
 import { Skeleton } from '@/shared/ui/skeleton'
+import { relativeTime } from '@/shared/lib/time'
 import { toast } from '@/shared/ui/toast'
 
 /**
@@ -66,7 +67,7 @@ export function PostPage() {
           {community.data?.name ?? name}
         </Link>
         <span>·</span>
-        <span data-testid="post-time">{data.createdAt?.slice(0, 16).replace('T', ' ')}</span>
+        <span data-testid="post-time">{relativeTime(data.createdAt)}</span>
       </div>
 
       <PostContent post={data} />
@@ -81,7 +82,7 @@ export function PostPage() {
             <Avatar url={author.avatarUrl ?? null} name={author.nickname ?? ''} size={28} />
             <span className="font-medium text-foreground">{author.nickname}</span>
             <span className="text-faint">·</span>
-            <span>{data.createdAt?.slice(0, 16).replace('T', ' ')}</span>
+            <span>{relativeTime(data.createdAt)}</span>
           </>
         ) : authors.isPending ? (
           // 作者摘要没回来时不要渲染"已注销用户"——那会闪一下又变，比留白更像 bug
