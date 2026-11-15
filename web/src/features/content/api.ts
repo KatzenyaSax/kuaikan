@@ -47,6 +47,19 @@ export function usePostList(communityId: string | undefined) {
   })
 }
 
+/**
+ * 全站最新帖（跨社群）。首页用。
+ *
+ * 不是"推荐"——就是按时间倒序。首页会明确标注这一点，
+ * 不假装有算法。
+ */
+export function useLatestPosts(limit = 10) {
+  return useQuery({
+    queryKey: ['posts', 'latest', limit],
+    queryFn: () => api.get<PostSummary[]>(`${BASE}/latest?limit=${String(limit)}`),
+  })
+}
+
 export function useCreatePost() {
   const queryClient = useQueryClient()
   return useMutation({

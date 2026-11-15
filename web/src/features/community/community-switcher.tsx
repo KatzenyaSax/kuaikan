@@ -1,20 +1,25 @@
-import { useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router'
-import { useCommunityList, useMyCommunities } from '@/features/community/api'
+import { useState } from 'react'
+import { useNavigate } from 'react-router'
+import { useMyCommunities } from '@/features/community/api'
 import { useSession } from '@/features/auth/session'
-import { Button } from '@/shared/ui/button'
+import { Avatar } from '@/shared/ui/avatar'
+import { Empty } from '@/shared/ui/empty'
+import { Sheet } from '@/shared/ui/sheet'
+import { Link } from 'react-router'
+import { cn } from '@/shared/lib/cn'
 
 /**
- * 左栏顶部的社群切换器。
+ * 社群切换器：一个按钮 + 底部弹窗。
  *
- * **不是一个横向滚动的社群条。** 横向滚动有三个问题：不可发现（用户不知道右边还有）、
- * 不可扩展（100 个社群无法定位）、无障碍差。这里拆成两个不同的东西：
+ * 为什么用底部弹窗而不是下拉菜单 / 常驻列表：
+ *   - 下拉菜单一行只能放文字，社群多了要滑很久，还容易误触
+ *   - 常驻列表会一直占着左栏，把帖子列表往下推
+ *   - 弹窗里能放**大卡片**（头像 + 名字 + 成员数），一眼扫完再点，误触率低
  *
- *   - **我加入的社群**：少量、稳定、高频切换 → 常驻
- *   - **全量社群**：搜索定位 → 可搜索下拉
+ * 只列**已加入**的社群。发现新社群是「首页」的职责，不在这里混着。
  *
- * 社群搜索这里是 SQL LIKE（community-service 的列表接口带 q 参数）；
- * 与 P6 的 ES 搜索不是一回事——P6 搜的是帖子。
+ * 排列用 2 列等宽网格：切换社群是"找并点"的高频动作，
+ * 扫视效率优先于视觉惊喜；等宽也才让当前社群的高亮一眼认出来。
  */
 export function CommunitySwitcher({ activeName }: { activeName: string | undefined }) {
   const navigate = useNavigate()
@@ -22,94 +27,78 @@ export function CommunitySwitcher({ activeName }: { activeName: string | undefin
   const authed = status === 'authenticated'
   const mine = useMyCommunities(authed)
   const [open, setOpen] = useState(false)
-  const [keyword, setKeyword] = useState('')
-  const all = useCommunityList(null)
 
-  const filtered = useMemo(() => {
-    const items = all.data?.items ?? []
-    const k = keyword.trim().toLowerCase()
-    if (!k) return items
-    return items.filter((c) => (c.name ?? '').toLowerCase().includes(k))
-  }, [all.data, keyword])
-
-  const myItems = mine.data?.items ?? []
+  const items = mine.data?.items ?? []
 
   return (
-    <div className="border-b border-border p-2">
-      <div className="flex items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setOpen((v) => !v)}
-          data-testid="btn-community-switcher"
-        >
-          选择社群
-        </Button>
-        {authed ? (
-          <Link
-            to="/"
-            className="text-[11px] text-muted-foreground underline"
-            data-testid="link-all-communities"
-          >
-            全部
-          </Link>
-        ) : null}
-      </div>
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex h-9 w-full items-center justify-between gap-2 rounded-[var(--radius-md)] border border-border-strong bg-background px-3 text-aux transition-colors duration-[150ms] hover:bg-surface"
+        data-testid="btn-community-switcher"
+      >
+        <span className="truncate">{activeName ?? '选择社群'}</span>
+        <span
+          aria-hidden
+          className="h-[7px] w-[7px] shrink-0 -translate-y-0.5 rotate-45 border-b-[1.5px] border-r-[1.5px] border-faint"
+        />
+      </button>
 
-      {open ? (
-        <div className="mt-2 space-y-2 rounded-md border border-border p-2">
-          <input
-            data-testid="field-community-search"
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            placeholder="搜索社群"
-            autoFocus
-            className="h-8 w-full rounded-md border border-border bg-background px-2 text-[11px] outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      <Sheet
+        open={open}
+        onClose={() => setOpen(false)}
+        title="我加入的社群"
+        meta={items.length > 0 ? `${String(items.length)} 个` : undefined}
+        testId="community-sheet"
+      >
+        {items.length === 0 ? (
+          <Empty
+            title="还没有加入任何社群"
+            description="去首页看看有哪些社群，加入之后就会出现在这里。"
+            action={
+              <Link to="/" onClick={() => setOpen(false)} className="text-aux text-primary hover:underline">
+                去首页看看
+              </Link>
+            }
           />
-          <ul className="max-h-56 overflow-y-auto" data-testid="community-search-results">
-            {filtered.map((c) => (
-              <li key={c.id}>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            {items.map((c) => {
+              const active = c.name === activeName
+              return (
                 <button
+                  key={c.id}
                   type="button"
+                  aria-current={active}
                   onClick={() => {
                     setOpen(false)
                     navigate(`/c/${encodeURIComponent(c.name ?? '')}`)
                   }}
-                  className="w-full truncate rounded px-2 py-1 text-left text-[11px] hover:bg-muted"
-                  data-testid="community-search-item"
+                  className={cn(
+                    'flex items-center gap-3 rounded-[var(--radius-lg)] border p-3.5 text-left transition-colors duration-[150ms]',
+                    active
+                      ? 'border-primary shadow-[inset_0_0_0_1px_var(--color-primary)]'
+                      : 'border-border hover:bg-surface',
+                  )}
+                  data-testid="community-sheet-item"
                 >
-                  {c.name}
+                  <Avatar url={null} name={c.name ?? ''} size={40} />
+                  <span className="block min-w-0">
+                    <span className="block truncate text-body font-medium">{c.name}</span>
+                    <span className="block text-caption text-faint">{c.memberCount} 成员</span>
+                  </span>
+                  {active ? <span className="ml-auto shrink-0 text-aux text-primary">✓</span> : null}
                 </button>
-              </li>
-            ))}
-            {filtered.length === 0 ? (
-              <li className="px-2 py-1 text-[11px] text-muted-foreground">没有匹配的社群</li>
-            ) : null}
-          </ul>
-        </div>
-      ) : null}
+              )
+            })}
+          </div>
+        )}
 
-      {myItems.length > 0 ? (
-        <ul className="mt-2 space-y-0.5" data-testid="my-community-list">
-          {myItems.map((c) => {
-            const active = c.name === activeName
-            return (
-              <li key={c.id}>
-                <Link
-                  to={`/c/${encodeURIComponent(c.name ?? '')}`}
-                  className={
-                    'block truncate rounded px-2 py-1 text-[11px] ' +
-                    (active ? 'bg-muted font-medium' : 'text-muted-foreground hover:bg-muted/60')
-                  }
-                  data-testid="my-community-item"
-                >
-                  {c.name}
-                </Link>
-              </li>
-            )
-          })}
-        </ul>
-      ) : null}
-    </div>
+        <p className="mt-4 text-caption text-faint">
+          只列出你已加入的社群。发现新社群在「首页」。
+        </p>
+      </Sheet>
+    </>
   )
 }

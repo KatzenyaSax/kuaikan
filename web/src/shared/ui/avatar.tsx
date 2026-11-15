@@ -30,7 +30,8 @@ export function Avatar({
   const initial = name.trim().charAt(0).toUpperCase() || '?'
 
   const seed = tone ?? hash(name)
-  const [from, to] = GRADIENTS[seed % GRADIENTS.length]
+  // noUncheckedIndexedAccess：下标访问返回可能 undefined，给一个兜底
+  const [from, to] = GRADIENTS[seed % GRADIENTS.length] ?? GRADIENTS[0]!
 
   return (
     <span

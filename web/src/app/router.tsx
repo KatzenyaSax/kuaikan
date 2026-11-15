@@ -2,6 +2,9 @@ import type { RouteObject } from 'react-router'
 import { createBrowserRouter } from 'react-router'
 import { RootLayout } from '@/routes/root'
 import { HomePage } from '@/routes/home'
+import { FollowingPage } from '@/routes/following'
+import { CommunityLanding } from '@/routes/community-landing'
+import { HotPage } from '@/routes/hot'
 import { CommunityLayout } from '@/features/community/community-layout'
 import { CommunityOverview } from '@/features/community/community-overview'
 import { NewPostPage } from '@/routes/new-post'
@@ -39,6 +42,10 @@ const routes: RouteObject[] = [
     errorElement: <RootErrorBoundary />,
     children: [
       { index: true, element: <HomePage /> },
+      { path: 'following', element: <FollowingPage /> },
+      { path: 'hot', element: <HotPage /> },
+      // 社群入口：没带具体社群时由这个页面自己决定去哪
+      { path: 'c', element: <CommunityLanding /> },
       // 社群名本身就是标识（没有 slug），服务端按规范化后的名称查找
       // 双栏布局：左列表 + 右正文。index 是社群概览（右栏空态）。
       { 
