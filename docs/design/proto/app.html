@@ -220,6 +220,10 @@ button {
 .pane {
   position: sticky;
   top: var(--topbar-h);
+  /* min-height 让右边界始终拉到底：内容少时边框不会"缺一截"，
+     这是邮件/Finder 那类双栏的常见观感。max-height + overflow
+     保证内容多时是栏内滚动而不是整页滚动。 */
+  min-height: calc(100vh - var(--topbar-h));
   max-height: calc(100vh - var(--topbar-h));
   overflow-y: auto;
   padding: 20px 18px 48px;
@@ -261,21 +265,7 @@ button {
   transform: rotate(45deg) translateY(-2px);
 }
 
-.mylist { list-style: none; margin: 14px 0 0; padding: 0; }
-
-.mylist a {
-  display: block;
-  padding: 6px 10px;
-  border-radius: var(--r-sm);
-  font-size: var(--t-aux);
-  color: var(--fg-2);
-  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
-}
-
-.mylist a:hover { background: var(--surface); color: var(--fg); }
-.mylist a[aria-current="page"] { background: var(--surface); color: var(--fg); font-weight: 600; }
-
-.pane__div { height: 1px; background: var(--hairline); margin: 18px 0 14px; }
+.pane__div { height: 1px; background: var(--hairline); margin: 16px 0 14px; }
 
 .threadlist, .peoplelist { list-style: none; margin: 0; padding: 0; }
 
@@ -929,6 +919,7 @@ button {
 
   .pane {
     position: static;
+    min-height: 0;
     max-height: none;
     padding: 16px 20px 14px;
     border-right: 0;
@@ -936,10 +927,8 @@ button {
   }
 
   /* 窄屏唯一目的是"读这篇文章"，帖子列表让位给正文 */
+  /* 窄屏只留「选择社群」按钮：一点就出大卡片弹窗，比一排 chips 更好点 */
   .pane__label, .pane__div, .threadlist, .peoplelist { display: none; }
-  .mylist { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-  .mylist a { padding: 4px 12px; border-radius: var(--r-pill); background: var(--surface); }
-
   .content { padding: 26px 20px calc(80px + var(--tabbar-h)); }
   .page { padding: 28px 20px calc(80px + var(--tabbar-h)); }
   .article h1 { font-size: 24px; }
@@ -1108,13 +1097,6 @@ button {
         <span>前端周刊</span>
         <span class="switcher__chev" aria-hidden="true"></span>
       </button>
-
-      <ul class="mylist">
-        <li><a href="#" aria-current="page">前端周刊</a></li>
-        <li><a href="#">Rust 中文</a></li>
-        <li><a href="#">摄影与器材</a></li>
-        <li><a href="#">厨房实验</a></li>
-      </ul>
 
       <div class="pane__div"></div>
 
