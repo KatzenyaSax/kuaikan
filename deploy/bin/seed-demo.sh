@@ -101,7 +101,7 @@ echo
 echo "==> 3/4 回填时间戳（让列表看起来像积累出来的，而不是一次性灌进去的）"
 # 只动示例社群里的数据，不碰真实内容。
 #   社群：40 天前 ~ 30 天前
-#   帖子：按 id 顺序每篇往前推 3.5 小时，覆盖最近 5 天
+#   帖子：按 id 顺序每篇往前推 7 小时，覆盖最近约 5 天
 #   评论：落在自己帖子之后 35~125 分钟，保证"评论晚于发帖"
 out=$(sql "USE kuaikan_community;
   UPDATE t_community SET created_at = NOW() - INTERVAL (30 + (id % 10)) DAY
@@ -112,7 +112,7 @@ out=$(sql "USE kuaikan_community;
     FROM t_post pp JOIN kuaikan_community.t_community c ON c.id = pp.community_id
     WHERE c.name IN ($DEMO_COMMUNITIES)
   ) x ON x.id = p.id
-  SET p.created_at = NOW() - INTERVAL (x.rn * 211) MINUTE
+  SET p.created_at = NOW() - INTERVAL (x.rn * 420) MINUTE
   WHERE p.community_id IN (SELECT id FROM kuaikan_community.t_community WHERE name IN ($DEMO_COMMUNITIES));
   UPDATE t_comment cm JOIN t_post p ON p.id = cm.post_id
   SET cm.created_at = p.created_at + INTERVAL (35 + (cm.id % 90)) MINUTE
