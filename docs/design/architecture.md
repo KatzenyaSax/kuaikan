@@ -111,7 +111,7 @@
 | `PostCreated` | content | search | postId, communityId, authorId, title, createdAt |
 | `PostUpdated` | content | search | postId, title, bodyVersion |
 | `PostDeleted` | content | search | postId |
-| `CommentCreated` | content | notification | commentId, postId, rootId, authorId, replyToUserId, mentionUserIds, excerpt |
+| `CommentCreated` | content | notification | commentId, postId, communityId, **postAuthorId**, replyToUserId, mentionUserIds, excerpt（详见 [`p4-notification.md`](./p4-notification.md) §3） |
 | `LikeAdded` / `LikeRemoved` | interaction | content（计数）、notification（仅 Added） | eventId, actorId, targetType, targetId, targetOwnerId |
 | `UserBanned` | user | notification | userId, reason |
 | `LocalCacheEvict`（广播） | content, user | 全部 | cacheKey |
@@ -148,7 +148,10 @@
 | `post.like_count` / `post.favorite_count` | content | — | 消费 interaction 事件 | 允许滞后 ≤5s |
 | `comment.like_count` | content | — | 消费 interaction 事件 | 允许滞后 ≤5s |
 | `community.member_count` | community | — | 本地事务 | 强一致 |
-| `unread:{userId}` 四类 | notification（Redis） | 点赞/评论/@/系统 | 事件 + 已读操作 | 允许漂移，每日对账 |
+| `unread:{userId}` 四类 | notification | 点赞/评论/@/系统 | **P4 改为派生**：`COUNT(*) WHERE read_at IS NULL GROUP BY type`，不做 Redis 计数器 | 精确（无需对账） |
+
+> ⚠️ **P4 对上一行的修改**：原设计是 Redis 四类计数器 + 每日对账。改为 MySQL 派生，原因：“全部已读”与并发新消息在计数器方案下有**吞消息**的真 bug（`SET 0` 会抹掉期间到达的增量），而 `UPDATE ... WHERE read_at IS NULL` 天然无竞态。
+> 详见 [`p4-notification.md`](./p4-notification.md) §6.5。这与 ADR 0010 同一套哲学：**计数是派生状态，能算就别存。**
 | 热度 / 热榜 | rank（Redis ZSet） | 见下 | 每 5 分钟定时重算 | 按窗口重算 |
 
 **热度 = 点赞数 + 评论数，收藏不计入。**（对齐贴吧口径；权重仍外置 Nacos 配置以便日后调整。）热榜只做日榜与周榜，只取 Top 50，不做深度分页、不留存历史名次。
