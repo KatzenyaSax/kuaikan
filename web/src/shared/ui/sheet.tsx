@@ -58,7 +58,9 @@ export function Sheet({
         aria-label={title}
         data-testid={testId}
         className={cn(
-          'fixed inset-x-0 bottom-0 z-[55] flex max-h-[72vh] flex-col rounded-t-[var(--radius-xl)] bg-background pb-[calc(20px+env(safe-area-inset-bottom,0px))] transition-transform duration-[250ms] ease-[cubic-bezier(0.2,0.8,0.2,1)]',
+          // 桌面端限宽居中：铺满 1280px 会变成一条"横幅"，底部留白也会显得空。
+          // 窄屏仍然贴满两侧（那是移动端 bottom sheet 的正确形态）。
+          'fixed bottom-0 left-1/2 z-[55] flex max-h-[72vh] w-full max-w-[40rem] -translate-x-1/2 flex-col rounded-t-[var(--radius-xl)] bg-background pb-[calc(20px+env(safe-area-inset-bottom,0px))] transition-transform duration-[250ms] ease-[cubic-bezier(0.2,0.8,0.2,1)]',
           open ? 'translate-y-0' : 'translate-y-full',
         )}
         style={{ boxShadow: 'var(--shadow-float)' }}
