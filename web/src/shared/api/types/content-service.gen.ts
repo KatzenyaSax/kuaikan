@@ -74,6 +74,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/posts/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["latestPosts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ping": {
         parameters: {
             query?: never;
@@ -258,6 +274,12 @@ export interface components {
             message?: string;
             data?: components["schemas"]["CommentPage"];
         };
+        ResultListPostSummary: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: components["schemas"]["PostSummary"][];
+        };
         ResultTargetView: {
             /** Format: int32 */
             code?: number;
@@ -421,6 +443,28 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ResultPostDetail"];
+                };
+            };
+        };
+    };
+    latestPosts: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultListPostSummary"];
                 };
             };
         };

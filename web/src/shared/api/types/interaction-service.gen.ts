@@ -175,16 +175,15 @@ export interface operations {
     };
     unlikeTarget: {
         parameters: {
-            query?: never;
+            query: {
+                targetType: string;
+                targetId: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TargetRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -223,16 +222,15 @@ export interface operations {
     };
     unfavoriteTarget: {
         parameters: {
-            query?: never;
+            query: {
+                targetType: string;
+                targetId: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TargetRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
