@@ -71,6 +71,11 @@ public class PostService {
         return PostDetail.of(post);
     }
 
+    /** 全站最新帖。首页"最新帖子"用，游客可读 */
+    public List<PostSummary> listLatest(Integer limit) {
+        return postMapper.latestPosts(normalizeLimit(limit)).stream().map(PostSummary::of).toList();
+    }
+
     public PostDetail getById(Long postId) {
         Post post = postMapper.selectById(postId);
         // 已删除的帖子对外一律"不存在"，不区分 404 与 403 ——

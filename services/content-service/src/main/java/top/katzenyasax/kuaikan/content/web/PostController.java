@@ -16,6 +16,7 @@ import top.katzenyasax.kuaikan.content.service.PostService;
 import top.katzenyasax.kuaikan.content.web.dto.CreatePostRequest;
 import top.katzenyasax.kuaikan.content.web.dto.PostDetail;
 import top.katzenyasax.kuaikan.content.web.dto.PostPage;
+import top.katzenyasax.kuaikan.content.web.dto.PostSummary;
 
 /**
  * 帖子。网关剥掉 /api/content 前缀后映射到 /posts。
@@ -48,6 +49,19 @@ public class PostController {
                                  @RequestParam(required = false) String cursor,
                                  @RequestParam(required = false) Integer limit) {
         return Result.ok(postService.list(communityId, sort, cursor, limit));
+    }
+
+    /**
+     * 全站最新帖，跨社群。首页用。
+     *
+     * 路径是 {@code /posts/latest}，与 {@code /posts/{postId}} 不冲突：
+     * Spring 优先匹配字面量段，而 {@code latest} 也不是合法数字。
+     */
+    @Operation(operationId = "latestPosts")
+    @PublicEndpoint
+    @GetMapping("/latest")
+    public Result<java.util.List<PostSummary>> latest(@RequestParam(required = false) Integer limit) {
+        return Result.ok(postService.listLatest(limit));
     }
 
     @Operation(operationId = "createPost")

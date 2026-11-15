@@ -45,6 +45,21 @@ public interface PostMapper extends BaseMapper<Post> {
                          @Param("limit") int limit);
 
     /**
+     * 全站最新帖（跨社群）。首页用。
+     *
+     * 走 {@code idx_community_created} 用不上（没有 community_id 前缀），
+     * 所以这里会扫全表排序。P3 的数据量可以接受；
+     * 数据长大后要加一张"最新帖"的物化表或走 Redis ZSet（P5 的 rank 服务）。
+     */
+    @Select("""
+            SELECT * FROM t_post
+            WHERE status = 1
+            ORDER BY created_at DESC, id DESC
+            LIMIT #{limit}
+            """)
+    List<Post> latestPosts(@Param("limit") int limit);
+
+    /**
      * 评论数 ±1。**相对更新，绝不读-改-写**（同 member_count 的理由）。
      * 强一致计数：与评论的插入/删除在同一个本地事务里。
      */

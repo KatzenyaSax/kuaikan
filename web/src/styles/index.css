@@ -1,39 +1,182 @@
 @import 'tailwindcss';
 
 /*
- * 浅色主题：白底黑字。
- * 令牌沿用 shadcn 命名（--color-background / --color-foreground …），
- * 将来若要接 shadcn CLI 或换主题是无痛的。
+ * ============================================================
+ * 设计令牌。改这里就能改全站 —— 这是"克制"能被守住的唯一办法。
+ *
+ * 三条规矩：
+ *   1. 字号只有 7 档。想用第 8 种，说明层级设计有问题。
+ *   2. 颜色以中性为主；蓝色只用于**交互态**（链接、已赞、focus），
+ *      不用来装饰。
+ *   3. 动效只有 3 档时长 + 1 条缓动，且全部只动 transform / opacity。
+ * ============================================================
  */
 @theme {
-  --color-background: #ffffff;
-  --color-foreground: #111827;
-  --color-card: #ffffff;
-  --color-border: #e5e7eb;
-  --color-muted: #f3f4f6;
-  --color-muted-foreground: #6b7280;
-  --color-primary: #2563eb;
-  --color-primary-foreground: #ffffff;
-  --color-success: #16a34a;
-  --color-danger: #dc2626;
-  --color-warning: #d97706;
+  /* ---------- 字体 ----------
+   * 系统无衬线。**不要用等宽字体排正文**（中英文都不合适）。
+   * 等宽只留给雪花 ID、代码、命令行。 */
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-  --radius-lg: 0.625rem;
+  /* ---------- 字号阶梯（7 档） ----------
+   * 中文行高比拉丁更需要：正文 1.75~1.8，标题 1.3。 */
+  --text-caption: 11px;
+  --text-caption--line-height: 1.5;
+  --text-aux: 13px;
+  --text-aux--line-height: 1.6;
+  --text-body: 15px;
+  --text-body--line-height: 1.75;
+  --text-read: 17px;
+  --text-read--line-height: 1.8;
+  --text-sub: 20px;
+  --text-sub--line-height: 1.4;
+  --text-title: 28px;
+  --text-title--line-height: 1.32;
+  --text-display: 40px;
+  --text-display--line-height: 1.2;
+
+  /* ---------- 颜色 ---------- */
+  --color-background: #ffffff;
+  --color-foreground: #0a0a0a;
+  /* 次要 / 更弱：Apple 的灰阶。不要用纯灰，带一点冷调更耐看 */
+  --color-muted-foreground: #6e6e73;
+  --color-faint: #86868b;
+  /* 极浅底：输入框、代码块、hover */
+  --color-surface: #f5f5f7;
+  --color-surface-strong: #ececee;
+  --color-card: #ffffff;
+  --color-border: rgba(0, 0, 0, 0.08);
+  --color-border-strong: rgba(0, 0, 0, 0.14);
+  --color-muted: #f5f5f7;
+
+  /* 强调色：沉稳蓝。只用于交互态 */
+  --color-primary: #0a72d6;
+  --color-primary-foreground: #ffffff;
+  --color-primary-soft: rgba(10, 114, 214, 0.08);
+
+  --color-success: #16a34a;
+  --color-danger: #c81e1e;
+  --color-warning: #b45309;
+
+  /* ---------- 圆角（4 档 + pill） ---------- */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-pill: 980px;
+
+  /* ---------- 阴影（3 档，都很淡） ----------
+   * 分层主要靠 1px hairline 和留白，不靠阴影。 */
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-card: 0 2px 10px rgba(0, 0, 0, 0.06);
+  --shadow-float: 0 12px 32px rgba(0, 0, 0, 0.12);
+
+  /* ---------- 动效 ---------- */
+  --ease-out-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --duration-fast: 150ms;
+  --duration-base: 250ms;
+  --duration-slow: 400ms;
 }
 
 :root {
   color-scheme: light;
+  --topbar-h: 57px;
+  --tabbar-h: 56px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
   margin: 0;
   background: var(--color-background);
   color: var(--color-foreground);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'PingFang SC', monospace;
-  font-size: 14px;
-  line-height: 1.6;
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: 1.75;
+}
+
+::selection {
+  background: var(--color-primary-soft);
 }
 
 #root {
   min-height: 100vh;
+}
+
+/* 键盘可达性：所有焦点都看得见。不用粗 ring，用一点点 offset 的描边 */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/*
+ * 尊重系统设置。这条必须在，否则前庭功能敏感的用户会因为动效不适。
+ * 用 0.01ms 而不是 0：0 会让某些依赖 animationend 的逻辑永远等不到事件。
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* 入场：只用于首屏，翻页不重复 */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 点赞的一次脉冲 */
+@keyframes pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.16);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* 骨架屏：缓慢脉冲，不要生硬地闪 */
+@keyframes soft-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
 }
