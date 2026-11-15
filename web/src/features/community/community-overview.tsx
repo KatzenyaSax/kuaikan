@@ -4,7 +4,7 @@ import { useCommunityDetail, useMembership, useMyCommunities } from '@/features/
 import { authErrorMessage } from '@/features/auth/auth-error'
 import { useSession } from '@/features/auth/session'
 import { Avatar } from '@/shared/ui/avatar'
-import { Button } from '@/shared/ui/button'
+import { Button, buttonClass } from '@/shared/ui/button'
 import { Skeleton } from '@/shared/ui/skeleton'
 import { toast } from '@/shared/ui/toast'
 
@@ -85,22 +85,24 @@ export function CommunityOverview() {
         {!authed ? (
           <a
             href={`/login?returnTo=${encodeURIComponent(`/c/${name ?? ''}`)}`}
-            className="text-aux text-muted-foreground underline"
+            className={buttonClass({ variant: 'ghost', size: 'sm' })}
             data-testid="link-login-to-join"
           >
             登录后可以加入社群
           </a>
         ) : joined ? (
           <>
+            {/* 发帖是这个页面唯一的主操作 —— 每屏最多一个 primary */}
             <Link
               to={`/c/${encodeURIComponent(name ?? '')}/new`}
-              className="text-aux text-primary hover:underline"
+              className={buttonClass({ size: 'sm' })}
               data-testid="link-new-post"
             >
               发帖
             </Link>
+            {/* 退出是第三级操作：不被强调，但也不藏起来 */}
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
               disabled={busy}
               onClick={() => {

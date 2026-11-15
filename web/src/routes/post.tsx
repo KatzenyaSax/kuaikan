@@ -10,6 +10,7 @@ import { useSession } from '@/features/auth/session'
 import { Avatar } from '@/shared/ui/avatar'
 import { Skeleton } from '@/shared/ui/skeleton'
 import { relativeTime } from '@/shared/lib/time'
+import { buttonClass } from '@/shared/ui/button'
 import { toast } from '@/shared/ui/toast'
 
 /**
@@ -92,7 +93,12 @@ export function PostPage() {
         )}
       </div>
 
-      <div className="mt-6 flex items-center gap-2 border-t border-border pt-4.5">
+      {/*
+        这里**不能**再画一条 border-t：上面的作者行已经用 border-y 收口了，
+        两条 hairline 之间只隔 24px，看起来像"多出一条线"（确实被这么报过）。
+        左右负边距抵掉 ghost 按钮的内边距，让文字和上面的作者名左对齐。
+      */}
+      <div className="-ml-2.5 mt-3 flex items-center gap-0.5">
         <LikeButton
           targetType="post"
           targetId={data.id ?? ''}
@@ -112,7 +118,8 @@ export function PostPage() {
               .then(() => toast('链接已复制'))
               .catch(() => toast('复制失败，可手动复制地址栏'))
           }}
-          className="text-aux text-muted-foreground transition-colors duration-[150ms] hover:text-foreground"
+          className={buttonClass({ variant: 'ghost', size: 'sm', className: 'px-2.5' })}
+          data-testid="btn-share"
         >
           分享
         </button>

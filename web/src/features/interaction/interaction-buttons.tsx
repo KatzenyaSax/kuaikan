@@ -1,4 +1,6 @@
 import { useSession } from '@/features/auth/session'
+import { buttonClass } from '@/shared/ui/button'
+import { cn } from '@/shared/lib/cn'
 import {
   useToggleFavorite,
   useToggleLike,
@@ -37,15 +39,16 @@ export function LikeButton({
       type="button"
       disabled={!authed || toggle.isPending}
       onClick={() => toggle.mutate({ liked, body: { targetType, targetId } })}
-      className={
-        'text-[11px] transition-colors disabled:opacity-50 ' +
-        (liked ? 'text-primary' : 'text-muted-foreground hover:text-foreground')
-      }
+      className={buttonClass({
+        variant: 'ghost',
+        size: 'sm',
+        className: cn('px-2.5', liked && 'text-primary hover:text-primary'),
+      })}
       data-testid={liked ? 'btn-liked' : 'btn-like'}
       title={authed ? (liked ? '取消点赞' : '点赞') : '登录后可以点赞'}
     >
       {liked ? '已赞' : '赞'}
-      {count > 0 ? ` ${count}` : ''}
+      {count > 0 ? <span className="tabular-nums text-faint">{count}</span> : null}
     </button>
   )
 }
@@ -71,15 +74,16 @@ export function FavoriteButton({
       type="button"
       disabled={!authed || toggle.isPending}
       onClick={() => toggle.mutate({ favorited, body: { targetType: 'post', targetId } })}
-      className={
-        'text-[11px] transition-colors disabled:opacity-50 ' +
-        (favorited ? 'text-primary' : 'text-muted-foreground hover:text-foreground')
-      }
+      className={buttonClass({
+        variant: 'ghost',
+        size: 'sm',
+        className: cn('px-2.5', favorited && 'text-primary hover:text-primary'),
+      })}
       data-testid={favorited ? 'btn-favorited' : 'btn-favorite'}
       title={authed ? (favorited ? '取消收藏' : '收藏') : '登录后可以收藏'}
     >
       {favorited ? '已收藏' : '收藏'}
-      {count > 0 ? ` ${count}` : ''}
+      {count > 0 ? <span className="tabular-nums text-faint">{count}</span> : null}
     </button>
   )
 }

@@ -78,13 +78,17 @@ export function RootLayout() {
             <button
               type="button"
               onClick={() => setMsgOpen(true)}
-              className="relative text-aux text-muted-foreground transition-colors duration-[150ms] hover:text-foreground"
+              className="inline-flex items-center text-aux text-muted-foreground transition-colors duration-[150ms] hover:text-foreground"
               data-testid="nav-messages"
             >
               消息
-              {/* 未读徽标：全站唯一的红点，所以它一定意味着"有事情" */}
+              {/*
+                未读徽标：全站唯一的红点，所以它一定意味着"有事情"。
+                放在行内而不是绝对定位——绝对定位的 -top 会压在"息"字上，
+                中文没有字母的上升部，压上去非常明显。
+              */}
               <span
-                className="absolute -right-2.5 -top-[3px] min-w-[15px] rounded-full bg-danger px-1 text-center text-[10px] font-semibold leading-[15px] text-white"
+                className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-semibold leading-none text-white"
                 data-testid="nav-unread"
               >
                 3
