@@ -73,7 +73,7 @@ export function PostList({ communityId }: { communityId: string | undefined }) {
   return (
     <div data-testid="post-list">
       <ul className="m-0 list-none p-0">
-        {items.map((post, i) => {
+        {items.map((post) => {
           const author = pickAuthor(authors.data, post.authorId)
           return (
             <li key={post.id} style={{ animation: 'fade-in 250ms cubic-bezier(0.2,0.8,0.2,1) both' }}>
@@ -86,7 +86,6 @@ export function PostList({ communityId }: { communityId: string | undefined }) {
                   'block rounded-[var(--radius-md)] px-2.5 py-2.5',
                   'transition-colors duration-[150ms] hover:bg-surface',
                   'aria-[current=true]:bg-surface',
-                  i > 0 && 'border-t border-border',
                 )}
                 data-testid="post-list-item"
               >
