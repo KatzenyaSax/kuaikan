@@ -8,16 +8,16 @@ import { CommentSection } from '@/features/content/comment-section'
 import { authErrorMessage } from '@/features/auth/auth-error'
 import { useSession } from '@/features/auth/session'
 import { Avatar } from '@/shared/ui/avatar'
-import { Card } from '@/shared/ui/card'
 import { Skeleton } from '@/shared/ui/skeleton'
+import { toast } from '@/shared/ui/toast'
 
 /**
- * 帖子详情（**单栏**）。
+ * 帖子详情（右栏）。
  *
- * P2.4 会把它改成双栏：左边帖列表、右边这个正文。届时
- * `<PostContent/>` 原样复用，只有外层布局变化。
+ * 排版结构固定为：面包屑 → 标题 → 作者行（上下 hairline 夹住）→ 正文 →
+ * 互动条（hairline 上方分隔）→ 评论区。
  *
- * 作者昵称头像来自批量摘要接口（ADR 0009），不是帖子数据的一部分。
+ * **全页没有卡片**：分区靠 1px hairline 和留白。卡片多了立刻显廉价。
  */
 export function PostPage() {
   const { name, postId } = useParams<{ name: string; postId: string }>()
@@ -33,8 +33,8 @@ export function PostPage() {
 
   if (post.isPending) {
     return (
-      <div className="mx-auto max-w-3xl space-y-3">
-        <Skeleton className="h-8 w-2/3" />
+      <div className="px-11 pt-10">
+        <Skeleton className="mb-4 h-7 w-2/3" />
         <Skeleton className="h-40 w-full" />
       </div>
     )
@@ -42,18 +42,16 @@ export function PostPage() {
 
   if (post.isError) {
     return (
-      <div className="mx-auto max-w-3xl">
-        <Card>
-          <p className="text-sm text-danger" data-testid="post-error">
-            {authErrorMessage(post.error)}
-          </p>
-          <Link
-            to={`/c/${encodeURIComponent(name ?? '')}`}
-            className="mt-3 inline-block text-[11px] underline"
-          >
-            返回社群
-          </Link>
-        </Card>
+      <div className="px-11 pt-10">
+        <p className="text-body text-danger" data-testid="post-error">
+          {authErrorMessage(post.error)}
+        </p>
+        <Link
+          to={`/c/${encodeURIComponent(name ?? '')}`}
+          className="mt-3 inline-block text-aux text-muted-foreground underline"
+        >
+          返回社群
+        </Link>
       </div>
     )
   }
@@ -61,49 +59,62 @@ export function PostPage() {
   const data = post.data
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4" data-testid="post-page">
-      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-        <Link to={`/c/${encodeURIComponent(name ?? '')}`} className="underline">
+    <div className="mx-auto max-w-[40rem] px-6 pb-24 pt-10 md:px-11" data-testid="post-page">
+      <div className="mb-4 flex items-center gap-2 text-aux text-faint">
+        <Link to={`/c/${encodeURIComponent(name ?? '')}`} className="text-primary hover:underline">
           {community.data?.name ?? name}
         </Link>
         <span>·</span>
-        <span data-testid="post-time">{data.createdAt}</span>
+        <span data-testid="post-time">{data.createdAt?.slice(0, 16).replace('T', ' ')}</span>
       </div>
 
-      <div className="flex items-center gap-2" data-testid="post-author">
+      <PostContent post={data} />
+
+      {/* 作者行：上下 hairline，不用卡片 */}
+      <div
+        className="mt-5 flex items-center gap-2.5 border-y border-border py-3.5 text-aux text-muted-foreground"
+        data-testid="post-author"
+      >
         {author ? (
           <>
-            <Avatar url={author.avatarUrl ?? null} name={author.nickname ?? ''} size={24} />
-            <span className="text-[11px]">{author.nickname}</span>
+            <Avatar url={author.avatarUrl ?? null} name={author.nickname ?? ''} size={28} />
+            <span className="font-medium text-foreground">{author.nickname}</span>
+            <span className="text-faint">·</span>
+            <span>{data.createdAt?.slice(0, 16).replace('T', ' ')}</span>
           </>
         ) : authors.isPending ? (
-          // 作者摘要没回来时不要渲染"已注销用户"——那会闪一下又变，
-          // 比留白更像 bug
-          <span className="text-[11px] text-muted-foreground">加载作者…</span>
+          // 作者摘要没回来时不要渲染"已注销用户"——那会闪一下又变，比留白更像 bug
+          <span>加载作者…</span>
         ) : (
-          // 真的查不到（账号已删）才降级
-          <span className="text-[11px] text-muted-foreground" data-testid="post-author-deleted">
-            已注销用户
-          </span>
+          <span data-testid="post-author-deleted">已注销用户</span>
         )}
       </div>
 
-      <Card className="space-y-3">
-        <PostContent post={data} />
-        <div className="flex items-center gap-4 border-t border-border pt-2">
-          <LikeButton
-            targetType="post"
-            targetId={data.id ?? ''}
-            count={data.likeCount ?? 0}
-            states={states.data}
-          />
-          <FavoriteButton
-            targetId={data.id ?? ''}
-            count={data.favoriteCount ?? 0}
-            states={states.data}
-          />
-        </div>
-      </Card>
+      <div className="mt-6 flex items-center gap-2 border-t border-border pt-4.5">
+        <LikeButton
+          targetType="post"
+          targetId={data.id ?? ''}
+          count={data.likeCount ?? 0}
+          states={states.data}
+        />
+        <FavoriteButton
+          targetId={data.id ?? ''}
+          count={data.favoriteCount ?? 0}
+          states={states.data}
+        />
+        <button
+          type="button"
+          onClick={() => {
+            void navigator.clipboard
+              .writeText(window.location.href)
+              .then(() => toast('链接已复制'))
+              .catch(() => toast('复制失败，可手动复制地址栏'))
+          }}
+          className="text-aux text-muted-foreground transition-colors duration-[150ms] hover:text-foreground"
+        >
+          分享
+        </button>
+      </div>
 
       <CommentSection postId={data.id ?? ''} commentCount={data.commentCount ?? 0} />
     </div>

@@ -3,8 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router'
 import { authErrorMessage } from '@/features/auth/auth-error'
 import { useSession } from '@/features/auth/session'
 import { Button } from '@/shared/ui/button'
-import { Card, CardDescription, CardTitle } from '@/shared/ui/card'
-import { cn } from '@/shared/lib/cn'
+import { Input } from '@/shared/ui/field'
 
 export function LoginForm() {
   const navigate = useNavigate()
@@ -34,52 +33,50 @@ export function LoginForm() {
   }
 
   return (
-    <Card className="mx-auto max-w-md">
-      <CardTitle>登录</CardTitle>
+    <div className="mx-auto max-w-[24rem] px-6 pt-16">
+      <h1 className="m-0 mb-6 text-title font-[640]">登录</h1>
 
       {logoutReason === 'banned' ? (
-        <CardDescription className="mt-1 text-danger" data-testid="session-notice">
+        <p className="m-0 mb-4 text-aux text-danger" data-testid="session-notice">
           账号已被封禁，如有疑问请联系管理员。
-        </CardDescription>
+        </p>
       ) : logoutReason === 'expired' ? (
-        <CardDescription className="mt-1 text-warning" data-testid="session-notice">
+        <p className="m-0 mb-4 text-aux text-warning" data-testid="session-notice">
           登录状态已过期，请重新登录。
-        </CardDescription>
+        </p>
       ) : null}
 
       {params.get('registered') ? (
-        <CardDescription className="mt-1 text-success">
+        <p className="m-0 mb-4 text-aux text-success">
           注册成功，请用刚才的邮箱登录。
-        </CardDescription>
+        </p>
       ) : null}
 
-      <form className="mt-5 space-y-4" onSubmit={onSubmit} data-testid="login-form" noValidate>
+      <form className="mt-0 space-y-4" onSubmit={onSubmit} data-testid="login-form" noValidate>
         <label className="block">
-          <span className="mb-1 block text-[11px] text-muted-foreground">邮箱</span>
-          <input
+          <span className="mb-1.5 block text-caption text-faint">邮箱</span>
+          <Input
             data-testid="field-email"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className={inputClass()}
             autoComplete="username"
           />
         </label>
 
         <label className="block">
-          <span className="mb-1 block text-[11px] text-muted-foreground">密码</span>
-          <input
+          <span className="mb-1.5 block text-caption text-faint">密码</span>
+          <Input
             data-testid="field-password"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className={inputClass()}
             autoComplete="current-password"
           />
         </label>
 
         {error ? (
-          <p className="text-[11px] text-danger" data-testid="toast-error">
+          <p className="m-0 text-aux text-danger" data-testid="toast-error">
             {error}
           </p>
         ) : null}
@@ -88,20 +85,14 @@ export function LoginForm() {
           {busy ? '登录中…' : '登录'}
         </Button>
 
-        <p className="text-center text-[11px] text-muted-foreground">
+        <p className="m-0 text-center text-aux text-muted-foreground">
           还没有账号？
           <Link to="/register" className="ml-1 text-primary hover:underline">
             去注册
           </Link>
         </p>
       </form>
-    </Card>
+    </div>
   )
 }
 
-function inputClass(): string {
-  return cn(
-    'h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none',
-    'focus-visible:ring-2 focus-visible:ring-primary',
-  )
-}

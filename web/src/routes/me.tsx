@@ -5,17 +5,20 @@ import { useSession } from '@/features/auth/session'
 import { useLogout, useRevokeSession, useSessions, useUpdateProfile } from '@/features/auth/session-api'
 import { Avatar } from '@/shared/ui/avatar'
 import { Button } from '@/shared/ui/button'
-import { Card, CardDescription, CardTitle } from '@/shared/ui/card'
+import { Input } from '@/shared/ui/field'
 import { Skeleton } from '@/shared/ui/skeleton'
+import { toast } from '@/shared/ui/toast'
 
 /**
- * 「我的」页。
+ * 「我的」。
  *
- * P1 的定位是**验收载体**而不是产品功能：它是唯一"必须登录才能看"的页面，
- * 三种失效（登出 / 踢下线 / 封禁）都只能在这里被观察到。
+ * P1 的定位是**验收载体**：它是唯一"必须登录才能看"的页面，三种失效
+ * （登出 / 踢下线 / 封禁）都只能在这里被观察到。
  *
  * 同时它并发两个受保护请求（/auth/me 由 store 提供，/auth/sessions 由此页拉取），
  * 这正是"并发 401 只触发一次 refresh"的验证场景。
+ *
+ * 排版：两组内容用 hairline 分开，**不用卡片**。
  */
 export function MePage() {
   const navigate = useNavigate()
@@ -31,7 +34,7 @@ export function MePage() {
   const [avatarUrl, setAvatarUrl] = useState('')
 
   if (!user) {
-    return <Skeleton className="mx-auto h-6 w-40" />
+    return <Skeleton className="mx-auto mt-16 h-6 w-40" />
   }
 
   const startEdit = () => {
@@ -52,6 +55,7 @@ export function MePage() {
         onSuccess: () => {
           setEditing(false)
           setNotice('资料已更新')
+          toast('资料已更新')
         },
         onError: (err) => setError(authErrorMessage(err)),
       },
@@ -66,10 +70,12 @@ export function MePage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      <Card className="space-y-3">
-        <div className="flex items-center justify-between">
-          <CardTitle>我的资料</CardTitle>
+    <div className="mx-auto max-w-[40rem] px-6 pb-24 pt-12">
+      <h1 className="m-0 mb-8 text-title font-[640]">我的</h1>
+
+      <section>
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="m-0 text-sub font-semibold">资料</h2>
           {!editing ? (
             <Button variant="ghost" size="sm" onClick={startEdit} data-testid="btn-edit-profile">
               编辑
@@ -78,26 +84,24 @@ export function MePage() {
         </div>
 
         {editing ? (
-          <div className="space-y-3">
+          <div className="space-y-4">
             <label className="block">
-              <span className="mb-1 block text-[11px] text-muted-foreground">昵称（2~32 字符）</span>
-              <input
+              <span className="mb-1.5 block text-caption text-faint">昵称（2~32 字符）</span>
+              <Input
                 data-testid="field-nickname"
                 value={nickname}
                 onChange={(e) => setNickname(e.target.value)}
-                className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary"
               />
             </label>
             <label className="block">
-              <span className="mb-1 block text-[11px] text-muted-foreground">
+              <span className="mb-1.5 block text-caption text-faint">
                 头像地址（http/https，留空表示不显示头像）
               </span>
-              <input
+              <Input
                 data-testid="field-avatar"
                 value={avatarUrl}
                 onChange={(e) => setAvatarUrl(e.target.value)}
                 placeholder="https://…"
-                className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary"
               />
             </label>
             <div className="flex gap-2">
@@ -110,29 +114,31 @@ export function MePage() {
             </div>
           </div>
         ) : (
-          <dl className="grid grid-cols-[64px_1fr] items-center gap-y-2 text-xs" data-testid="profile">
-            <dt className="text-muted-foreground">头像</dt>
-            <dd>
+          <dl className="m-0 grid grid-cols-[64px_1fr] items-center gap-y-4 text-body" data-testid="profile">
+            <dt className="text-aux text-faint">头像</dt>
+            <dd className="m-0">
               <Avatar url={user.avatarUrl} name={user.nickname} size={40} />
             </dd>
-            <dt className="text-muted-foreground">昵称</dt>
-            <dd data-testid="profile-nickname">{user.nickname}</dd>
-            <dt className="text-muted-foreground">邮箱</dt>
-            <dd>{user.email}</dd>
-            <dt className="text-muted-foreground">角色</dt>
-            <dd>{user.roles}</dd>
-            <dt className="text-muted-foreground">ID</dt>
-            <dd className="font-mono text-[11px] break-all">{user.userId}</dd>
+            <dt className="text-aux text-faint">昵称</dt>
+            <dd className="m-0" data-testid="profile-nickname">
+              {user.nickname}
+            </dd>
+            <dt className="text-aux text-faint">邮箱</dt>
+            <dd className="m-0 text-muted-foreground">{user.email}</dd>
+            <dt className="text-aux text-faint">角色</dt>
+            <dd className="m-0 text-muted-foreground">{user.roles}</dd>
+            <dt className="text-aux text-faint">ID</dt>
+            <dd className="m-0 break-all font-mono text-caption text-faint">{user.userId}</dd>
           </dl>
         )}
 
         {notice ? (
-          <p className="text-[11px] text-success" data-testid="profile-notice">
+          <p className="mt-3 text-aux text-success" data-testid="profile-notice">
             {notice}
           </p>
         ) : null}
 
-        <div className="pt-1">
+        <div className="mt-6">
           <Button
             variant="outline"
             size="sm"
@@ -143,29 +149,31 @@ export function MePage() {
             {logout.isPending ? '退出中…' : '退出登录'}
           </Button>
         </div>
-      </Card>
+      </section>
 
-      <Card className="space-y-3">
-        <CardTitle>登录设备</CardTitle>
-        <CardDescription>这些设备持有有效的刷新凭证，可以逐个踢掉。</CardDescription>
+      <section className="mt-12 border-t border-border pt-8">
+        <h2 className="m-0 mb-1.5 text-sub font-semibold">登录设备</h2>
+        <p className="m-0 mb-5 text-aux text-muted-foreground">
+          这些设备持有有效的刷新凭证，可以逐个踢掉。
+        </p>
 
         {sessions.isPending ? (
           <div className="space-y-2">
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
           </div>
         ) : sessions.isError ? (
-          <CardDescription className="text-danger">{authErrorMessage(sessions.error)}</CardDescription>
+          <p className="text-aux text-danger">{authErrorMessage(sessions.error)}</p>
         ) : (
-          <ul className="space-y-2" data-testid="session-list">
+          <ul className="m-0 list-none p-0" data-testid="session-list">
             {(sessions.data ?? []).map((s) => (
               <li
                 key={s.jti}
-                className="flex items-center justify-between gap-3 rounded border border-border px-3 py-2 text-[11px]"
+                className="flex items-center justify-between gap-4 py-3.5 text-aux [&+&]:border-t [&+&]:border-border"
               >
                 <div className="min-w-0">
-                  <div className="truncate">{s.userAgent ?? '未知设备'}</div>
-                  <div className="text-muted-foreground">
+                  <div className="truncate text-foreground">{s.userAgent ?? '未知设备'}</div>
+                  <div className="mt-0.5 text-caption text-faint">
                     {s.ip ?? '-'} · {s.issuedAt ?? '-'}
                   </div>
                 </div>
@@ -180,14 +188,14 @@ export function MePage() {
               </li>
             ))}
             {(sessions.data ?? []).length === 0 ? (
-              <li className="text-[11px] text-muted-foreground">没有其他有效会话</li>
+              <li className="py-3 text-aux text-faint">没有其他有效会话</li>
             ) : null}
           </ul>
         )}
-      </Card>
+      </section>
 
       {error ? (
-        <p className="text-[11px] text-danger" data-testid="toast-error">
+        <p className="mt-6 text-aux text-danger" data-testid="toast-error">
           {error}
         </p>
       ) : null}

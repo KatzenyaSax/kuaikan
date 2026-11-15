@@ -3,19 +3,20 @@ import { Link, useParams } from 'react-router'
 import { useCommunityDetail, useMembership, useMyCommunities } from '@/features/community/api'
 import { authErrorMessage } from '@/features/auth/auth-error'
 import { useSession } from '@/features/auth/session'
+import { Avatar } from '@/shared/ui/avatar'
 import { Button } from '@/shared/ui/button'
-import { Card, CardDescription, CardTitle } from '@/shared/ui/card'
 import { Skeleton } from '@/shared/ui/skeleton'
+import { toast } from '@/shared/ui/toast'
 
 /**
- * 社群概览。两个用处：
- *   1. 双栏布局的右栏**空态**（`/c/:name` 还没选帖子时）
- *   2. （无独立页面，只作为右栏空态）
+ * 社群概览 = 双栏布局的右栏**空态**（`/c/:name` 还没选帖子时）。
  *
- * 空态放社群概览而不是"请从左边选一个帖子"：用户进来先要知道
- * 这是个什么社群，而不是被要求做一件他还没理解的事。
+ * 空态放社群概览而不是"请从左边选一个帖子"：用户进来先要知道这是个什么社群，
+ * 而不是被要求做一件他还没理解的事。
  *
- * "我加没加入"从 /mine 推导——公开详情里没有 viewer 字段（放行 = 匿名）。
+ * "我加没加入"从 /mine 推导 —— 公开详情里没有 viewer 字段（放行 = 匿名）。
+ *
+ * 排版：标题 → 成员数 → 简介 → 操作。**不用卡片**，靠留白和 hairline 分区。
  */
 export function CommunityOverview() {
   const { name } = useParams<{ name: string }>()
@@ -31,24 +32,23 @@ export function CommunityOverview() {
 
   if (detail.isPending) {
     return (
-      <div className="space-y-3 p-4">
-        <Skeleton className="h-20 w-full" />
-        <Skeleton className="h-32 w-full" />
+      <div className="px-6 pt-10 md:px-11">
+        <Skeleton className="mb-3 h-6 w-40" />
+        <Skeleton className="h-4 w-24" />
+        <Skeleton className="mt-6 h-20 w-full" />
       </div>
     )
   }
 
   if (detail.isError) {
     return (
-      <div className="p-4">
-        <Card>
-          <p className="text-sm text-danger" data-testid="community-error">
-            {authErrorMessage(detail.error)}
-          </p>
-          <Link to="/" className="mt-3 inline-block text-[11px] underline">
-            返回社群列表
-          </Link>
-        </Card>
+      <div className="px-6 pt-10 md:px-11">
+        <p className="text-body text-danger" data-testid="community-error">
+          {authErrorMessage(detail.error)}
+        </p>
+        <Link to="/" className="mt-3 inline-block text-aux underline">
+          返回首页
+        </Link>
       </div>
     )
   }
@@ -56,39 +56,51 @@ export function CommunityOverview() {
   const community = detail.data
 
   return (
-    <div className="space-y-4 p-4" data-testid="community-page">
-      <Card className="space-y-2">
-        <div className="flex items-center justify-between gap-3">
-          <CardTitle data-testid="community-name">{community.name}</CardTitle>
-          <span className="text-[11px] text-muted-foreground">{community.memberCount} 成员</span>
+    <div
+      className="mx-auto max-w-[40rem] px-6 pb-24 pt-10 md:px-11"
+      data-testid="community-page"
+    >
+      <div className="flex items-center gap-3">
+        <Avatar name={community.name ?? ''} url={null} size={44} />
+        <div className="min-w-0">
+          <h1 className="m-0 text-title font-[640] leading-tight" data-testid="community-name">
+            {community.name}
+          </h1>
+          <p className="m-0 mt-1 text-aux text-faint">{community.memberCount} 成员</p>
         </div>
-        {community.description ? (
-          <CardDescription className="whitespace-pre-wrap" data-testid="community-desc">
-            {community.description}
-          </CardDescription>
-        ) : (
-          <CardDescription>这个社群还没有简介</CardDescription>
-        )}
+      </div>
 
-        <div className="flex flex-wrap items-center gap-2 pt-1">
-          {authed && joined ? (
+      <div className="mt-6 border-t border-border pt-6">
+        {community.description ? (
+          <p
+            className="m-0 whitespace-pre-wrap text-read leading-[1.8] text-[#1a1a1a]"
+            data-testid="community-desc"
+          >
+            {community.description}
+          </p>
+        ) : (
+          <p className="m-0 text-body text-faint">这个社群还没有简介</p>
+        )}
+      </div>
+
+      <div className="mt-8 flex flex-wrap items-center gap-3">
+        {!authed ? (
+          <a
+            href={`/login?returnTo=${encodeURIComponent(`/c/${name ?? ''}`)}`}
+            className="text-aux text-muted-foreground underline"
+            data-testid="link-login-to-join"
+          >
+            登录后可以加入社群
+          </a>
+        ) : joined ? (
+          <>
             <Link
               to={`/c/${encodeURIComponent(name ?? '')}/new`}
-              className="text-[11px] underline"
+              className="text-aux text-primary hover:underline"
               data-testid="link-new-post"
             >
               发帖
             </Link>
-          ) : null}
-          {!authed ? (
-            <a
-              href={`/login?redirect=${encodeURIComponent(`/c/${name ?? ''}`)}`}
-              className="text-[11px] text-muted-foreground underline"
-              data-testid="link-login-to-join"
-            >
-              登录后可以加入社群
-            </a>
-          ) : joined ? (
             <Button
               variant="outline"
               size="sm"
@@ -96,6 +108,7 @@ export function CommunityOverview() {
               onClick={() => {
                 setActionError(null)
                 leave.mutate(community.name ?? '', {
+                  onSuccess: () => toast('已退出社群'),
                   onError: (err) => setActionError(authErrorMessage(err)),
                 })
               }}
@@ -103,30 +116,34 @@ export function CommunityOverview() {
             >
               {busy ? '处理中…' : '退出社群'}
             </Button>
-          ) : (
-            <Button
-              size="sm"
-              disabled={busy}
-              onClick={() => {
-                setActionError(null)
-                join.mutate(community.name ?? '', {
-                  onError: (err) => setActionError(authErrorMessage(err)),
-                })
-              }}
-              data-testid="btn-join-community"
-            >
-              {busy ? '处理中…' : '加入社群'}
-            </Button>
-          )}
-        </div>
-        {actionError ? (
-          <p className="text-[11px] text-danger" data-testid="membership-error">
-            {actionError}
-          </p>
-        ) : null}
-      </Card>
+          </>
+        ) : (
+          <Button
+            size="sm"
+            disabled={busy}
+            onClick={() => {
+              setActionError(null)
+              join.mutate(community.name ?? '', {
+                onSuccess: () => toast('已加入社群'),
+                onError: (err) => setActionError(authErrorMessage(err)),
+              })
+            }}
+            data-testid="btn-join-community"
+          >
+            {busy ? '处理中…' : '加入社群'}
+          </Button>
+        )}
+      </div>
 
-      <p className="text-[11px] text-muted-foreground">从左边选一篇帖子开始读，或点「发帖」。</p>
+      {actionError ? (
+        <p className="mt-3 text-aux text-danger" data-testid="membership-error">
+          {actionError}
+        </p>
+      ) : null}
+
+      <p className="mt-8 border-t border-border pt-6 text-aux text-muted-foreground">
+        从左边选一篇帖子开始读。
+      </p>
     </div>
   )
 }

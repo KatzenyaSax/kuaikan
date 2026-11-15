@@ -4,17 +4,17 @@ import { usePostList, useUserSummaries, pickAuthor } from '@/features/content/ap
 import { authErrorMessage } from '@/features/auth/auth-error'
 import { Avatar } from '@/shared/ui/avatar'
 import { Skeleton } from '@/shared/ui/skeleton'
+import { cn } from '@/shared/lib/cn'
 
 /**
  * 左栏帖子列表。游标分页，最新在上。
  *
- * 加载更多用 IntersectionObserver 盯住底部哨兵：
- * 滚到底自动拉下一页。同时保留一个显式按钮兜底 ——
- * 观察器在"容器高度为 0""列表不足一屏"等情况下不会触发，
- * 那时没有按钮就彻底没入口了。
+ * 加载更多用 IntersectionObserver 盯住底部哨兵：滚到底自动拉下一页。
+ * 同时保留一个显式按钮兜底 —— 观察器在"容器高度为 0""列表不足一屏"等
+ * 情况下不会触发，那时没有按钮就彻底没入口了。
  *
- * 列表项用 <Link> 而不是 onClick：要支持 cmd+click 开新标签，
- * 而且 URL 才是状态（每个帖子都是真实路由）。
+ * 列表项是真实路由（`<Link>`），所以要支持 cmd+click 开新标签；
+ * 用它而不是 onClick 也顺手拿到了键盘可达性。
  */
 export function PostList({ communityId }: { communityId: string | undefined }) {
   const { name } = useParams<{ name: string }>()
@@ -24,7 +24,6 @@ export function PostList({ communityId }: { communityId: string | undefined }) {
   // 把所有页摊平成一个列表。这是 useInfiniteQuery 存在的理由：
   // 手写"每页一个 query"时 data 只有最后一页，加载更多会替换而不是追加。
   const items = (query.data?.pages ?? []).flatMap((page) => page.items ?? [])
-
   const authors = useUserSummaries(items.map((p) => p.authorId))
 
   // 观察器只在"还有下一页且当前不在请求中"时挂上。
@@ -57,7 +56,7 @@ export function PostList({ communityId }: { communityId: string | undefined }) {
 
   if (query.isError) {
     return (
-      <p className="p-3 text-[11px] text-danger" data-testid="post-list-error">
+      <p className="p-3 text-aux text-danger" data-testid="post-list-error">
         {authErrorMessage(query.error)}
       </p>
     )
@@ -65,7 +64,7 @@ export function PostList({ communityId }: { communityId: string | undefined }) {
 
   if (items.length === 0) {
     return (
-      <p className="p-3 text-[11px] text-muted-foreground" data-testid="post-list-empty">
+      <p className="p-3 text-aux text-faint" data-testid="post-list-empty">
         还没有帖子
       </p>
     )
@@ -73,20 +72,24 @@ export function PostList({ communityId }: { communityId: string | undefined }) {
 
   return (
     <div data-testid="post-list">
-      <ul className="divide-y divide-border">
-        {items.map((post) => {
+      <ul className="m-0 list-none p-0">
+        {items.map((post, i) => {
           const author = pickAuthor(authors.data, post.authorId)
           return (
-            <li key={post.id}>
+            <li key={post.id} style={{ animation: 'fade-in 250ms cubic-bezier(0.2,0.8,0.2,1) both' }}>
               <Link
                 to={`/c/${encodeURIComponent(name ?? '')}/p/${post.id ?? ''}`}
-                className="block px-3 py-2 hover:bg-muted/50"
+                className={cn(
+                  'block rounded-[var(--radius-md)] px-2.5 py-2.5',
+                  'transition-colors duration-[150ms] hover:bg-surface',
+                  i > 0 && 'border-t border-border',
+                )}
                 data-testid="post-list-item"
               >
-                <div className="truncate text-sm" data-testid="post-list-title">
+                <div className="line-clamp-2 text-body font-medium leading-[1.45]" data-testid="post-list-title">
                   {post.title}
                 </div>
-                <div className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
+                <div className="mt-1 flex items-center gap-1.5 text-caption text-faint">
                   {author ? (
                     <>
                       <Avatar url={author.avatarUrl ?? null} name={author.nickname ?? ''} size={14} />
@@ -109,13 +112,13 @@ export function PostList({ communityId }: { communityId: string | undefined }) {
           type="button"
           onClick={() => void query.fetchNextPage()}
           disabled={query.isFetchingNextPage}
-          className="w-full py-2 text-[11px] text-muted-foreground hover:underline"
+          className="w-full py-2 text-aux text-muted-foreground hover:underline"
           data-testid="btn-load-more"
         >
           {query.isFetchingNextPage ? '加载中…' : '加载更多'}
         </button>
       ) : (
-        <p className="py-2 text-center text-[11px] text-muted-foreground">没有更多了</p>
+        <p className="py-2 text-center text-caption text-faint">没有更多了</p>
       )}
     </div>
   )
