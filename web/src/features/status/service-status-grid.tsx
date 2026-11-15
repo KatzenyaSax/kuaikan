@@ -44,7 +44,7 @@ function StatusCard({
         <CardTitle>{def.label}</CardTitle>
         <span
           className={cn(
-            'text-[11px]',
+            'text-caption',
             state === 'ok' && 'text-success',
             state === 'error' && 'text-danger',
             state === 'loading' && 'text-warning',
@@ -67,7 +67,7 @@ function StatusCard({
       ) : null}
 
       {state === 'ok' && data ? (
-        <dl className="mt-3 space-y-1 text-[11px]">
+        <dl className="mt-3 space-y-1 text-caption">
           <div className="flex justify-between gap-3">
             <dt className="text-muted-foreground">host</dt>
             <dd className="truncate">{data.host}</dd>

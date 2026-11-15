@@ -27,7 +27,7 @@ export function AuthBootstrap({ children }: { children: React.ReactNode }) {
       >
         <Skeleton className="h-4 w-32" />
         <Skeleton className="h-4 w-24" />
-        <p className="text-[11px] text-muted-foreground">正在确认登录状态…</p>
+        <p className="text-caption text-muted-foreground">正在确认登录状态…</p>
       </div>
     )
   }

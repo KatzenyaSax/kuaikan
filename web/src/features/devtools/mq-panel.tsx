@@ -78,7 +78,7 @@ export function MqPanel() {
           {busy ? '追踪中…' : '发一条消息并追踪'}
         </Button>
       </div>
-      <pre className="max-h-56 overflow-auto rounded border border-border bg-muted p-3 text-[11px] leading-relaxed">
+      <pre className="max-h-56 overflow-auto rounded border border-border bg-muted p-3 text-caption leading-relaxed">
         {lines.join('\n')}
       </pre>
     </Card>

@@ -56,7 +56,7 @@ export function SentinelPanel() {
           {busy ? '压测中…' : `连打 ${String(BURST)} 次`}
         </Button>
       </div>
-      <pre className="max-h-56 overflow-auto rounded border border-border bg-muted p-3 text-[11px] leading-relaxed">
+      <pre className="max-h-56 overflow-auto rounded border border-border bg-muted p-3 text-caption leading-relaxed">
         {lines.join('\n')}
       </pre>
     </Card>

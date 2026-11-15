@@ -18,7 +18,7 @@ export function RootErrorBoundary() {
         <CardDescription>
           ErrorBoundary 兜住了渲染期异常，用户不会看到白屏。
         </CardDescription>
-        <pre className="mt-2 overflow-auto rounded border border-border bg-muted p-3 text-[11px] text-danger">
+        <pre className="mt-2 overflow-auto rounded border border-border bg-muted p-3 text-caption text-danger">
           {detail}
         </pre>
         <div className="pt-1">

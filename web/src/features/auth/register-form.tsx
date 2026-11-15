@@ -199,9 +199,9 @@ export function RegisterForm() {
           />
         </Field>
 
-        {info ? <p className="text-[11px] text-success">{info}</p> : null}
+        {info ? <p className="text-caption text-success">{info}</p> : null}
         {formError ? (
-          <p className="text-[11px] text-danger" data-testid="toast-error">
+          <p className="text-caption text-danger" data-testid="toast-error">
             {formError}
           </p>
         ) : null}
@@ -225,9 +225,9 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-[11px] text-muted-foreground">{label}</span>
+      <span className="mb-1 block text-caption text-muted-foreground">{label}</span>
       {children}
-      {error ? <span className="mt-1 block text-[11px] text-danger">{error}</span> : null}
+      {error ? <span className="mt-1 block text-caption text-danger">{error}</span> : null}
     </label>
   )
 }
