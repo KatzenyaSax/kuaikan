@@ -1,0 +1,1632 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kuaikan · 导航与整体结构（打样）</title>
+<style>
+/* ============================================================
+   设计令牌。改这里就能改全站。
+   ============================================================ */
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
+               "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --t-caption: 11px;
+  --t-aux: 13px;
+  --t-body: 15px;
+  --t-read: 17px;
+  --t-sub: 20px;
+  --t-title: 28px;
+  --t-display: 40px;
+
+  --bg: #ffffff;
+  --fg: #0a0a0a;
+  --fg-2: #6e6e73;
+  --fg-3: #86868b;
+  --surface: #f5f5f7;
+  --surface-2: #ececee;
+  --hairline: rgba(0, 0, 0, 0.08);
+  --hairline-strong: rgba(0, 0, 0, 0.14);
+  --accent: #0a72d6;
+  --accent-soft: rgba(10, 114, 214, 0.08);
+  --danger: #c81e1e;
+
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 20px;
+  --r-pill: 980px;
+
+  --sh-1: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --sh-2: 0 2px 10px rgba(0, 0, 0, 0.06);
+  --sh-3: 0 12px 32px rgba(0, 0, 0, 0.12);
+
+  --dur-fast: 150ms;
+  --dur-base: 250ms;
+  --dur-slow: 400ms;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  --topbar-h: 57px;
+  --tabbar-h: 56px;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: var(--t-body);
+  line-height: 1.75;
+}
+
+::selection { background: var(--accent-soft); }
+a { color: inherit; text-decoration: none; }
+
+button {
+  font: inherit; color: inherit; background: none; border: 0;
+  cursor: pointer; padding: 0;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+/* ============================================================
+   顶栏。左：品牌 + 主导航；右：消息 + 头像昵称
+   ============================================================ */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  height: var(--topbar-h);
+  border-bottom: 1px solid var(--hairline);
+  background: rgba(255, 255, 255, 0.72);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+}
+
+.topbar__inner {
+  height: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  gap: 28px;
+}
+
+.brand {
+  font-size: var(--t-body);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  flex: none;
+}
+
+/* 主导航：不用图标，靠字重与颜色表达当前项 */
+.mainnav {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+
+.mainnav button {
+  font-size: var(--t-aux);
+  color: var(--fg-2);
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.mainnav button:hover { color: var(--fg); }
+
+.mainnav button[aria-current="page"] {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.topbar__right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.msgbtn {
+  position: relative;
+  font-size: var(--t-aux);
+  color: var(--fg-2);
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.msgbtn:hover { color: var(--fg); }
+
+/* 未读徽标：全页唯一的红点 */
+.msgbtn__dot {
+  position: absolute;
+  top: -3px;
+  right: -10px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: var(--r-pill);
+  background: var(--danger);
+  color: #fff;
+  font-size: 10px;
+  line-height: 15px;
+  text-align: center;
+  font-weight: 600;
+}
+
+.profile {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--t-aux);
+  color: var(--fg-2);
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.profile:hover { color: var(--fg); }
+.profile__name { max-width: 8em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.avatar {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #fff;
+  font-weight: 600;
+  background: linear-gradient(135deg, #5b6472, #2b3138);
+  user-select: none;
+}
+
+.avatar--40 { width: 40px; height: 40px; font-size: 16px; }
+.avatar--28 { width: 28px; height: 28px; font-size: 12px; }
+.avatar--24 { width: 24px; height: 24px; font-size: 11px; }
+.avatar--18 { width: 18px; height: 18px; font-size: 9px; }
+
+/* ============================================================
+   视图切换。所有视图同时在 DOM 里，只切显示 —— 打样里最省事的做法。
+   ============================================================ */
+.view { display: none; }
+.view.is-active { display: block; animation: fade var(--dur-fast) var(--ease) both; }
+
+@keyframes fade {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ============================================================
+   双栏（社群 / 关注 共用）
+   ============================================================ */
+.shell {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  align-items: start;
+}
+
+.pane {
+  position: sticky;
+  top: var(--topbar-h);
+  max-height: calc(100vh - var(--topbar-h));
+  overflow-y: auto;
+  padding: 20px 18px 48px;
+  border-right: 1px solid var(--hairline);
+}
+
+.pane__label {
+  margin: 0 0 8px;
+  font-size: var(--t-caption);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--fg-3);
+  text-transform: uppercase;
+}
+
+/* 触发底部弹窗的按钮 */
+.switcher {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-md);
+  background: var(--bg);
+  font-size: var(--t-aux);
+  transition: background var(--dur-fast) var(--ease),
+              border-color var(--dur-fast) var(--ease);
+}
+
+.switcher:hover { background: var(--surface); border-color: rgba(0, 0, 0, 0.2); }
+/* chevron 用 CSS 画：字符 ▾ 在部分字体里会退化成小点（第一版就是这样） */
+.switcher__chev {
+  width: 7px; height: 7px; flex: none;
+  border-right: 1.5px solid var(--fg-3);
+  border-bottom: 1.5px solid var(--fg-3);
+  transform: rotate(45deg) translateY(-2px);
+}
+
+.mylist { list-style: none; margin: 14px 0 0; padding: 0; }
+
+.mylist a {
+  display: block;
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  font-size: var(--t-aux);
+  color: var(--fg-2);
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.mylist a:hover { background: var(--surface); color: var(--fg); }
+.mylist a[aria-current="page"] { background: var(--surface); color: var(--fg); font-weight: 600; }
+
+.pane__div { height: 1px; background: var(--hairline); margin: 18px 0 14px; }
+
+.threadlist, .peoplelist { list-style: none; margin: 0; padding: 0; }
+
+.threadlist a, .peoplelist a {
+  display: block;
+  padding: 9px 10px;
+  border-radius: var(--r-md);
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.threadlist a:hover, .peoplelist a:hover { background: var(--surface); }
+.threadlist a[aria-current="page"] { background: var(--surface); }
+
+.threadlist .t {
+  display: -webkit-box;
+  font-size: var(--t-body);
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--fg);
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.threadlist .m, .peoplelist .m {
+  display: block;
+  margin-top: 3px;
+  font-size: var(--t-caption);
+  color: var(--fg-3);
+}
+
+.peoplelist a { display: flex; align-items: center; gap: 10px; }
+
+/* ============================================================
+   正文区
+   ============================================================ */
+.content {
+  min-width: 0;
+  padding: 40px 56px 120px;
+  display: flex;
+  justify-content: center;
+}
+
+.article { width: 100%; max-width: 40rem; }
+
+.crumb {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 16px;
+  font-size: var(--t-aux); color: var(--fg-3);
+}
+
+.crumb a { color: var(--accent); }
+.crumb a:hover { text-decoration: underline; }
+
+.pill {
+  display: inline-flex; align-items: center;
+  height: 22px; padding: 0 9px;
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  color: var(--fg-2);
+  font-size: var(--t-caption); font-weight: 500;
+}
+
+.article h1 {
+  margin: 0 0 18px;
+  font-size: var(--t-title);
+  line-height: 1.32;
+  font-weight: 640;
+}
+
+.byline {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 0;
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+  font-size: var(--t-aux); color: var(--fg-2);
+}
+
+.byline__name { color: var(--fg); font-weight: 550; }
+.byline__dot { color: var(--fg-3); }
+
+.prose { margin: 26px 0 0; font-size: var(--t-read); line-height: 1.8; color: #1a1a1a; }
+.prose p { margin: 0 0 1.15em; }
+.prose p:last-child { margin-bottom: 0; }
+
+.prose code {
+  font-family: var(--font-mono); font-size: 0.86em;
+  padding: 0.14em 0.36em; border-radius: var(--r-sm);
+  background: var(--surface); color: #1d1d1f;
+}
+
+.prose pre {
+  margin: 1.3em 0; padding: 14px 16px;
+  border-radius: var(--r-md); background: var(--surface);
+  overflow-x: auto;
+  font-family: var(--font-mono); font-size: 13px; line-height: 1.7;
+}
+
+.prose pre code { padding: 0; background: none; font-size: inherit; }
+
+.prose blockquote {
+  margin: 1.3em 0; padding-left: 16px;
+  border-left: 2px solid var(--hairline-strong);
+  color: var(--fg-2);
+}
+
+.actions {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 32px; padding-top: 18px;
+  border-top: 1px solid var(--hairline);
+}
+
+.act {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 32px; padding: 0 12px;
+  border-radius: var(--r-pill);
+  font-size: var(--t-aux); color: var(--fg-2);
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.act:hover { background: var(--surface); color: var(--fg); }
+
+.act[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
+
+.act__count { font-variant-numeric: tabular-nums; }
+
+@keyframes pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.16); }
+  100% { transform: scale(1); }
+}
+
+.act.acted { animation: pop var(--dur-base) var(--ease); }
+
+/* ============================================================
+   评论区
+   ============================================================ */
+.comments { margin-top: 56px; }
+
+.comments__head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 20px; }
+.comments__head h2 { margin: 0; font-size: var(--t-sub); font-weight: 600; }
+.comments__count { font-size: var(--t-aux); color: var(--fg-3); }
+
+.field {
+  width: 100%; min-height: 72px;
+  padding: 12px 14px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-md);
+  background: var(--bg);
+  font-family: inherit; font-size: var(--t-body); line-height: 1.7;
+  color: var(--fg); resize: vertical;
+  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+
+.field::placeholder { color: var(--fg-3); }
+
+.field:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.composer__bar { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.composer__hint { font-size: var(--t-caption); color: var(--fg-3); }
+
+.btn {
+  height: 32px; padding: 0 16px;
+  border-radius: var(--r-pill);
+  font-size: var(--t-aux); font-weight: 550;
+  background: var(--fg); color: #fff;
+  transition: opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+
+.btn:hover { opacity: 0.85; }
+.btn:active { transform: scale(0.98); }
+
+.btn--ghost { background: none; color: var(--fg-2); font-weight: 400; }
+.btn--ghost:hover { color: var(--fg); opacity: 1; }
+
+.clist { list-style: none; margin: 24px 0 0; padding: 0; }
+.citem { padding: 18px 0; }
+.citem + .citem { border-top: 1px solid var(--hairline); }
+
+.cmeta { display: flex; align-items: center; gap: 8px; font-size: var(--t-aux); color: var(--fg-3); }
+.cmeta__name { color: var(--fg); font-weight: 550; }
+.cbody { margin: 8px 0 0; font-size: var(--t-body); line-height: 1.78; color: #1a1a1a; white-space: pre-wrap; }
+
+.cbar { display: flex; align-items: center; gap: 16px; margin-top: 9px; font-size: var(--t-caption); }
+.cbar button { color: var(--fg-3); transition: color var(--dur-fast) var(--ease); }
+.cbar button:hover { color: var(--fg); }
+.cbar button[aria-pressed="true"] { color: var(--accent); }
+.cbar .sep { color: var(--hairline-strong); }
+
+.replies {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--dur-base) var(--ease);
+}
+
+.replies.is-open { grid-template-rows: 1fr; }
+.replies__inner { overflow: hidden; }
+
+.replies__list {
+  list-style: none; margin: 12px 0 0; padding: 0 0 0 14px;
+  border-left: 1px solid var(--hairline-strong);
+}
+
+.ritem { padding: 8px 0; }
+.ritem + .ritem { border-top: 1px solid var(--hairline); }
+.rtarget { color: var(--fg-3); }
+.rtarget b { color: var(--fg-2); font-weight: 550; }
+
+/* ============================================================
+   首页
+   ============================================================ */
+.page { max-width: 1000px; margin: 0 auto; padding: 48px 24px 120px; }
+
+.hero { max-width: 40rem; margin-bottom: 52px; }
+
+.hero h1 {
+  margin: 0 0 14px;
+  font-size: var(--t-display);
+  line-height: 1.2;
+  font-weight: 640;
+  letter-spacing: -0.01em;
+}
+
+.hero p { margin: 0; font-size: var(--t-read); line-height: 1.7; color: var(--fg-2); }
+
+/* 「诚实标注」：不假装有推荐算法 */
+.note {
+  display: flex; align-items: flex-start; gap: 8px;
+  margin-top: 18px; padding: 10px 14px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  font-size: var(--t-aux); color: var(--fg-2);
+}
+
+.note__tag {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: var(--r-pill);
+  background: var(--bg);
+  border: 1px solid var(--hairline);
+  font-size: var(--t-caption);
+  color: var(--fg-3);
+}
+
+.section { margin-bottom: 56px; }
+
+.section__head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 16px; margin-bottom: 18px;
+}
+
+.section__head h2 { margin: 0; font-size: var(--t-sub); font-weight: 600; }
+
+.section__more { font-size: var(--t-aux); color: var(--accent); }
+.section__more:hover { text-decoration: underline; }
+
+/* 社群卡片网格：首页推荐区用 3 列 */
+.cardgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+}
+
+.ccard {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  text-align: left;
+  transition: border-color var(--dur-fast) var(--ease),
+              background var(--dur-fast) var(--ease),
+              transform var(--dur-fast) var(--ease);
+}
+
+.ccard:hover { background: var(--surface); border-color: var(--hairline-strong); }
+
+.ccard__body { min-width: 0; display: block; }
+/* display:block 不是样式偏好：span 默认内联，名称和成员数会挤在同一行，
+   而且内容会撑破 grid 项，导致卡片宽度不一致（第一版截图就是这个） */
+.ccard__name { display: block; font-size: var(--t-body); font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ccard__meta { display: block; margin-top: 2px; font-size: var(--t-caption); color: var(--fg-3); }
+
+/* 帖子列表（首页最新） */
+.plist { list-style: none; margin: 0; padding: 0; }
+
+.pitem { padding: 16px 0; }
+.pitem + .pitem { border-top: 1px solid var(--hairline); }
+
+.pitem__title {
+  margin: 0; font-size: var(--t-body); font-weight: 550; line-height: 1.5;
+}
+
+.pitem__meta {
+  display: flex; align-items: center; gap: 10px;
+  margin-top: 6px; font-size: var(--t-caption); color: var(--fg-3);
+}
+
+/* ============================================================
+   热榜
+   ============================================================ */
+.segmented {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: var(--r-pill);
+  background: var(--surface);
+}
+
+.segmented button {
+  height: 28px; padding: 0 16px;
+  border-radius: var(--r-pill);
+  font-size: var(--t-aux); color: var(--fg-2);
+  transition: background var(--dur-fast) var(--ease),
+              color var(--dur-fast) var(--ease),
+              box-shadow var(--dur-fast) var(--ease);
+}
+
+.segmented button[aria-pressed="true"] {
+  background: var(--bg);
+  color: var(--fg);
+  font-weight: 600;
+  box-shadow: var(--sh-1);
+}
+
+.ranklist { list-style: none; margin: 24px 0 0; padding: 0; }
+
+.rankitem {
+  display: flex; align-items: flex-start; gap: 16px;
+  padding: 18px 0;
+}
+
+.rankitem + .rankitem { border-top: 1px solid var(--hairline); }
+
+.rankitem__no {
+  flex: none;
+  width: 28px;
+  font-size: var(--t-sub);
+  font-weight: 600;
+  color: var(--fg-3);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.rankitem--top .rankitem__no { color: var(--fg); }
+.rankitem__body { min-width: 0; }
+.rankitem__title { margin: 0; font-size: var(--t-body); font-weight: 550; line-height: 1.5; }
+
+/* ============================================================
+   空态 / 骨架
+   ============================================================ */
+.empty {
+  padding: 64px 24px;
+  text-align: center;
+}
+
+.empty__title { margin: 0 0 8px; font-size: var(--t-body); font-weight: 550; color: var(--fg); }
+.empty__desc { margin: 0 0 20px; font-size: var(--t-aux); color: var(--fg-2); }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.skel {
+  border-radius: var(--r-sm);
+  background: rgba(0, 0, 0, 0.11);
+  animation: pulse 1.6s var(--ease) infinite;
+}
+
+/* ============================================================
+   遮罩 / 底部弹窗 / 搜索层 / 消息抽屉
+   ============================================================ */
+.scrim {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(0, 0, 0, 0.42);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-base) var(--ease);
+}
+
+.scrim.is-open { opacity: 1; pointer-events: auto; }
+
+/* 底部弹窗：大圆角，从下方滑入 */
+.sheet {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 55;
+  max-height: 72vh;
+  display: flex; flex-direction: column;
+  padding: 8px 0 calc(24px + env(safe-area-inset-bottom, 0px));
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  background: var(--bg);
+  box-shadow: var(--sh-3);
+  transform: translateY(100%);
+  transition: transform var(--dur-base) var(--ease);
+}
+
+.sheet.is-open { transform: none; }
+
+.sheet__grab {
+  width: 36px; height: 4px;
+  margin: 6px auto 10px;
+  border-radius: var(--r-pill);
+  background: var(--hairline-strong);
+  flex: none;
+}
+
+.sheet__head {
+  flex: none;
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding: 0 24px 14px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.sheet__head h2 { margin: 0; font-size: var(--t-sub); font-weight: 600; }
+.sheet__count { font-size: var(--t-aux); color: var(--fg-3); }
+
+.sheet__body {
+  overflow-y: auto;
+  padding: 18px 24px 8px;
+}
+
+/* 弹窗内的社群卡片：**2 列等宽网格**。
+   切换社群是"找并点"的高频动作，扫视效率优先于视觉惊喜；
+   等宽也才让"当前社群"的高亮一眼认出来。 */
+.sheetgrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.scard {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  text-align: left;
+  transition: border-color var(--dur-fast) var(--ease),
+              background var(--dur-fast) var(--ease);
+}
+
+.scard:hover { background: var(--surface); }
+
+.scard[aria-current="true"] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.scard__check {
+  margin-left: auto;
+  flex: none;
+  color: var(--accent);
+  font-size: var(--t-aux);
+}
+
+.scard__name {
+  display: block;
+  font-size: var(--t-body); font-weight: 550;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.scard__meta { display: block; font-size: var(--t-caption); color: var(--fg-3); margin-top: 2px; }
+
+/* 搜索层：全屏，从顶部展开 */
+.searchlayer {
+  position: fixed; inset: 0; z-index: 60;
+  /* 实白，不要半透明：0.96 的白在白色页面上会透出下方的文字形成"鬼影"，
+     看起来像渲染 bug 而不是设计 */
+  background: var(--bg);
+  opacity: 0; pointer-events: none;
+  transform: scale(0.995);
+  transition: opacity var(--dur-base) var(--ease), transform var(--dur-base) var(--ease);
+}
+
+.searchlayer.is-open { opacity: 1; pointer-events: auto; transform: none; }
+
+.searchlayer__inner { max-width: 40rem; margin: 0 auto; padding: 40px 24px; }
+
+.searchbox {
+  display: flex; align-items: center; gap: 10px;
+  height: 52px; padding: 0 18px;
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+.searchbox input {
+  flex: 1; min-width: 0;
+  border: 0; background: none; outline: none;
+  font-family: inherit; font-size: var(--t-read); color: var(--fg);
+}
+
+.searchbox input::placeholder { color: var(--fg-3); }
+
+.searchlayer__hint { margin: 14px 0 0; font-size: var(--t-aux); color: var(--fg-3); }
+
+.searchlayer__close {
+  margin-top: 24px;
+  font-size: var(--t-aux); color: var(--accent);
+}
+
+/* 消息抽屉：右侧滑出 */
+.drawer {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  z-index: 55;
+  width: min(400px, 100vw);
+  display: flex; flex-direction: column;
+  background: var(--bg);
+  box-shadow: var(--sh-3);
+  transform: translateX(100%);
+  transition: transform var(--dur-base) var(--ease);
+}
+
+.drawer.is-open { transform: none; }
+
+.drawer__head {
+  flex: none;
+  display: flex; align-items: center; justify-content: space-between;
+  height: var(--topbar-h);
+  padding: 0 20px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.drawer__head h2 { margin: 0; font-size: var(--t-sub); font-weight: 600; }
+
+.drawer__close { font-size: var(--t-aux); color: var(--fg-2); }
+.drawer__close:hover { color: var(--fg); }
+
+/* 四分类：赞 / 评论 / @ / 系统 */
+.tabs {
+  flex: none;
+  display: flex; gap: 20px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.tabs button {
+  position: relative;
+  height: 44px;
+  font-size: var(--t-aux);
+  color: var(--fg-2);
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.tabs button[aria-selected="true"] { color: var(--fg); font-weight: 600; }
+
+.tabs button[aria-selected="true"]::after {
+  content: "";
+  position: absolute; left: 0; right: 0; bottom: -1px;
+  height: 2px; border-radius: 2px;
+  background: var(--fg);
+}
+
+.drawer__body { overflow-y: auto; padding: 4px 20px 32px; }
+
+/* ============================================================
+   Toast
+   ============================================================ */
+.toast {
+  position: fixed; left: 50%; bottom: 36px; z-index: 70;
+  padding: 10px 18px;
+  border-radius: var(--r-pill);
+  background: rgba(10, 10, 10, 0.88);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  color: #fff; font-size: var(--t-aux);
+  box-shadow: var(--sh-3);
+  opacity: 0; transform: translate(-50%, 12px);
+  transition: opacity var(--dur-base) var(--ease), transform var(--dur-base) var(--ease);
+  pointer-events: none;
+}
+
+.toast.is-show { opacity: 1; transform: translate(-50%, 0); }
+
+/* ============================================================
+   窄屏底部 tab bar
+   ============================================================ */
+.tabbar {
+  display: none;
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 45;
+  height: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: rgba(255, 255, 255, 0.86);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  border-top: 1px solid var(--hairline);
+}
+
+.tabbar__inner {
+  height: var(--tabbar-h);
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+}
+
+.tabbar button {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px;
+  font-size: var(--t-caption);
+  color: var(--fg-3);
+}
+
+.tabbar button[aria-current="page"] { color: var(--fg); font-weight: 600; }
+
+.tabbar__dot {
+  width: 3px; height: 3px; border-radius: 50%;
+  background: currentColor;
+  opacity: 0;
+}
+
+.tabbar button[aria-current="page"] .tabbar__dot { opacity: 1; }
+
+/* ============================================================
+   原型说明
+   ============================================================ */
+.spec {
+  margin: 96px auto 0;
+  max-width: 1000px;
+  padding: 28px 32px 32px;
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  font-size: var(--t-aux);
+  color: var(--fg-2);
+}
+
+.spec h3 {
+  margin: 0 0 14px;
+  font-size: var(--t-caption);
+  font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.spec__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px 28px; }
+.spec dt { font-weight: 600; color: var(--fg); margin-bottom: 2px; }
+.spec dd { margin: 0; }
+
+/* ============================================================
+   响应式
+   ============================================================ */
+@media (max-width: 900px) {
+  /* 主导航进底部 tab bar；顶栏只留品牌 + 消息 + 头像 */
+  .mainnav { display: none; }
+  .tabbar { display: block; }
+  .topbar__right { gap: 14px; }
+  .profile__name { display: none; }
+  .msgbtn__dot { right: -8px; }
+
+  .shell { grid-template-columns: 1fr; }
+
+  .pane {
+    position: static;
+    max-height: none;
+    padding: 16px 20px 14px;
+    border-right: 0;
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  /* 窄屏唯一目的是"读这篇文章"，帖子列表让位给正文 */
+  .pane__label, .pane__div, .threadlist, .peoplelist { display: none; }
+  .mylist { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .mylist a { padding: 4px 12px; border-radius: var(--r-pill); background: var(--surface); }
+
+  .content { padding: 26px 20px calc(80px + var(--tabbar-h)); }
+  .page { padding: 28px 20px calc(80px + var(--tabbar-h)); }
+  .article h1 { font-size: 24px; }
+  .hero h1 { font-size: 30px; }
+  .cardgrid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .sheetgrid { grid-template-columns: 1fr; }
+  .spec { margin: 48px 20px 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- ============================== 顶栏 ============================== -->
+<header class="topbar">
+  <div class="topbar__inner">
+    <a class="brand" href="#">kuaikan</a>
+
+    <nav class="mainnav" aria-label="主导航">
+      <button data-nav="home">首页</button>
+      <button data-nav="community" aria-current="page">社群</button>
+      <button data-nav="following">关注</button>
+      <button data-nav="hot">热榜</button>
+      <button id="navSearch">搜索</button>
+    </nav>
+
+    <div class="topbar__right">
+      <button class="msgbtn" id="btnMessages">
+        消息<span class="msgbtn__dot">3</span>
+      </button>
+      <button class="profile" id="btnProfile" title="我的">
+        <span class="avatar avatar--24" style="background:linear-gradient(135deg,#7c5cff,#4b2fd6)">a</span>
+        <span class="profile__name">agent</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- ============================== 首页 ============================== -->
+<section class="view" data-view="home">
+  <div class="page">
+    <div class="hero">
+      <h1>今天社区里在聊什么</h1>
+      <p>按最近更新排序，不是个性化推荐。你关注的社群与作者会被优先展示。</p>
+      <div class="note">
+        <span class="note__tag">当前排序</span>
+        <span>这个版本按时间排序。个性化推荐在后续版本开放 —— 现在不假装有算法。</span>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section__head">
+        <h2>最近更新的社群</h2>
+        <a class="section__more" href="#">全部社群 ›</a>
+      </div>
+      <div class="cardgrid">
+        <button class="ccard">
+          <span class="avatar avatar--40" style="background:linear-gradient(135deg,#2f7fe0,#1a4fa0)">前</span>
+          <span class="ccard__body">
+            <span class="ccard__name">前端周刊</span>
+            <span class="ccard__meta">128 成员 · 3 分钟前</span>
+          </span>
+        </button>
+        <button class="ccard">
+          <span class="avatar avatar--40" style="background:linear-gradient(135deg,#c2703a,#8a4418)">R</span>
+          <span class="ccard__body">
+            <span class="ccard__name">Rust 中文</span>
+            <span class="ccard__meta">64 成员 · 26 分钟前</span>
+          </span>
+        </button>
+        <button class="ccard">
+          <span class="avatar avatar--40" style="background:linear-gradient(135deg,#2f9e63,#1d6b42)">摄</span>
+          <span class="ccard__body">
+            <span class="ccard__name">摄影与器材</span>
+            <span class="ccard__meta">302 成员 · 1 小时前</span>
+          </span>
+        </button>
+        <button class="ccard">
+          <span class="avatar avatar--40" style="background:linear-gradient(135deg,#b03b8e,#6d1f58)">厨</span>
+          <span class="ccard__body">
+            <span class="ccard__name">厨房实验</span>
+            <span class="ccard__meta">57 成员 · 2 小时前</span>
+          </span>
+        </button>
+        <button class="ccard">
+          <span class="avatar avatar--40" style="background:linear-gradient(135deg,#5b6472,#2b3138)">T</span>
+          <span class="ccard__body">
+            <span class="ccard__name">TypeScript 中文</span>
+            <span class="ccard__meta">91 成员 · 4 小时前</span>
+          </span>
+        </button>
+        <button class="ccard">
+          <span class="avatar avatar--40" style="background:linear-gradient(135deg,#d4a02c,#8f6612)">读</span>
+          <span class="ccard__body">
+            <span class="ccard__name">读书笔记</span>
+            <span class="ccard__meta">46 成员 · 昨天</span>
+          </span>
+        </button>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section__head">
+        <h2>最新帖子</h2>
+        <a class="section__more" href="#">更多 ›</a>
+      </div>
+      <ul class="plist">
+        <li class="pitem">
+          <p class="pitem__title">CSS 的 :has() 到底改变了什么</p>
+          <div class="pitem__meta">
+            <span class="pill">前端周刊</span>
+            <span>agent</span><span>·</span><span>2 小时前</span>
+            <span>·</span><span>12 回复</span>
+          </div>
+        </li>
+        <li class="pitem">
+          <p class="pitem__title">我们把微前端拆掉了，然后呢</p>
+          <div class="pitem__meta">
+            <span class="pill">前端周刊</span>
+            <span>林间</span><span>·</span><span>5 小时前</span>
+            <span>·</span><span>31 回复</span>
+          </div>
+        </li>
+        <li class="pitem">
+          <p class="pitem__title">为什么你的首屏总是慢 300ms</p>
+          <div class="pitem__meta">
+            <span class="pill">前端周刊</span>
+            <span>kevin</span><span>·</span><span>昨天</span>
+            <span>·</span><span>8 回复</span>
+          </div>
+        </li>
+        <li class="pitem">
+          <p class="pitem__title">Rust 的借用检查器其实在帮你做设计</p>
+          <div class="pitem__meta">
+            <span class="pill">Rust 中文</span>
+            <span>老白</span><span>·</span><span>昨天</span>
+            <span>·</span><span>19 回复</span>
+          </div>
+        </li>
+        <li class="pitem">
+          <p class="pitem__title">35mm 定焦拍人像，注意这五件事</p>
+          <div class="pitem__meta">
+            <span class="pill">摄影与器材</span>
+            <span>阿茶</span><span>·</span><span>2 天前</span>
+            <span>·</span><span>6 回复</span>
+          </div>
+        </li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== 社群（双栏） ============================== -->
+<section class="view is-active" data-view="community">
+  <div class="shell">
+    <aside class="pane">
+      <p class="pane__label">选择社群</p>
+      <button class="switcher" id="btnSheet">
+        <span>前端周刊</span>
+        <span class="switcher__chev" aria-hidden="true"></span>
+      </button>
+
+      <ul class="mylist">
+        <li><a href="#" aria-current="page">前端周刊</a></li>
+        <li><a href="#">Rust 中文</a></li>
+        <li><a href="#">摄影与器材</a></li>
+        <li><a href="#">厨房实验</a></li>
+      </ul>
+
+      <div class="pane__div"></div>
+
+      <p class="pane__label">帖子</p>
+      <ul class="threadlist">
+        <li><a href="#" aria-current="page">
+          <span class="t">CSS 的 :has() 到底改变了什么</span>
+          <span class="m">agent · 2 小时前 · 12 回复</span>
+        </a></li>
+        <li><a href="#">
+          <span class="t">我们把微前端拆掉了，然后呢</span>
+          <span class="m">林间 · 5 小时前 · 31 回复</span>
+        </a></li>
+        <li><a href="#">
+          <span class="t">为什么你的首屏总是慢 300ms</span>
+          <span class="m">kevin · 昨天 · 8 回复</span>
+        </a></li>
+        <li><a href="#">
+          <span class="t">TypeScript 6 的两个破坏性变更</span>
+          <span class="m">小满 · 昨天 · 17 回复</span>
+        </a></li>
+        <li><a href="#">
+          <span class="t">用 CSS 做滚动驱动的动画，不用 JS</span>
+          <span class="m">阿茶 · 2 天前 · 5 回复</span>
+        </a></li>
+      </ul>
+    </aside>
+
+    <div class="content">
+      <article class="article">
+        <div class="crumb">
+          <a href="#">前端周刊</a><span>·</span><span class="pill">CSS</span>
+        </div>
+
+        <h1>CSS 的 <code style="font-family:var(--font-mono);font-size:0.86em">:has()</code> 到底改变了什么</h1>
+
+        <div class="byline">
+          <span class="avatar avatar--28" style="background:linear-gradient(135deg,#5b6472,#2b3138)">a</span>
+          <span class="byline__name">agent</span>
+          <span class="byline__dot">·</span><span>2 小时前</span>
+          <span class="byline__dot">·</span><span>1,240 字 · 读完约 5 分钟</span>
+        </div>
+
+        <div class="prose">
+          <p>过去十年里，CSS 一直在补"父选择器"这个洞。我们要给"包含图片的卡片"加样式，只能靠 JS 打标记；要判断表单里有没有填错，只能靠脚本监听。<code>:has()</code> 出现之后，这些判断第一次回到了样式表里。</p>
+          <p>它不是又一个语法糖。它把"选择器只能向下看"这条约束拿掉了——而现在选择器可以向上、向旁边看。</p>
+          <blockquote>一个选择器能力的边界，往往决定了组件该怎么切分。<code>:has()</code> 把一些本来必须交给 JS 的状态，重新交给了 CSS。</blockquote>
+          <p>举个最小例子。表单里，我们想在有非法输入时把整个 <code>.field-group</code> 标红，以前的写法是：</p>
+          <pre><code>input.addEventListener('input', () => {
+  const group = input.closest('.field-group')
+  group.classList.toggle('is-invalid', !input.validity.valid)
+})</code></pre>
+          <p>现在只需要一行：</p>
+          <pre><code>.field-group:has(input:invalid) {
+  border-color: var(--danger);
+}</code></pre>
+          <p>代价是选择器的匹配成本变高了。浏览器要为每个 <code>:has()</code> 维护反向索引，在超大 DOM 上滥用会带来可观的样式重算。实践里的经验是：<strong>把它用在组件边界上，而不是用在列表的每一项上。</strong></p>
+          <p>另一个常被忽略的点是可读性。<code>:has()</code> 让"这个组件处于什么状态"可以被直接写出来，而不是散落在若干个类名里。半年后回来看代码的那个人，会感谢你。</p>
+        </div>
+
+        <div class="actions">
+          <button class="act" id="likeBtn" aria-pressed="false">
+            <span id="likeLabel">赞</span><span class="act__count" id="likeCount">12</span>
+          </button>
+          <button class="act" id="favBtn" aria-pressed="false">
+            <span id="favLabel">收藏</span><span class="act__count" id="favCount">3</span>
+          </button>
+          <button class="act" id="shareBtn">分享</button>
+        </div>
+
+        <section class="comments">
+          <div class="comments__head">
+            <h2>评论</h2><span class="comments__count">12</span>
+          </div>
+
+          <div class="composer">
+            <textarea class="field" placeholder="写下你的评论…" aria-label="评论内容"></textarea>
+            <div class="composer__bar">
+              <button class="btn">发表</button>
+              <span class="composer__hint">按 ⌘ + Enter 发送</span>
+            </div>
+          </div>
+
+          <ul class="clist">
+            <li class="citem">
+              <div class="cmeta"><span>该评论已删除</span></div>
+              <div class="cbar">
+                <button class="js-expand" aria-expanded="true">收起 2 条回复</button>
+              </div>
+              <div class="replies is-open">
+                <div class="replies__inner">
+                  <ul class="replies__list">
+                    <li class="ritem">
+                      <div class="cmeta">
+                        <span class="avatar avatar--18" style="background:linear-gradient(135deg,#2f9e63,#1d6b42)">林</span>
+                        <span class="cmeta__name">林间</span>
+                        <span class="rtarget">回复 <b>@agent</b></span>
+                        <span>·</span><span>1 小时前</span>
+                      </div>
+                      <p class="cbody">这个反向索引的成本有实测数据吗？我们列表页有 800 个节点，不太敢上。</p>
+                      <div class="cbar">
+                        <button class="js-like" aria-pressed="false">赞 2</button>
+                        <span class="sep">|</span><button>回复</button>
+                      </div>
+                    </li>
+                    <li class="ritem">
+                      <div class="cmeta">
+                        <span class="avatar avatar--18" style="background:linear-gradient(135deg,#5b6472,#2b3138)">a</span>
+                        <span class="cmeta__name">agent</span>
+                        <span class="rtarget">回复 <b>@林间</b></span>
+                        <span>·</span><span>48 分钟前</span>
+                      </div>
+                      <p class="cbody">800 个节点没问题，问题在"每一项都带 :has()"。我把它挪到列表容器上就正常了。</p>
+                      <div class="cbar">
+                        <button class="js-like" aria-pressed="true">已赞 1</button>
+                        <span class="sep">|</span><button>回复</button>
+                      </div>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </li>
+
+            <li class="citem">
+              <div class="cmeta">
+                <span class="avatar avatar--24" style="background:linear-gradient(135deg,#c2703a,#8a4418)">小</span>
+                <span class="cmeta__name">小满</span>
+                <span>·</span><span>1 小时前</span>
+              </div>
+              <p class="cbody">第三段那个例子很到位。我们上周刚好把一模一样的 JS 删掉了，少了 20 行。</p>
+              <div class="cbar">
+                <button class="js-like" aria-pressed="false">赞 5</button>
+                <span class="sep">|</span><button>回复</button>
+              </div>
+            </li>
+
+            <li class="citem">
+              <div class="cmeta">
+                <span class="avatar avatar--24" style="background:linear-gradient(135deg,#7c5cff,#4b2fd6)">k</span>
+                <span class="cmeta__name">kevin</span>
+                <span>·</span><span>3 小时前</span>
+              </div>
+              <p class="cbody">补充一点：:has() 在 Safari 里比 Chrome 早支持两年，但 Chrome 的实现反而更快。选型时别只看兼容表。</p>
+              <div class="cbar">
+                <button class="js-like" aria-pressed="false">赞 8</button>
+                <span class="sep">|</span><button>回复</button>
+                <span class="sep">|</span>
+                <button class="js-expand" aria-expanded="false">展开 1 条回复</button>
+              </div>
+              <div class="replies">
+                <div class="replies__inner">
+                  <ul class="replies__list">
+                    <li class="ritem">
+                      <div class="cmeta">
+                        <span class="avatar avatar--18" style="background:linear-gradient(135deg,#2f9e63,#1d6b42)">阿</span>
+                        <span class="cmeta__name">阿茶</span>
+                        <span class="rtarget">回复 <b>@kevin</b></span>
+                        <span>·</span><span>2 小时前</span>
+                      </div>
+                      <p class="cbody">同意。我们压测下来 Chrome 的样式重算时间大概是 Safari 的六成。</p>
+                      <div class="cbar">
+                        <button class="js-like" aria-pressed="false">赞</button>
+                        <span class="sep">|</span><button>回复</button>
+                      </div>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </li>
+          </ul>
+        </section>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== 关注 ============================== -->
+<section class="view" data-view="following">
+  <div class="shell">
+    <aside class="pane">
+      <p class="pane__label">关注的人</p>
+      <ul class="peoplelist">
+        <li><a href="#">
+          <span class="avatar avatar--24" style="background:linear-gradient(135deg,#2f9e63,#1d6b42)">林</span>
+          <span><span class="t" style="display:block;font-size:var(--t-aux)">林间</span><span class="m">前端 · 12 篇帖子</span></span>
+        </a></li>
+        <li><a href="#">
+          <span class="avatar avatar--24" style="background:linear-gradient(135deg,#7c5cff,#4b2fd6)">k</span>
+          <span><span class="t" style="display:block;font-size:var(--t-aux)">kevin</span><span class="m">性能 · 8 篇帖子</span></span>
+        </a></li>
+      </ul>
+
+      <div class="pane__div"></div>
+
+      <p class="pane__label">他们的帖子</p>
+      <ul class="threadlist">
+        <li><a href="#">
+          <span class="t">我们把微前端拆掉了，然后呢</span>
+          <span class="m">林间 · 5 小时前</span>
+        </a></li>
+        <li><a href="#">
+          <span class="t">为什么你的首屏总是慢 300ms</span>
+          <span class="m">kevin · 昨天</span>
+        </a></li>
+      </ul>
+    </aside>
+
+    <div class="content">
+      <div class="article">
+        <div class="empty">
+          <p class="empty__title">关注功能在当前版本还未开放</p>
+          <p class="empty__desc">开放后，这里会按时间展示你关注的人发的帖子。<br>左侧会是关注的人，右侧是帖子内容 —— 和「社群」完全一致。</p>
+          <button class="btn" data-goto="community">去社群看看</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== 热榜 ============================== -->
+<section class="view" data-view="hot">
+  <div class="page" style="max-width:40rem">
+    <div class="section__head" style="margin-bottom:20px">
+      <h2>热榜</h2>
+      <div class="segmented" id="segs">
+        <button aria-pressed="true">日榜</button>
+        <button aria-pressed="false">周榜</button>
+      </div>
+    </div>
+
+    <p style="margin:0 0 8px;font-size:var(--t-aux);color:var(--fg-2)">
+      热度 = 点赞数 + 评论数（收藏不计入）。只取前 50，不做深度分页。
+    </p>
+
+    <!-- 结构先做全，数据用骨架占位：P5 接入时只换数据源 -->
+    <ul class="ranklist" aria-label="热榜占位">
+      <li class="rankitem rankitem--top">
+        <span class="rankitem__no">1</span>
+        <div class="rankitem__body" style="flex:1">
+          <span class="skel" style="display:block;width:70%;height:15px"></span>
+          <span class="skel" style="display:block;width:40%;height:11px;margin-top:8px"></span>
+        </div>
+      </li>
+      <li class="rankitem">
+        <span class="rankitem__no">2</span>
+        <div class="rankitem__body" style="flex:1">
+          <span class="skel" style="display:block;width:62%;height:15px"></span>
+          <span class="skel" style="display:block;width:36%;height:11px;margin-top:8px"></span>
+        </div>
+      </li>
+      <li class="rankitem">
+        <span class="rankitem__no">3</span>
+        <div class="rankitem__body" style="flex:1">
+          <span class="skel" style="display:block;width:78%;height:15px"></span>
+          <span class="skel" style="display:block;width:44%;height:11px;margin-top:8px"></span>
+        </div>
+      </li>
+      <li class="rankitem">
+        <span class="rankitem__no">4</span>
+        <div class="rankitem__body" style="flex:1">
+          <span class="skel" style="display:block;width:55%;height:15px"></span>
+          <span class="skel" style="display:block;width:30%;height:11px;margin-top:8px"></span>
+        </div>
+      </li>
+      <li class="rankitem">
+        <span class="rankitem__no">5</span>
+        <div class="rankitem__body" style="flex:1">
+          <span class="skel" style="display:block;width:66%;height:15px"></span>
+          <span class="skel" style="display:block;width:34%;height:11px;margin-top:8px"></span>
+        </div>
+      </li>
+    </ul>
+
+    <div class="empty" style="padding-top:40px">
+      <p class="empty__title">热榜还在建设中</p>
+      <p class="empty__desc">上面是它上线后的结构：排名、标题、所属社群与热度值。<br>每天与每周各一份，只取前 50。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== 底部 tab（窄屏） ============================== -->
+<nav class="tabbar" aria-label="底部导航">
+  <div class="tabbar__inner">
+    <button data-nav="home">首页<span class="tabbar__dot"></span></button>
+    <button data-nav="community" aria-current="page">社群<span class="tabbar__dot"></span></button>
+    <button data-nav="following">关注<span class="tabbar__dot"></span></button>
+    <button data-nav="hot">热榜<span class="tabbar__dot"></span></button>
+    <button id="tabSearch">搜索<span class="tabbar__dot"></span></button>
+  </div>
+</nav>
+
+<!-- ============================== 覆盖层 ============================== -->
+<div class="scrim" id="scrim"></div>
+
+<!-- 社群底部弹窗 -->
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="我加入的社群">
+  <div class="sheet__grab"></div>
+  <div class="sheet__head">
+    <h2>我加入的社群</h2>
+    <span class="sheet__count">4 个</span>
+  </div>
+  <div class="sheet__body">
+    <!-- 2 列等宽网格：切换社群是高频"找并点"，扫视效率优先 -->
+    <div class="sheetgrid">
+      <button class="scard" aria-current="true">
+        <span class="avatar avatar--40" style="background:linear-gradient(135deg,#2f7fe0,#1a4fa0)">前</span>
+        <span style="min-width:0">
+          <span class="scard__name">前端周刊</span>
+          <span class="scard__meta">128 成员</span>
+        </span>
+        <span class="scard__check">✓</span>
+      </button>
+      <button class="scard">
+        <span class="avatar avatar--40" style="background:linear-gradient(135deg,#c2703a,#8a4418)">R</span>
+        <span style="min-width:0">
+          <span class="scard__name">Rust 中文</span>
+          <span class="scard__meta">64 成员</span>
+        </span>
+      </button>
+      <button class="scard">
+        <span class="avatar avatar--40" style="background:linear-gradient(135deg,#2f9e63,#1d6b42)">摄</span>
+        <span style="min-width:0">
+          <span class="scard__name">摄影与器材</span>
+          <span class="scard__meta">302 成员</span>
+        </span>
+      </button>
+      <button class="scard">
+        <span class="avatar avatar--40" style="background:linear-gradient(135deg,#b03b8e,#6d1f58)">厨</span>
+        <span style="min-width:0">
+          <span class="scard__name">厨房实验</span>
+          <span class="scard__meta">57 成员</span>
+        </span>
+      </button>
+    </div>
+    <p style="margin:16px 0 0;font-size:var(--t-caption);color:var(--fg-3)">
+      只列出你已加入的社群。发现新社群在「首页」。社群头像与热度会在后续版本加入。
+    </p>
+  </div>
+</div>
+
+<!-- 搜索层 -->
+<div class="searchlayer" id="searchLayer" role="dialog" aria-modal="true" aria-label="搜索">
+  <div class="searchlayer__inner">
+    <div class="searchbox">
+      <input id="searchInput" placeholder="搜索帖子、社群、用户" aria-label="搜索">
+      <button class="btn--ghost" id="closeSearch" style="font-size:var(--t-aux);color:var(--fg-3)">取消</button>
+    </div>
+    <p class="searchlayer__hint" id="searchHint">搜索功能在后续版本开放。这里先定下它的位置与形态。</p>
+  </div>
+</div>
+
+<!-- 消息抽屉 -->
+<div class="drawer" id="msgDrawer" role="dialog" aria-modal="true" aria-label="消息">
+  <div class="drawer__head">
+    <h2>消息</h2>
+    <button class="drawer__close" id="closeMessages">关闭</button>
+  </div>
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true">赞</button>
+    <button role="tab" aria-selected="false">评论</button>
+    <button role="tab" aria-selected="false">@</button>
+    <button role="tab" aria-selected="false">系统</button>
+  </div>
+  <div class="drawer__body">
+    <div class="empty" style="padding-top:56px">
+      <p class="empty__title">消息中心还在建设中</p>
+      <p class="empty__desc">上线后这里会按赞、评论、@、系统四类分组，<br>未读数直接显示在顶栏的红点上。</p>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ---------- 视图切换 ---------- */
+const views = document.querySelectorAll('[data-view]')
+const navBtns = document.querySelectorAll('[data-nav]')
+
+function go(name) {
+  views.forEach((v) => v.classList.toggle('is-active', v.dataset.view === name))
+  navBtns.forEach((b) => {
+    if (b.dataset.nav === name) b.setAttribute('aria-current', 'page')
+    else b.removeAttribute('aria-current')
+  })
+  window.scrollTo({ top: 0, behavior: 'instant' })
+}
+
+navBtns.forEach((b) => b.addEventListener('click', () => go(b.dataset.nav)))
+document.querySelectorAll('[data-goto]').forEach((b) =>
+  b.addEventListener('click', () => go(b.dataset.goto)))
+
+/* ---------- 覆盖层：底部弹窗 / 搜索 / 消息 ---------- */
+const scrim = document.getElementById('scrim')
+const sheet = document.getElementById('sheet')
+const searchLayer = document.getElementById('searchLayer')
+const msgDrawer = document.getElementById('msgDrawer')
+let openLayer = null
+
+function openL(el) {
+  closeL()
+  openLayer = el
+  el.classList.add('is-open')
+  scrim.classList.add('is-open')
+  if (el === searchLayer) setTimeout(() => document.getElementById('searchInput').focus(), 80)
+}
+
+function closeL() {
+  if (!openLayer) return
+  openLayer.classList.remove('is-open')
+  scrim.classList.remove('is-open')
+  openLayer = null
+}
+
+document.getElementById('btnSheet').addEventListener('click', () => openL(sheet))
+document.getElementById('btnMessages').addEventListener('click', () => openL(msgDrawer))
+document.getElementById('navSearch').addEventListener('click', () => openL(searchLayer))
+document.getElementById('tabSearch').addEventListener('click', () => openL(searchLayer))
+document.getElementById('closeSearch').addEventListener('click', closeL)
+document.getElementById('closeMessages').addEventListener('click', closeL)
+scrim.addEventListener('click', closeL)
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeL() })
+
+/* 选完社群关掉弹窗 */
+document.querySelectorAll('.scard').forEach((c) => c.addEventListener('click', () => {
+  closeL()
+  showToast('已切换到：' + c.querySelector('.scard__name').textContent)
+}))
+
+/* ---------- 分段控件 ---------- */
+document.querySelectorAll('#segs button').forEach((b) => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('#segs button').forEach((x) => x.setAttribute('aria-pressed', 'false'))
+    b.setAttribute('aria-pressed', 'true')
+  })
+})
+
+/* ---------- 消息分类 tab ---------- */
+document.querySelectorAll('.tabs button').forEach((b) => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.tabs button').forEach((x) => x.setAttribute('aria-selected', 'false'))
+    b.setAttribute('aria-selected', 'true')
+  })
+})
+
+/* ---------- Toast ---------- */
+const toast = document.getElementById('toast')
+let toastTimer
+function showToast(text) {
+  toast.textContent = text
+  toast.classList.add('is-show')
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => toast.classList.remove('is-show'), 1700)
+}
+
+/* ---------- 点赞 / 收藏 ---------- */
+function bindToggle(btn, label, count, onText, offText, tipOn, tipOff) {
+  btn.addEventListener('click', () => {
+    const on = btn.getAttribute('aria-pressed') === 'true'
+    btn.setAttribute('aria-pressed', on ? 'false' : 'true')
+    label.textContent = on ? offText : onText
+    count.textContent = String(Number(count.textContent) + (on ? -1 : 1))
+    btn.classList.remove('acted'); void btn.offsetWidth; btn.classList.add('acted')
+    showToast(on ? tipOff : tipOn)
+  })
+}
+
+bindToggle(document.getElementById('likeBtn'),
+  document.getElementById('likeLabel'), document.getElementById('likeCount'),
+  '已赞', '赞', '已点赞', '已取消点赞')
+bindToggle(document.getElementById('favBtn'),
+  document.getElementById('favLabel'), document.getElementById('favCount'),
+  '已收藏', '收藏', '已收藏', '已取消收藏')
+
+/* ---------- 楼中楼展开 ---------- */
+document.querySelectorAll('.js-expand').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const box = btn.closest('.citem').querySelector('.replies')
+    const open = box.classList.toggle('is-open')
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false')
+    btn.textContent = btn.textContent.replace(open ? '展开' : '收起', open ? '收起' : '展开')
+  })
+})
+
+/* ---------- 楼中楼点赞 ---------- */
+document.querySelectorAll('.js-like').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const on = btn.getAttribute('aria-pressed') === 'true'
+    btn.setAttribute('aria-pressed', on ? 'false' : 'true')
+    const m = btn.textContent.match(/^(已赞|赞)\s*(\d*)$/)
+    const n = m && m[2] ? Number(m[2]) : 0
+    btn.textContent = on
+      ? (n - 1 > 0 ? `赞 ${n - 1}` : '赞')
+      : (n + 1 > 1 ? `已赞 ${n + 1}` : '已赞')
+    btn.classList.remove('acted'); void btn.offsetWidth; btn.classList.add('acted')
+  })
+})
+
+/* ---------- 分享 ---------- */
+document.getElementById('shareBtn').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(location.href)
+    showToast('链接已复制')
+  } catch { showToast('复制失败，可手动复制地址栏') }
+})
+
+/* ---------- 搜索输入 ---------- */
+document.getElementById('searchInput').addEventListener('input', (e) => {
+  const hint = document.getElementById('searchHint')
+  hint.textContent = e.target.value.trim()
+    ? `「${e.target.value.trim()}」—— 搜索功能在后续版本开放`
+    : '搜索功能在后续版本开放。这里先定下它的位置与形态。'
+})
+</script>
+</body>
+</html>
