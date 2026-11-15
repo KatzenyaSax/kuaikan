@@ -56,10 +56,8 @@ export function CommunityOverview() {
   const community = detail.data
 
   return (
-    <div
-      className="mx-auto max-w-[40rem] px-6 pb-24 pt-10 md:px-11"
-      data-testid="community-page"
-    >
+    <div className="px-6 pb-24 pt-10 md:px-11" data-testid="community-page">
+      <div className="mx-auto max-w-[40rem]">
       <div className="flex items-center gap-3">
         <Avatar name={community.name ?? ''} url={null} size={44} />
         <div className="min-w-0">
@@ -144,6 +142,7 @@ export function CommunityOverview() {
       <p className="mt-8 border-t border-border pt-6 text-aux text-muted-foreground">
         从左边选一篇帖子开始读。
       </p>
+      </div>
     </div>
   )
 }

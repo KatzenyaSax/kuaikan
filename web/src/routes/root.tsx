@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, NavLink, Outlet, ScrollRestoration, useNavigate } from 'react-router'
+import { Link, NavLink, Outlet, ScrollRestoration, useMatch, useNavigate } from 'react-router'
 import { useSession } from '@/features/auth/session'
 import { Avatar } from '@/shared/ui/avatar'
 import { Toaster } from '@/shared/ui/toast'
@@ -32,6 +32,10 @@ export function RootLayout() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [msgOpen, setMsgOpen] = useState(false)
   const authed = status === 'authenticated'
+  // 双栏阅读页占满视口高度，页脚会让页面多出一条"为看页脚而滚"的细滚动条。
+  // useMatch 必须在顶层无条件调用，不能写在条件里（hooks 顺序要稳定）。
+  const communityMatch = useMatch('/c/:name/*')
+  const inTwoPane = communityMatch !== null
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -118,7 +122,12 @@ export function RootLayout() {
         <Outlet />
       </main>
 
-      <footer className="border-t border-border pb-[var(--tabbar-h)] md:pb-0">
+      <footer
+        className={cn(
+          'border-t border-border pb-[var(--tabbar-h)] md:pb-0',
+          inTwoPane && 'hidden md:block',
+        )}
+      >
         <div className="mx-auto w-full max-w-[1200px] px-6 py-5 text-caption text-faint">
           kuaikan · 一个以社群为单位的讨论社区
         </div>

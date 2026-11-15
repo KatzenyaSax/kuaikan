@@ -17,7 +17,7 @@ import { cn } from '@/shared/lib/cn'
  * 用它而不是 onClick 也顺手拿到了键盘可达性。
  */
 export function PostList({ communityId }: { communityId: string | undefined }) {
-  const { name } = useParams<{ name: string }>()
+  const { name, postId: activePostId } = useParams<{ name: string; postId?: string }>()
   const sentinel = useRef<HTMLDivElement | null>(null)
   const query = usePostList(communityId)
 
@@ -79,9 +79,13 @@ export function PostList({ communityId }: { communityId: string | undefined }) {
             <li key={post.id} style={{ animation: 'fade-in 250ms cubic-bezier(0.2,0.8,0.2,1) both' }}>
               <Link
                 to={`/c/${encodeURIComponent(name ?? '')}/p/${post.id ?? ''}`}
+                // 当前正在读的帖子要高亮：左栏是"导航"，不是"清单"，
+                // 不标出当前位置，用户会不知道自己在看哪一篇。
+                aria-current={activePostId === post.id ? 'true' : undefined}
                 className={cn(
                   'block rounded-[var(--radius-md)] px-2.5 py-2.5',
                   'transition-colors duration-[150ms] hover:bg-surface',
+                  'aria-[current=true]:bg-surface',
                   i > 0 && 'border-t border-border',
                 )}
                 data-testid="post-list-item"

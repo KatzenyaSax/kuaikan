@@ -59,7 +59,8 @@ export function PostPage() {
   const data = post.data
 
   return (
-    <div className="mx-auto max-w-[40rem] px-6 pb-24 pt-10 md:px-11" data-testid="post-page">
+    <div className="px-6 pb-24 pt-10 md:px-11" data-testid="post-page">
+      <div className="mx-auto max-w-[40rem]">
       <div className="mb-4 flex items-center gap-2 text-aux text-faint">
         <Link to={`/c/${encodeURIComponent(name ?? '')}`} className="text-primary hover:underline">
           {community.data?.name ?? name}
@@ -117,6 +118,7 @@ export function PostPage() {
       </div>
 
       <CommentSection postId={data.id ?? ''} commentCount={data.commentCount ?? 0} />
+      </div>
     </div>
   )
 }
