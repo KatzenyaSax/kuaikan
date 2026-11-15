@@ -220,11 +220,11 @@ button {
 .threadlist a[aria-current="page"] { background: var(--surface); }
 
 .threadlist .t {
-  display: block;
-  font-size: var(--t-aux);
-  line-height: 1.5;
-  color: var(--fg);
   display: -webkit-box;
+  font-size: var(--t-body);
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--fg);
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
@@ -243,9 +243,13 @@ button {
 .content {
   min-width: 0;
   padding: 44px 56px 120px;
+  /* 正文在自己的栏里居中。不居中的话，1280 视口下右侧会空出一大块，
+     整个页面重心严重偏左 —— 第一版截图就是这个毛病。 */
+  display: flex;
+  justify-content: center;
 }
 
-.article { max-width: 40rem; }
+.article { width: 100%; max-width: 40rem; }
 
 .crumb {
   display: flex;
@@ -358,7 +362,7 @@ button {
 .actions {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 8px;
   margin-top: 36px;
   padding-top: 20px;
   border-top: 1px solid var(--hairline);
@@ -527,14 +531,6 @@ button {
 .cbar button[aria-pressed="true"] { color: var(--accent); }
 .cbar .sep { color: var(--hairline-strong); }
 
-/* tombstone：占位但不吞掉回复 */
-.tombstone {
-  margin: 8px 0 0;
-  font-size: var(--t-body);
-  color: var(--fg-3);
-  font-style: normal;
-}
-
 /* 楼中楼：缩进用一条 hairline，不用背景块 */
 .replies {
   display: grid;
@@ -667,10 +663,25 @@ button {
   .pane {
     position: static;
     max-height: none;
+    padding: 16px 20px 14px;
     border-right: 0;
     border-bottom: 1px solid var(--hairline);
   }
-  .content { padding: 32px 24px 80px; }
+  /* 窄屏上"读完这篇文章"是唯一目的。社群导航收成一行 chips，
+     帖子列表让位给正文 —— 第一版截图里它把正文推到了 400px 以下。 */
+  .pane__label, .pane__divider, .threadlist { display: none; }
+  .mylist {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .mylist a {
+    padding: 4px 12px;
+    border-radius: var(--r-pill);
+    background: var(--surface);
+  }
+  .content { padding: 28px 20px 72px; }
   .article h1 { font-size: 24px; }
   .topnav { display: none; }
 }
@@ -796,8 +807,7 @@ button {
           <span id="favLabel">收藏</span>
           <span class="act__count" id="favCount">3</span>
         </button>
-        <button class="act" id="toComment">12 条评论</button>
-        <button class="act act--primary">发帖</button>
+        <button class="act" id="shareBtn">分享</button>
       </div>
 
       <!-- ============ 评论区 ============ -->
@@ -822,7 +832,6 @@ button {
             <div class="cmeta">
               <span>该评论已删除</span>
             </div>
-            <p class="tombstone">这条评论已删除，但下面的回复仍然保留。</p>
             <div class="cbar">
               <button class="js-expand" aria-expanded="true">收起 2 条回复</button>
             </div>
@@ -1030,9 +1039,13 @@ document.querySelectorAll('.js-like').forEach((btn) => {
   });
 });
 
-document.getElementById('toComment').addEventListener('click', () => {
-  document.querySelector('.field').focus();
-  document.querySelector('.field').scrollIntoView({ block: 'center' });
+document.getElementById('shareBtn').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(location.href);
+    showToast('链接已复制');
+  } catch {
+    showToast('复制失败，可手动复制地址栏');
+  }
 });
 </script>
 </body>
