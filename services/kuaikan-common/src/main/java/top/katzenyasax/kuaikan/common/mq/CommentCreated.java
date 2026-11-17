@@ -30,6 +30,10 @@ import java.util.List;
  *
  * @param eventId        幂等唯一键。在写 outbox 的同一事务里生成，重投时保持不变
  * @param occurredAt     epoch 毫秒。不用 Instant，避免两侧序列化配置不同
+ * @param actorId        写这条评论的人。**P4.3 补上的**：
+ *                       没有它，消费者既不知道"是谁评论的"（消息里要显示），
+ *                       也没法做自抑制（自己评论自己的帖子不该给自己发消息）。
+ *                       这是一个真实的设计缺口，不是后来想加的功能。
  * @param commentId      新评论
  * @param postId         所在帖子
  * @param communityId    所在社群。消费方判断 @ 的有效范围时要用（@ 只对本社群成员生效）
@@ -41,6 +45,7 @@ import java.util.List;
 public record CommentCreated(
         String eventId,
         long occurredAt,
+        String actorId,
         String commentId,
         String postId,
         String communityId,

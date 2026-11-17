@@ -76,6 +76,7 @@ public static final String COMMENT_CREATED = "kuaikan_comment_created";
 public record CommentCreated(
         String eventId,
         long occurredAt,
+        String actorId,             // 评论作者。P4.3 补的：没有它就没法显示"谁评论的"，也没法自抑制
         String commentId,
         String postId,
         String communityId,

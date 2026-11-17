@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import top.katzenyasax.kuaikan.common.mq.CommentCreated;
 import top.katzenyasax.kuaikan.common.mq.InteractionChange;
 import top.katzenyasax.kuaikan.notification.domain.Message;
 import top.katzenyasax.kuaikan.notification.mapper.MessageMapper;
@@ -15,7 +16,9 @@ import top.katzenyasax.kuaikan.notification.service.SnapshotService.Target;
 
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 把「事实」变成「消息」。
@@ -141,6 +144,92 @@ public class MessageService {
             // 没有事务上下文时直接推（正常路径不会走到这里）
             sseService.pushNewMessage(userId, messageId, type);
         }
+    }
+
+    /**
+     * 处理一条评论事件。
+     *
+     * <h2>接收人怎么算</h2>
+     *
+     * <pre>
+     *   帖子作者      → COMMENT（"评论了你的帖子"）
+     *   被回复者      → COMMENT（"回复了你的评论"）
+     *   正文里 @ 的人 → MENTION
+     * </pre>
+     *
+     * <h2>合并：同一接收人只留一条，COMMENT 优先于 MENTION</h2>
+     *
+     * "回复了你，同时正文里 @ 了你"是**同一次动作**，产生两条消息只会让人困惑。
+     * 这条规则让 {@code uk_user_event(user_id, source_event_id)} 两列就够用；
+     * 若允许一人多条，唯一键就得加 type，约束也就弱了。
+     *
+     * <h2>自抑制</h2>
+     *
+     * 自己评论自己的帖子、自己 @ 自己，都不该给自己发消息。
+     */
+    @Transactional
+    public boolean onCommentCreated(String rawPayload) {
+        CommentCreated event;
+        try {
+            event = objectMapper.readValue(rawPayload, CommentCreated.class);
+        } catch (Exception e) {
+            log.error("评论事件反序列化失败，丢弃 payload={}", rawPayload, e);
+            return true;
+        }
+
+        Long actorId = parse(event.actorId());
+        Long postAuthorId = parse(event.postAuthorId());
+        Long replyToUserId = parse(event.replyToUserId());
+
+        // 接收人 -> 类型。LinkedHashMap 保序，让日志和插入顺序可预期。
+        // 先放 COMMENT，再放 MENTION，putIfAbsent 保证 COMMENT 不会被覆盖。
+        Map<Long, String> recipients = new LinkedHashMap<>();
+        if (postAuthorId != null) {
+            recipients.put(postAuthorId, Message.TYPE_COMMENT);
+        }
+        if (replyToUserId != null) {
+            recipients.putIfAbsent(replyToUserId, Message.TYPE_COMMENT);
+        }
+        for (String mention : event.mentionUserIds() == null ? List.<String>of() : event.mentionUserIds()) {
+            Long id = parse(mention);
+            if (id != null) {
+                recipients.putIfAbsent(id, Message.TYPE_MENTION);
+            }
+        }
+        if (actorId != null) {
+            recipients.remove(actorId);
+        }
+        if (recipients.isEmpty()) {
+            return true;
+        }
+
+        // 快照：actor 只拉一次，target（被评论的帖子）也只拉一次
+        Actor actor = snapshotService.actor(actorId);
+        Target target = snapshotService.target("POST", parse(event.postId()));
+
+        int created = 0;
+        for (Map.Entry<Long, String> e : recipients.entrySet()) {
+            Message row = new Message();
+            row.setUserId(e.getKey());
+            row.setType(e.getValue());
+            row.setSourceEventId(event.eventId());
+            row.setActorId(actorId);
+            row.setActorNickname(actor.nickname());
+            row.setActorAvatar(actor.avatarUrl());
+            // 评论消息指向**帖子**：点进去要落到那条帖子的评论区，而不是某个孤立的评论
+            row.setTargetType(Message.TARGET_POST);
+            row.setTargetId(parse(event.postId()));
+            row.setTargetTitle(SnapshotService.trim(target.title(), 255));
+            row.setExcerpt(trimExcerpt(event.excerpt()));
+            row.setCreatedAt(LocalDateTime.now().truncatedTo(ChronoUnit.MILLIS));
+            if (messageMapper.insertIgnore(row) == 1) {
+                created += 1;
+                pushAfterCommit(e.getKey(), row);
+            }
+        }
+        log.info("评论消息已落库 postId={} actor={} 接收人={} 新建={}",
+                event.postId(), actor.nickname(), recipients.size(), created);
+        return true;
     }
 
     /** 未读四类。没出现过的类型补 0，让前端不用判 undefined */

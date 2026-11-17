@@ -24,6 +24,7 @@ CLUSTER="${CLUSTER:-KuaikanCluster}"
 TOPICS=(
   "kuaikan_p0_smoke"
   "kuaikan_interaction_changed"
+  "kuaikan_comment_created"
 )
 
 mqadmin() {

@@ -325,6 +325,7 @@ public class CommentService {
         CommentCreated event = new CommentCreated(
                 UUID.randomUUID().toString(),
                 System.currentTimeMillis(),
+                String.valueOf(comment.getAuthorId()),
                 String.valueOf(comment.getId()),
                 String.valueOf(comment.getPostId()),
                 String.valueOf(post.getCommunityId()),
