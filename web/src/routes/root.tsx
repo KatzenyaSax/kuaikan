@@ -368,12 +368,12 @@ function MessageDrawer({ open, onClose }: { open: boolean; onClose: () => void }
   )
 }
 
-/** 三个还没接通消息来源的分类，如实说明，不摆假消息 */
+/** 空态。系统消息还没有产生者，如实说明，不摆假内容 */
 function EmptyTab({ tab }: { tab: MessageType }) {
   const hint: Record<MessageType, string> = {
     LIKE: '还没有人赞过你的内容',
-    COMMENT: '评论通知马上接上（正在做）',
-    MENTION: '@ 通知马上接上（正在做）',
+    COMMENT: '还没有评论消息',
+    MENTION: '还没有人 @ 你',
     SYSTEM: '系统通知还没开始发',
   }
   return (
