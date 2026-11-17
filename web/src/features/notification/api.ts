@@ -39,6 +39,24 @@ export function useMessages(type: MessageType) {
   })
 }
 
+/**
+ * 标记单条已读。点开一条消息时调用。
+ *
+ * **不 await**：跳转要立刻发生，不能等一个"顺手"的请求。
+ * 失败了也只是红点多停一会儿，下次进抽屉会重新拉未读数把它纠正。
+ */
+export function useMarkRead() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.post<number>(`${BASE}/messages/${encodeURIComponent(id)}/read`),
+    onSuccess: () => {
+      // 列表里的 readAt 变了（小圆点消失），未读数也要减
+      void qc.invalidateQueries({ queryKey: ['unread'] })
+      void qc.invalidateQueries({ queryKey: ['messages'] })
+    },
+  })
+}
+
 export function useReadAll() {
   const qc = useQueryClient()
   return useMutation({

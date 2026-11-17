@@ -60,6 +60,22 @@ public interface MessageMapper extends BaseMapper<Message> {
     @Update("UPDATE t_message SET read_at = #{now} WHERE user_id = #{userId} AND read_at IS NULL")
     int markAllRead(@Param("userId") Long userId, @Param("now") LocalDateTime now);
 
+    /**
+     * 标记单条已读。
+     *
+     * <b>必须带 user_id 条件</b>：id 是雪花值，理论上猜不到，但"猜不到"不是访问控制。
+     * 少了这个条件，任何人可以标任意人的消息已读（虽然无害，但那是越权）。
+     *
+     * {@code read_at IS NULL} 让重复点击变成 no-op —— 返回 0 不是错误。
+     */
+    @Update("""
+            UPDATE t_message SET read_at = #{now}
+            WHERE id = #{id} AND user_id = #{userId} AND read_at IS NULL
+            """)
+    int markRead(@Param("userId") Long userId,
+                 @Param("id") Long id,
+                 @Param("now") LocalDateTime now);
+
     /** 一条 count 的小载体 */
     record TypeCount(String type, long cnt) {
     }

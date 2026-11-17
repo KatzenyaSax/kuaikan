@@ -287,6 +287,18 @@ public class MessageService {
     }
 
     /**
+     * 标记单条已读。点开一条消息时调用。
+     *
+     * <b>幂等</b>：已经读过、或者 id 不属于当前用户，都返回 0 而不是报错。
+     * 点开消息是一个"顺手"的动作，不该因为它失败而挡住跳转。
+     */
+    @Transactional
+    public int markRead(Long userId, Long messageId) {
+        return messageMapper.markRead(userId, messageId,
+                LocalDateTime.now().truncatedTo(ChronoUnit.MILLIS));
+    }
+
+    /**
      * 全部已读。
      *
      * <b>没有竞态</b>：并发到达的新消息要么落在 UPDATE 之前（一起被标已读，一致），

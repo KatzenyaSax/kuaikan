@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -133,6 +134,18 @@ public class NotificationController {
             @RequestHeader(value = Headers.TOKEN_EXP, required = false) String tokenExp) {
         Long userId = requireUserId();
         return sseService.subscribe(userId, parseEpochSecond(tokenExp));
+    }
+
+    /**
+     * 标记单条已读。点开一条消息时调用。
+     *
+     * <b>幂等</b>：重复点击、已读过、id 不属于我，都返回 0 而不是错误。
+     * 点开消息是"顺手"的动作，不该因为它失败而挡住跳转。
+     */
+    @Operation(operationId = "readMessage", summary = "标记单条消息为已读")
+    @PostMapping("/messages/{id}/read")
+    public Result<Integer> readOne(@PathVariable("id") Long id) {
+        return Result.ok(messageService.markRead(requireUserId(), id));
     }
 
     @Operation(operationId = "readAllMessages", summary = "全部标记为已读")

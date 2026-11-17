@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, NavLink, Outlet, ScrollRestoration, useMatch, useNavigate } from 'react-router'
 import { useSession } from '@/features/auth/session'
 import {
+  useMarkRead,
   useMessages,
   useMessageStream,
   useReadAll,
@@ -388,6 +389,7 @@ function EmptyTab({ tab }: { tab: MessageType }) {
  * 后者的措辞会散落在各个分支里，以后想改"赞了你"为"觉得不错"要翻遍代码。
  */
 function MessageRow({ message, onClose }: { message: MessageView; onClose: () => void }) {
+  const markRead = useMarkRead()
   const text = (() => {
     switch (message.type) {
       case 'LIKE':
@@ -439,7 +441,11 @@ function MessageRow({ message, onClose }: { message: MessageView; onClose: () =>
   return href ? (
     <Link
       to={href}
-      onClick={onClose}
+      onClick={() => {
+        // 点开就是读过了。跳转不等它返回——一个"顺手"的请求不该挡住导航
+        if (unread) markRead.mutate(message.id ?? '')
+        onClose()
+      }}
       className="-mx-2 block rounded-md px-2 py-1 transition-colors duration-[150ms] hover:bg-surface"
       data-testid="message-link"
     >
