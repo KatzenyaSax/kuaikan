@@ -353,15 +353,46 @@ GET /api/community/communities/{name}/members?limit=50&cursor=
 
 ## 7. 阶段拆分
 
-| 切片 | 内容 | 完成标志 |
-|---|---|---|
-| **P4.0** | 抽 `kuaikan-common-outbox`；interaction 改依赖；content 接入并发 `CommentCreated` | 评论后 MQ 有消息；content 停机重启事件不丢 |
-| **P4.1** | `CommentCreated` 契约；`TargetView` 扩字段；`@` 解析；community 成员端点；user 昵称端点 | 评论含 `@某某`，事件里 `mentionUserIds` 正确 |
-| **P4.2** | `t_message`；两个消费者；快照拼装；`uk_user_event` 幂等 | 赞一下，5 秒内库里出一条消息；自赞/收藏/取消不产生 |
-| **P4.3** | 未读/列表/全部已读；SSE；前端抽屉接真数据 + 红点 | 别人赞我，红点 5 秒内亮 |
-| **P4.4** | 折叠展示；`verify-p4.sh`；`deploy/bin/init-topics.sh` 加新 topic | 验收全绿 |
+**按消息类型竖切，不按层横切。**
 
-**每个切片独立可验收**，不要求前一个切片全部完成才能测后一个。
+第一版切法是"数据层 → 消费者 → 读接口 → SSE → 前端"，一层一层来。
+那违背了 `roadmap.md` 的第一条准则：「尽早让最危险的集成点暴露，
+而不是尽早把某个服务的接口写全」，也违背了「每个阶段都是一条能从浏览器点通的垂直切片」。
+
+按层切的实际后果：**最可能推翻设计的两个集成点被推到了最后**——
+SSE 穿过网关与 nginx 的 `proxy_buffering`、未读与「全部已读」的竞态。
+这两个要改设计的话，前面的活就白干了。
+
+| 切片 | 内容 | 完成标志（浏览器里能看到） |
+|---|---|---|
+| **P4.0** ✅ | 抽 `kuaikan-common-outbox`；content + interaction 接入；content 发 `CommentCreated` | 评论后 outbox 行 0→1 |
+| **P4.1** ✅ | `@` 解析 + `t_comment.mentions` + 前端蓝色可点 + `/u/:userId` 占位页 | 评论区点 `@某人` 能进主页 |
+| **P4.2** | **「赞」全链路**：notification 骨架 + `t_message` + interaction 消费者 + 快照 + 三个读接口 + SSE + 前端抽屉只显示赞 | 别人赞我，5 秒内红点亮；点开看到「林间 赞了你的《…》」 |
+| **P4.3** | **「评论 / @」**：content 消费者 + 接收人合并 + 抽屉加评论与 `@` 两个 tab | 有人评论 / @ 我，对应 tab 出现未读 |
+| **P4.4** | 收尾：系统消息（`UserBanned`）、折叠展示、`init-topics.sh`、`verify-p4.sh` | 验收全绿 |
+
+### P4.2 内部仍然按风险排序
+
+P4.2 是 P4 里最大的一刀（骨架 + 表 + 消费者 + 快照 + 三个接口 + SSE + 前端）。
+但**切片内部**每一小步都能单独验证，不会走到最后一步才发现前面错了：
+
+```
+① 骨架（compose / ID_WORKER_ID / datasource）   → 服务能起来
+② t_message + 幂等插入                          → 手工插一条挡住重复
+③ interaction 消费者 + 快照                      → SQL 里出现消息
+④ 读接口（列表 / 未读 / 全部已读）                → curl 能看到
+⑤ SSE                                          → curl -N 能收到推送
+⑥ 前端抽屉 + 红点                                → 浏览器里亮
+```
+
+### 什么不能省掉横向切分
+
+notification 的骨架（pom / datasource / Flyway / 消费者启动器）是
+**任何消息类型都要用**的部分，不可能只为「赞」建一套、为「评论」再建一套。
+它属于"第一条垂直切片必然要带上的底座"，不是可以省掉的横向分层。
+
+同理，`t_message` 的写入与 SSE 推送必须在同一个服务里（否则推送要靠 Redis 广播），
+这条约束先于切片划分。
 
 ## 8. 验收（`verify-p4.sh`）
 
