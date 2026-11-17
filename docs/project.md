@@ -377,6 +377,58 @@ docker exec kuaikan-user-service-1 \
 复测：无 token 401 / 有 token 200 / 篡改签名 401 / 登出后旧 token 401，
 且下游 503 原样透出、误报次数 0。
 
+### P4.2 「赞」全链路（已完成）
+
+从 interaction 发事件 → MQ → notification 落库 → SSE → 前端红点，一次打通。
+
+| 件 | 位置 |
+|---|---|
+| `t_message`（V1） | notification schema |
+| `InteractionEventConsumerRunner` | 组名 `kuaikan-notification-interaction-consumer` |
+| `SnapshotService` | 拉 actor 昵称头像 + target 标题摘录 |
+| 读接口 | `/messages`（游标）/ `/unread`（一条 GROUP BY）/ `/read-all` |
+| `/stream` | SSE，**提示通道**不做可靠投递 |
+| 前端 | 抽屉接真数据、红点、全部已读、fetch 流客户端 |
+
+#### 今天被同一个东西坑了两次：`StripPrefix=2`
+
+网关给每个服务都配了 `StripPrefix=2`，`/api/<service>` 那一层在网关就被剥掉。
+
+| 场景 | 错的写法 | 后果 |
+|---|---|---|
+| Feign 客户端路径 | `/api/user/users` | 500 + `NoResourceFoundException` |
+| controller 类路径 | `@RequestMapping("/api/notification")` | 所有端点静默 404 |
+
+方向相反，结果是同一个 500。规矩：**服务内看到的路径都是剥完之后的**
+（content 的 `/posts`、community 的 `/communities`、notification 的 `/messages`）。
+
+#### `X-Token-Exp`：网关新增的第二个注入头
+
+SSE 连接建立后网关不再验签，连接可以活得比 token 更久，于是会留下
+"还连着但已经无主"的连接。让 notification 自己解析 JWT 是更差的选择——
+那等于开了第二个验签点（违反 ADR 0003）。所以由网关注入过期时刻，
+服务端到点发 `event: expired` 再断流。
+
+#### 三个容易写错的地方
+
+**① 消费组名必须不同。** RocketMQ 里 topic 决定"哪些消息"、group 决定"我是谁"。
+同一个 group 订阅同一个 topic 是**集群消费（各拿一半）**，不是广播，**而且不报错**。
+
+**② 快照失败必须分类。** 用户/内容已删 = 不可重试（降级成"已注销用户"）；
+连接失败/5xx = 重投。不分类的后果：一个被删用户让事件**永远重投**，堵住消费线程。
+（实测踩到了：路径写错时 user-service 一直 500，消费组瞬间堆积上百条重试。）
+
+**③ 推送必须在事务提交之后。** 在事务里推，一旦回滚就是"红点亮了但消息不存在"。
+用 `registerSynchronization().afterCommit()`。
+
+#### `CONSUME_FROM_FIRST_OFFSET` 的副作用
+
+新消费组第一次启动会从最早的消息开始读。上线时这是对的（通知服务没跑期间的
+互动不该被跳过），但本地会一次性重放全部历史事件——实测回填 128 条。
+
+**点赞 → 取消 → 再点赞会产生两条消息**，这是设计如此（那是两次事实，
+折叠是展示层的事，P4.4 做）。测试时反复点击会看到重复条目，不是 bug。
+
 ### P4.1 @ 提及（已完成）
 
 评论正文里的 `@昵称` 解析成 userId，并在**已发出的评论**里渲染成蓝色可点链接。
