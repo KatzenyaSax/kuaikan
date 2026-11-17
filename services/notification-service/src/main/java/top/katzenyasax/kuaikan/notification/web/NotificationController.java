@@ -31,10 +31,15 @@ import java.util.List;
  *
  * 全部需要登录——网关不放行 {@code /api/notification/**}，
  * 而且这里每条查询都以 {@code user_id} 为条件，只能是"我自己的消息"。
+ *
+ * ⚠️ <b>方法路径不带 {@code /api/notification} 前缀。</b>
+ * 网关给每个服务都配了 {@code StripPrefix=2}，`/api/notification` 那一层在网关
+ * 就被剥掉了，服务内看到的只有 `/messages`。这是全项目的约定：
+ * controller 只声明 {@code @RequestMapping("/posts")} 这种剥完之后的路径。
+ * 写全路径的后果是**所有端点静默 404**（表现为 50000 + NoResourceFoundException）。
  */
 @Tag(name = "消息")
 @RestController
-@RequestMapping("/api/notification")
 public class NotificationController {
 
     /** 每个列表的游标标记必须不同，否则拿错列表的游标会被静默解析成错误结果 */
