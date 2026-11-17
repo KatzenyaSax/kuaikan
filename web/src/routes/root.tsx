@@ -259,7 +259,8 @@ function MessageDrawer({ open, onClose }: { open: boolean; onClose: () => void }
   const unread = useUnread()
   const messages = useMessages(tab)
   const readAll = useReadAll()
-  const items = (messages.data?.pages ?? []).flatMap((p) => p.items ?? [])
+  const raw = (messages.data?.pages ?? []).flatMap((p) => p.items ?? [])
+  const items = foldMessages(raw)
 
   const tabs: Array<{ key: MessageType; label: string; count: number }> = [
     { key: 'LIKE', label: '赞', count: unread.data?.like ?? 0 },
@@ -342,13 +343,13 @@ function MessageDrawer({ open, onClose }: { open: boolean; onClose: () => void }
             <EmptyTab tab={tab} />
           ) : (
             <ul className="m-0 list-none p-0">
-              {items.map((m) => (
+              {items.map((f) => (
                 <li
-                  key={m.id}
+                  key={f.head.id}
                   className="border-b border-border px-5 py-4 last:border-b-0"
                   data-testid="message-item"
                 >
-                  <MessageRow message={m} onClose={onClose} />
+                  <MessageRow message={f.head} sameTargetCount={f.sameTargetCount} onClose={onClose} />
                 </li>
               ))}
             </ul>
@@ -383,17 +384,62 @@ function EmptyTab({ tab }: { tab: MessageType }) {
 }
 
 /**
+ * 折叠连赞：相邻的、同类型 + 同目标的消息合成一条。
+ *
+ * <b>只在展示层折叠，存储不折叠</b>（不变量 9）。每一次点赞都是独立的事实，
+ * 但它们对读者是同一件事——"这条帖子被很多人赞了"。
+ *
+ * 只折叠**相邻**的：跨页或中间夹了别的消息就不合并。
+ * 这是一条刻意保守的规则——为了合并而重排顺序，会让"最新在上"变得不可信。
+ *
+ * 只在 LIKE 上折叠。评论与 @ 每条都带着不同的话，合并了就丢了信息。
+ */
+type FoldedMessage = { head: MessageView; sameTargetCount: number; ids: string[] }
+
+function foldMessages(items: MessageView[]): FoldedMessage[] {
+  const out: FoldedMessage[] = []
+  for (const m of items) {
+    const last = out[out.length - 1]
+    const mergeable =
+      last &&
+      m.type === 'LIKE' &&
+      last.head.type === 'LIKE' &&
+      m.targetId &&
+      m.targetId === last.head.targetId &&
+      m.postId === last.head.postId
+    if (mergeable) {
+      last.sameTargetCount += 1
+      last.ids.push(m.id ?? '')
+      continue
+    }
+    out.push({ head: m, sameTargetCount: 1, ids: [m.id ?? ''] })
+  }
+  return out
+}
+
+/**
  * 一条消息。
  *
  * 显式列出四种文案，而不是拼 `actorNickname + '赞了你'`——
  * 后者的措辞会散落在各个分支里，以后想改"赞了你"为"觉得不错"要翻遍代码。
  */
-function MessageRow({ message, onClose }: { message: MessageView; onClose: () => void }) {
+function MessageRow({
+  message,
+  sameTargetCount,
+  onClose,
+}: {
+  message: MessageView
+  /** 同一目标的连续点赞条数；>1 时显示"等 N 人" */
+  sameTargetCount: number
+  onClose: () => void
+}) {
   const markRead = useMarkRead()
   const text = (() => {
     switch (message.type) {
       case 'LIKE':
-        return '赞了你的'
+        // 折叠后是"林间 等 5 人 赞了你的"——"等 N 人"而不是"和其他 N 人"，
+        // 因为折叠的条数里已经包含了 head 自己
+        return sameTargetCount > 1 ? `等 ${String(sameTargetCount)} 人 赞了你的` : '赞了你的'
       case 'COMMENT':
         return '评论了你的'
       case 'MENTION':
