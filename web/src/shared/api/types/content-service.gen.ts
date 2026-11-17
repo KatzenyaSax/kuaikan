@@ -297,6 +297,10 @@ export interface components {
         TargetView: {
             exists?: boolean;
             ownerId?: string;
+            /** @description 帖子标题；目标为评论时是它所属帖子的标题 */
+            title?: string;
+            /** @description 正文摘录；目标为评论时是评论正文 */
+            excerpt?: string;
         };
         ResultVoid: {
             /** Format: int32 */

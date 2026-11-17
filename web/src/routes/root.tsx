@@ -1,8 +1,17 @@
 import { useState } from 'react'
 import { Link, NavLink, Outlet, ScrollRestoration, useMatch, useNavigate } from 'react-router'
 import { useSession } from '@/features/auth/session'
+import {
+  useMessages,
+  useMessageStream,
+  useReadAll,
+  useUnread,
+  type MessageType,
+  type MessageView,
+} from '@/features/notification/api'
 import { Avatar } from '@/shared/ui/avatar'
 import { Toaster } from '@/shared/ui/toast'
+import { relativeTime } from '@/shared/lib/time'
 import { cn } from '@/shared/lib/cn'
 
 const NAV = [
@@ -32,6 +41,9 @@ export function RootLayout() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [msgOpen, setMsgOpen] = useState(false)
   const authed = status === 'authenticated'
+  const unread = useUnread()
+  // SSE 只负责让红点及时亮起来；未读数永远以接口为准
+  useMessageStream()
   // 双栏阅读页占满视口高度，页脚会让页面多出一条"为看页脚而滚"的细滚动条。
   // useMatch 必须在顶层无条件调用，不能写在条件里（hooks 顺序要稳定）。
   const communityMatch = useMatch('/c/:name/*')
@@ -87,12 +99,15 @@ export function RootLayout() {
                 放在行内而不是绝对定位——绝对定位的 -top 会压在"息"字上，
                 中文没有字母的上升部，压上去非常明显。
               */}
-              <span
-                className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-semibold leading-none text-white"
-                data-testid="nav-unread"
-              >
-                3
-              </span>
+              {/* 未读为 0 时不渲染徽标本身：一个"0"比没有更吵 */}
+              {(unread.data?.total ?? 0) > 0 ? (
+                <span
+                  className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-semibold leading-none text-white tabular-nums"
+                  data-testid="nav-unread"
+                >
+                  {(unread.data?.total ?? 0) > 99 ? '99+' : unread.data?.total}
+                </span>
+              ) : null}
             </button>
 
             {authed && user ? (
@@ -231,18 +246,28 @@ function SearchLayer({ open, onClose }: { open: boolean; onClose: () => void }) 
 }
 
 /**
- * 消息抽屉（P4）。
+ * 消息抽屉。
  *
- * 四分类与顶栏红点先定下来；内容做成空态，不摆假消息。
+ * 四分类来自 architecture §7。P4.2 只接通了「赞」——评论与 @ 的消费者在 P4.3，
+ * 所以那两个 tab 现在是**诚实的空态**，不是"假装没有消息"。
+ *
+ * 文案在前端拼（后端只给结构化字段）：改措辞不该动后端、不该发版。
  */
 function MessageDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [tab, setTab] = useState('like')
-  const tabs = [
-    { key: 'like', label: '赞' },
-    { key: 'comment', label: '评论' },
-    { key: 'mention', label: '@' },
-    { key: 'system', label: '系统' },
+  const [tab, setTab] = useState<MessageType>('LIKE')
+  const unread = useUnread()
+  const messages = useMessages(tab)
+  const readAll = useReadAll()
+  const items = (messages.data?.pages ?? []).flatMap((p) => p.items ?? [])
+
+  const tabs: Array<{ key: MessageType; label: string; count: number }> = [
+    { key: 'LIKE', label: '赞', count: unread.data?.like ?? 0 },
+    { key: 'COMMENT', label: '评论', count: unread.data?.comment ?? 0 },
+    { key: 'MENTION', label: '@', count: unread.data?.mention ?? 0 },
+    { key: 'SYSTEM', label: '系统', count: unread.data?.system ?? 0 },
   ]
+
+  const total = unread.data?.total ?? 0
 
   return (
     <>
@@ -266,11 +291,25 @@ function MessageDrawer({ open, onClose }: { open: boolean; onClose: () => void }
         style={{ boxShadow: 'var(--shadow-float)' }}
       >
         <div className="flex h-[var(--topbar-h)] shrink-0 items-center justify-between border-b border-border px-5">
-          <h2 className="text-sub font-semibold">消息</h2>
+          <div className="flex items-baseline gap-2">
+            <h2 className="m-0 text-sub font-semibold">消息</h2>
+            {total > 0 ? (
+              <button
+                type="button"
+                onClick={() => readAll.mutate()}
+                disabled={readAll.isPending}
+                className="text-aux text-primary hover:underline disabled:opacity-50"
+                data-testid="btn-read-all"
+              >
+                全部已读
+              </button>
+            ) : null}
+          </div>
           <button type="button" onClick={onClose} className="text-aux text-muted-foreground">
             关闭
           </button>
         </div>
+
         <div className="flex shrink-0 gap-5 border-b border-border px-5" role="tablist">
           {tabs.map((t) => (
             <button
@@ -285,23 +324,108 @@ function MessageDrawer({ open, onClose }: { open: boolean; onClose: () => void }
               )}
             >
               {t.label}
+              {t.count > 0 ? (
+                <span className="ml-1 text-caption tabular-nums text-danger">{t.count}</span>
+              ) : null}
               {tab === t.key ? (
                 <span className="absolute inset-x-0 -bottom-px h-0.5 rounded bg-foreground" />
               ) : null}
             </button>
           ))}
         </div>
-        <div className="overflow-y-auto px-5 pb-8">
-          <div className="px-6 py-14 text-center">
-            <p className="mb-2 text-body font-medium">消息中心还在建设中</p>
-            <p className="text-aux text-muted-foreground">
-              上线后这里按赞、评论、@、系统四类分组，
-              <br />
-              未读数直接显示在顶栏的红点上。
-            </p>
-          </div>
+
+        <div className="overflow-y-auto pb-10" data-testid="message-list">
+          {messages.isPending ? (
+            <p className="px-5 py-10 text-center text-aux text-faint">加载中…</p>
+          ) : items.length === 0 ? (
+            <EmptyTab tab={tab} />
+          ) : (
+            <ul className="m-0 list-none p-0">
+              {items.map((m) => (
+                <li
+                  key={m.id}
+                  className="border-b border-border px-5 py-4 last:border-b-0"
+                  data-testid="message-item"
+                >
+                  <MessageRow message={m} />
+                </li>
+              ))}
+            </ul>
+          )}
+          {messages.hasNextPage ? (
+            <button
+              type="button"
+              onClick={() => void messages.fetchNextPage()}
+              disabled={messages.isFetchingNextPage}
+              className="w-full py-3 text-aux text-muted-foreground hover:underline"
+            >
+              {messages.isFetchingNextPage ? '加载中…' : '加载更多'}
+            </button>
+          ) : null}
         </div>
       </aside>
     </>
+  )
+}
+
+/** 三个还没接通消息来源的分类，如实说明，不摆假消息 */
+function EmptyTab({ tab }: { tab: MessageType }) {
+  const hint: Record<MessageType, string> = {
+    LIKE: '还没有人赞过你的内容',
+    COMMENT: '评论通知马上接上（正在做）',
+    MENTION: '@ 通知马上接上（正在做）',
+    SYSTEM: '系统通知还没开始发',
+  }
+  return (
+    <p className="px-5 py-14 text-center text-aux text-muted-foreground">{hint[tab]}</p>
+  )
+}
+
+/**
+ * 一条消息。
+ *
+ * 显式列出四种文案，而不是拼 `actorNickname + '赞了你'`——
+ * 后者的措辞会散落在各个分支里，以后想改"赞了你"为"觉得不错"要翻遍代码。
+ */
+function MessageRow({ message }: { message: MessageView }) {
+  const text = (() => {
+    switch (message.type) {
+      case 'LIKE':
+        return '赞了你的'
+      case 'COMMENT':
+        return '评论了你的'
+      case 'MENTION':
+        return '在评论里提到了你'
+      case 'SYSTEM':
+        return '系统通知'
+      default:
+        return '有新消息'
+    }
+  })()
+  const unread = !message.readAt
+
+  return (
+    <div className="flex gap-3">
+      <Avatar url={message.actorAvatar ?? null} name={message.actorNickname ?? ''} size={32} />
+      <div className="min-w-0 flex-1">
+        <p className="m-0 text-body leading-[1.6] text-foreground">
+          <span className="font-medium">{message.actorNickname ?? '某人'}</span>{' '}
+          <span className="text-muted-foreground">{text}</span>
+          {message.targetTitle ? (
+            <>
+              {' '}
+              <span className="font-medium">《{message.targetTitle}》</span>
+            </>
+          ) : null}
+        </p>
+        {message.excerpt ? (
+          <p className="m-0 mt-1 line-clamp-2 text-aux text-faint">{message.excerpt}</p>
+        ) : null}
+        <p className="m-0 mt-1.5 flex items-center gap-2 text-caption text-faint">
+          <span>{relativeTime(message.createdAt)}</span>
+          {unread ? <span className="h-1.5 w-1.5 rounded-full bg-danger" aria-label="未读" /> : null}
+        </p>
+      </div>
+    </div>
   )
 }
