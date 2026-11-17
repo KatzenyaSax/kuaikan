@@ -177,6 +177,8 @@ export interface components {
             postId?: string;
             /** @description 滚动锚点；点赞帖子时为 null */
             commentId?: string;
+            /** @description 回复所在的一级评论 id，前端先展开它再滚 */
+            rootCommentId?: string;
             /** @description 评论/正文摘录快照 */
             excerpt?: string;
             /**
