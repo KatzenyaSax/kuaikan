@@ -54,6 +54,21 @@ public class GlobalExceptionHandler {
         return ResponseEntity.ok(Result.fail(CommonErrorCode.PARAM_INVALID.code(), message));
     }
 
+    /**
+     * 客户端在响应写完之前断开 —— 最常见的是 SSE 长连接被关闭（关标签页、断网、切账号）。
+     *
+     * <b>这不是错误，不该记 ERROR。</b> 它会把日志刷满，并且直接打红 P0 的
+     * 「近 10 分钟无 ERROR」断言 —— 那条断言本来是用来抓真问题的，
+     * 被这种噪音占住之后就失去意义了。
+     *
+     * 响应已经不可写，所以什么也不返回（返回 void，Spring 不会再去写 body）。
+     */
+    @ExceptionHandler(org.springframework.web.context.request.async.AsyncRequestNotUsableException.class)
+    public void handleClientDisconnect(
+            org.springframework.web.context.request.async.AsyncRequestNotUsableException e) {
+        log.debug("客户端已断开，忽略：{}", e.getMessage());
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Result<Void>> handleOther(Exception e) {
         log.error("未预期异常", e);

@@ -454,6 +454,11 @@ if want_layer l4; then
   if ! prepare_fixture; then
     ng "创建夹具失败" "无法 SSH 或建号失败"
   else
+    # L4 需要在"只有一条未读"的干净状态下测。
+    # 前面几层共用同一套夹具（FIXTURE_READY 是全局的），
+    # 不清零的话"单条已读后未读归零"永远不可能成立——那是测试设计的问题，不是产品。
+    curl -s --max-time 15 -o /dev/null -X POST "$SITE/api/notification/read-all" \
+      -H "Authorization: Bearer $TOKEN"
     drop_like "$TOKEN2" "$POST_ID"
     sleep 0.5
     send_like "$TOKEN2" "$POST_ID"
