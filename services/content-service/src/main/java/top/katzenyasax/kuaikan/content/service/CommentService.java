@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import top.katzenyasax.kuaikan.common.api.CursorCodec;
 import top.katzenyasax.kuaikan.common.api.Result;
 import top.katzenyasax.kuaikan.common.error.BizException;
@@ -23,6 +24,7 @@ import top.katzenyasax.kuaikan.content.mapper.CommentMapper;
 import top.katzenyasax.kuaikan.content.mapper.PostMapper;
 import top.katzenyasax.kuaikan.content.web.dto.CommentPage;
 import top.katzenyasax.kuaikan.content.web.dto.CommentView;
+import top.katzenyasax.kuaikan.content.web.dto.MentionView;
 import top.katzenyasax.kuaikan.content.web.dto.CreateCommentRequest;
 
 import java.time.Instant;
@@ -60,17 +62,23 @@ public class CommentService {
     private final CommunityMembershipClient membershipClient;
     private final OutboxMapper outboxMapper;
     private final ObjectMapper objectMapper;
+    private final MentionResolver mentionResolver;
+    private final TransactionTemplate transactionTemplate;
 
     public CommentService(CommentMapper commentMapper,
                           PostMapper postMapper,
                           CommunityMembershipClient membershipClient,
                           OutboxMapper outboxMapper,
-                          ObjectMapper objectMapper) {
+                          ObjectMapper objectMapper,
+                          MentionResolver mentionResolver,
+                          TransactionTemplate transactionTemplate) {
         this.commentMapper = commentMapper;
         this.postMapper = postMapper;
         this.membershipClient = membershipClient;
         this.outboxMapper = outboxMapper;
         this.objectMapper = objectMapper;
+        this.mentionResolver = mentionResolver;
+        this.transactionTemplate = transactionTemplate;
     }
 
     /**
@@ -79,7 +87,17 @@ public class CommentService {
      * 必须走一遍成员校验：与发帖同一套权限语义。否则"能评论但不能发帖"很怪，
      * 而且给刷评论留了口子。代价是一次跨服务调用，失败一律 50300。
      */
-    @Transactional
+    /**
+     * 发评论 / 回复。
+     *
+     * <b>这个方法刻意不带 {@code @Transactional}</b>：它要先做两次跨服务调用
+     * （成员校验、@ 解析），把远程调用包在事务里会让数据库连接被持有几百毫秒到几秒，
+     * 并发一上来就把连接池耗光。真正的写入在 {@link #persist} 里，事务只包住本地 SQL。
+     *
+     * 代价是"校验通过"和"写入成功"之间有一个窗口（比如这期间帖子被删）。
+     * 那个窗口的后果只是这条评论落在一个刚被删的帖子上——可接受，
+     * 相比之下把远程调用塞进事务是更确定的伤害。
+     */
     public CommentView create(Long userId, Long postId, CreateCommentRequest req) {
         Post post = postMapper.selectById(postId);
         if (post == null || post.getStatus() != Post.STATUS_NORMAL) {
@@ -87,13 +105,28 @@ public class CommentService {
         }
         requireMembership(post.getCommunityId(), userId);
 
+        String body = req.body().trim();
+        // 尽力而为：解析失败只会让 @ 不是蓝色链接，评论照发
+        List<MentionView> mentions = mentionResolver.resolve(body, post.getCommunityId());
+
+        // 用 TransactionTemplate 显式开事务，而不是把 @Transactional 放到本类的另一个方法上：
+        // 同类自调用不走代理，@Transactional 会**静默失效**，事务根本没开。
+        // 这类 bug 平时看不出来，出问题时才发现写入没有原子性。
+        return transactionTemplate.execute(status -> persist(post, userId, body, req, mentions));
+    }
+
+    /** 事务边界只包含本地 SQL —— 不留任何远程调用 */
+    private CommentView persist(Post post, Long userId, String body,
+                                CreateCommentRequest req, List<MentionView> mentions) {
+        Long postId = post.getId();
         Comment comment = new Comment();
         comment.setPostId(postId);
         comment.setAuthorId(userId);
-        comment.setBody(req.body().trim());
+        comment.setBody(body);
         comment.setLikeCount(0);
         comment.setReplyCount(0);
         comment.setStatus(Comment.STATUS_NORMAL);
+        comment.setMentions(mentionResolver.toJson(mentions));
 
         Long rootId = null;
         if (req.replyToCommentId() != null) {
@@ -127,7 +160,7 @@ public class CommentService {
 
         log.info("评论已发布 id={} postId={} rootId={} authorId={}",
                 comment.getId(), postId, rootId, userId);
-        return CommentView.of(comment);
+        return CommentView.of(comment, mentions);
     }
 
     /** 一级评论列表，按时间正序 */
@@ -216,7 +249,8 @@ public class CommentService {
     private CommentPage page(List<Comment> rows, int size, String sort) {
         List<CommentView> items = new ArrayList<>();
         for (int i = 0; i < rows.size() && i < size; i++) {
-            items.add(CommentView.of(rows.get(i)));
+            Comment row = rows.get(i);
+            items.add(CommentView.of(row, mentionResolver.fromJson(row.getMentions())));
         }
         String next = null;
         if (rows.size() > size) {
@@ -284,8 +318,9 @@ public class CommentService {
      * 唯一例外是 {@code postAuthorId} 与 {@code replyToUserId}——它们本来就是评论的属性。
      */
     private void enqueueCommentCreated(Post post, Comment comment) {
-        // @ 解析在 P4.1 接上。这里先给空列表：字段先立住，比以后改契约便宜得多。
-        List<String> mentionUserIds = List.of();
+        // 直接用写入时解析好的结果，不在这里重新解析——同一份事实只算一次
+        List<String> mentionUserIds = mentionResolver.fromJson(comment.getMentions())
+                .stream().map(MentionView::userId).toList();
 
         CommentCreated event = new CommentCreated(
                 UUID.randomUUID().toString(),

@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import top.katzenyasax.kuaikan.content.domain.Comment;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 一条评论。一级评论与回复共用同一个结构。
@@ -30,9 +31,20 @@ public record CommentView(
         @Schema(description = "该一级评论下的全部可见回复数")
         long replyCount,
         boolean deleted,
+        @Schema(description = "解析成功并被 @ 的用户；未解析到的 @ 不在这里，前端按普通文字渲染")
+        List<MentionView> mentions,
         LocalDateTime createdAt
 ) {
+    /** 不带 @ 的版本。迁移期与不关心提及的调用方用 */
     public static CommentView of(Comment c) {
+        return of(c, List.of());
+    }
+
+    /**
+     * @param mentions 由 {@code MentionResolver} 从 {@code c.getMentions()} 的 JSON 反解出来。
+     *                 放在参数里而不是在这里反解，是因为 View 不该依赖 ObjectMapper。
+     */
+    public static CommentView of(Comment c, List<MentionView> mentions) {
         boolean deleted = c.getStatus() != null && c.getStatus() == Comment.STATUS_DELETED;
         return new CommentView(
                 c.getId(), c.getPostId(), c.getRootCommentId(), c.getReplyToCommentId(),
@@ -41,6 +53,8 @@ public record CommentView(
                 c.getLikeCount() == null ? 0 : c.getLikeCount(),
                 c.getReplyCount() == null ? 0 : c.getReplyCount(),
                 deleted,
+                // tombstone 的正文已经清空，@ 也没有意义了
+                deleted ? List.of() : mentions,
                 c.getCreatedAt());
     }
 }

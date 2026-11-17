@@ -11,6 +11,7 @@ import { NewPostPage } from '@/routes/new-post'
 import { PostPage } from '@/routes/post'
 import { RegisterPage } from '@/routes/register'
 import { TestPage } from '@/routes/test'
+import { UserProfilePage } from '@/routes/user-profile'
 import { LoginPage } from '@/routes/login'
 import { MePage } from '@/routes/me'
 import { AuthBootstrap, RequireAuth } from '@/features/auth/auth-gate'
@@ -71,6 +72,8 @@ const routes: RouteObject[] = [
           </RequireAuth>
         ),
       },
+      // 用户主页（占位）。评论区里的 @某人 需要点得动
+      { path: 'u/:userId', element: <UserProfilePage /> },
       { path: 'test', element: <TestPage /> },
       ...devOnlyRoutes,
       { path: '*', element: <NotFoundPage /> },

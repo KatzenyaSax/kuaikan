@@ -17,6 +17,7 @@ import { Avatar } from '@/shared/ui/avatar'
 import { Button } from '@/shared/ui/button'
 import { Textarea } from '@/shared/ui/field'
 import { relativeTime } from '@/shared/lib/time'
+import { MentionText } from '@/features/content/mention-text'
 import { cn } from '@/shared/lib/cn'
 
 /**
@@ -178,7 +179,7 @@ function TopLevelComment({ comment, postId }: { comment: CommentView; postId: st
           className="m-0 mt-2 whitespace-pre-wrap break-words text-body leading-[1.78] text-[#1a1a1a]"
           data-testid="comment-body"
         >
-          {comment.body}
+          <MentionText body={comment.body} mentions={comment.mentions} />
         </p>
       ) : null}
 
@@ -317,7 +318,7 @@ function ReplyItem({ comment, postId }: { comment: CommentView; postId: string }
           className="m-0 mt-1 whitespace-pre-wrap break-words text-body leading-[1.78] text-[#1a1a1a]"
           data-testid="reply-body"
         >
-          {comment.body}
+          <MentionText body={comment.body} mentions={comment.mentions} />
         </p>
       ) : null}
 

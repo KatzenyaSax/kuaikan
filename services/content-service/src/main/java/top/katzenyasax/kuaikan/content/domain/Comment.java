@@ -47,6 +47,9 @@ public class Comment {
     /** 该一级评论下的全部可见回复数 */
     private Integer replyCount;
 
+    /** 解析成功的 @ 列表，JSON 文本。null 表示正文里没有可解析的 @ */
+    private String mentions;
+
     private Integer status;
 
     @TableField(fill = FieldFill.INSERT)
@@ -83,4 +86,7 @@ public class Comment {
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
+
+    public String getMentions() { return mentions; }
+    public void setMentions(String mentions) { this.mentions = mentions; }
 }
