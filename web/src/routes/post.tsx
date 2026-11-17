@@ -125,7 +125,11 @@ export function PostPage() {
         </button>
       </div>
 
-      <CommentSection postId={data.id ?? ''} commentCount={data.commentCount ?? 0} />
+      <CommentSection
+        postId={data.id ?? ''}
+        commentCount={data.commentCount ?? 0}
+        postAuthorId={data.authorId ?? undefined}
+      />
       </div>
     </div>
   )

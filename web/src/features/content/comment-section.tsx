@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { createContext, useContext, useState } from 'react'
 import {
   collectCommentUserIds,
   pickAuthor,
@@ -21,6 +21,28 @@ import { MentionText } from '@/features/content/mention-text'
 import { cn } from '@/shared/lib/cn'
 
 /**
+ * 帖子作者 id。评论里要标「楼主」——几乎所有论坛都这么做，
+ * 因为它决定"这条回复的分量"，读者一眼就能看出来。
+ *
+ * 用 context 而不是逐层传参：`CommentSection` → `TopLevelComment` →
+ * `ReplyList` → `ReplyItem` 有四层，多一个参数会把每层签名都挤满。
+ * context 只在本模块内可见，不污染外部。
+ */
+const PostAuthorContext = createContext<string | undefined>(undefined)
+
+/** 「楼主」小标。刻意用浅灰而不是蓝色——蓝色在本项目里只表示"可点" */
+function AuthorBadge() {
+  return (
+    <span
+      className="inline-flex h-[17px] items-center rounded-[4px] bg-surface-strong px-1.5 align-middle text-caption font-medium leading-none text-muted-foreground"
+      data-testid="author-badge"
+    >
+      楼主
+    </span>
+  )
+}
+
+/**
  * 评论区。
  *
  * 两级平铺：一级评论下面直接列出它名下的**所有**回复，不再按层级缩进。
@@ -31,14 +53,23 @@ import { cn } from '@/shared/lib/cn'
  *
  * 分区只有一条 1px hairline，没有背景块、没有卡片。
  */
-export function CommentSection({ postId, commentCount }: { postId: string; commentCount: number }) {
+export function CommentSection({
+  postId,
+  commentCount,
+  postAuthorId,
+}: {
+  postId: string
+  commentCount: number
+  postAuthorId?: string | undefined
+}) {
   const status = useSession((s) => s.status)
   const authed = status === 'authenticated'
   const list = useComments(postId)
   const items = (list.data?.pages ?? []).flatMap((p) => p.items ?? [])
 
   return (
-    <section className="mt-14" data-testid="comment-section">
+    <PostAuthorContext.Provider value={postAuthorId}>
+      <section className="mt-14" data-testid="comment-section">
       <div className="mb-5 flex items-baseline gap-2">
         <h2 className="m-0 text-sub font-semibold">评论</h2>
         {/* 计数为 0 不显示 */}
@@ -86,7 +117,8 @@ export function CommentSection({ postId, commentCount }: { postId: string; comme
           {list.isFetchingNextPage ? '加载中…' : '加载更多评论'}
         </button>
       ) : null}
-    </section>
+      </section>
+    </PostAuthorContext.Provider>
   )
 }
 
@@ -155,6 +187,10 @@ function TopLevelComment({ comment, postId }: { comment: CommentView; postId: st
   const authors = useUserSummaries([comment.authorId])
   const author = pickAuthor(authors.data, comment.authorId)
   const isMine = session?.userId === comment.authorId
+  // useContext 必须在顶层无条件调用：写在 && 右边会因为短路而跳过，
+  // 渲染次数一变 hooks 顺序就变了（lint 的 rules-of-hooks 抓的就是这个）
+  const postAuthorId = useContext(PostAuthorContext)
+  const isPostAuthor = !!comment.authorId && comment.authorId === postAuthorId
   const states = useInteractionStates(comment.id ? [`comment:${comment.id}`] : [], authed)
 
   return (
@@ -168,6 +204,7 @@ function TopLevelComment({ comment, postId }: { comment: CommentView; postId: st
             <span className="font-medium text-foreground" data-testid="comment-author">
               {author?.nickname ?? '…'}
             </span>
+            {isPostAuthor ? <AuthorBadge /> : null}
             <span>·</span>
             <span>{relativeTime(comment.createdAt)}</span>
           </>
@@ -291,6 +328,8 @@ function ReplyItem({ comment, postId }: { comment: CommentView; postId: string }
   const author = pickAuthor(authors.data, comment.authorId)
   const replyTo = pickAuthor(authors.data, comment.replyToUserId)
   const isMine = session?.userId === comment.authorId
+  const postAuthorId = useContext(PostAuthorContext)
+  const isPostAuthor = !!comment.authorId && comment.authorId === postAuthorId
 
   return (
     <div data-testid="reply-item" className={cn(comment.deleted && 'text-muted-foreground')}>
@@ -303,6 +342,7 @@ function ReplyItem({ comment, postId }: { comment: CommentView; postId: string }
             <span className="font-medium text-foreground" data-testid="reply-author">
               {author?.nickname ?? '…'}
             </span>
+            {isPostAuthor ? <AuthorBadge /> : null}
             {/* 「回复 @某人」——两级平铺下用它表达对话关系，不用缩进 */}
             {comment.replyToUserId ? (
               <span data-testid="reply-to">回复 @{replyTo?.nickname ?? '某人'}</span>
