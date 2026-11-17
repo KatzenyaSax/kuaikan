@@ -57,6 +57,7 @@ kuaikan:
     # 同一个 group 订阅同一个 topic 是负载均衡（各拿一半消息），不是广播。
     interaction-consumer-group: kuaikan-notification-interaction-consumer
     comment-consumer-group: kuaikan-notification-comment-consumer
+    banned-consumer-group: kuaikan-notification-banned-consumer
 
 management:
   endpoints:

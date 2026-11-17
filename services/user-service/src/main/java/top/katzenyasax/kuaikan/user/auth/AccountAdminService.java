@@ -1,9 +1,14 @@
 package top.katzenyasax.kuaikan.user.auth;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import top.katzenyasax.kuaikan.common.mq.Topics;
+import top.katzenyasax.kuaikan.common.mq.UserBanned;
+import top.katzenyasax.kuaikan.common.outbox.OutboxEvent;
+import top.katzenyasax.kuaikan.common.outbox.OutboxMapper;
 import top.katzenyasax.kuaikan.common.error.BizException;
 import top.katzenyasax.kuaikan.common.error.CommonErrorCode;
 import top.katzenyasax.kuaikan.user.domain.User;
@@ -29,10 +34,15 @@ public class AccountAdminService {
 
     private final UserMapper userMapper;
     private final SessionService sessionService;
+    private final OutboxMapper outboxMapper;
+    private final ObjectMapper objectMapper;
 
-    public AccountAdminService(UserMapper userMapper, SessionService sessionService) {
+    public AccountAdminService(UserMapper userMapper, SessionService sessionService,
+                               OutboxMapper outboxMapper, ObjectMapper objectMapper) {
         this.userMapper = userMapper;
         this.sessionService = sessionService;
+        this.outboxMapper = outboxMapper;
+        this.objectMapper = objectMapper;
     }
 
     public record KickResult(long accessRevoked, int refreshRevoked) {
@@ -78,6 +88,10 @@ public class AccountAdminService {
         patch.setBannedReason(reason);
         userMapper.updateById(patch);
 
+        // 与状态变更在**同一个本地事务**里：提交 = 事件一定被记住。
+        // 用户在被封期间看不到这条消息（登录被拒），解封后它是一条可见的审计记录。
+        enqueueUserBanned(userId, reason);
+
         KickResult result = kick(userId);
         log.warn("封禁 userId={} reason={}", userId, reason);
         return result;
@@ -96,5 +110,32 @@ public class AccountAdminService {
         userMapper.updateById(patch);
         // banned_at / banned_reason 是审计信息，解封不清空
         log.info("解封 userId={}", userId);
+    }
+
+    /**
+     * 写一条 {@code UserBanned} 到 outbox。
+     *
+     * 与状态变更在同一个本地事务里——事务提交 = 事件一定被记住。
+     * 序列化失败直接抛，让整个事务回滚：宁可封禁失败，也不要"人被封了但记录没了"。
+     */
+    private void enqueueUserBanned(Long userId, String reason) {
+        UserBanned event = new UserBanned(
+                java.util.UUID.randomUUID().toString(),
+                System.currentTimeMillis(),
+                String.valueOf(userId),
+                reason);
+
+        OutboxEvent row = new OutboxEvent();
+        row.setEventId(event.eventId());
+        row.setTopic(Topics.USER_BANNED);
+        try {
+            row.setPayload(objectMapper.writeValueAsString(event));
+        } catch (Exception e) {
+            throw new IllegalStateException("事件序列化失败", e);
+        }
+        row.setStatus(OutboxEvent.STATUS_PENDING);
+        row.setRetryCount(0);
+        row.setNextRetryAt(java.time.LocalDateTime.now());
+        outboxMapper.insert(row);
     }
 }

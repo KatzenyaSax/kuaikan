@@ -44,6 +44,17 @@
         </dependency>
 
         <!-- 只引 api 版，不引 swagger-ui 版：契约端点放在 /internal/api-docs，且不暴露 UI -->
+        <!-- outbox 投递。封禁要发 UserBanned 事件（P4.4） -->
+        <dependency>
+            <groupId>top.katzenyasax.kuaikan</groupId>
+            <artifactId>kuaikan-common-outbox</artifactId>
+        </dependency>
+        <!-- 版本由 SCA BOM 管理 -->
+        <dependency>
+            <groupId>org.apache.rocketmq</groupId>
+            <artifactId>rocketmq-client</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-api</artifactId>

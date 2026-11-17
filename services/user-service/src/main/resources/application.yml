@@ -74,6 +74,13 @@ kuaikan:
   mq:
     # 只用 Remoting 接入（ADR 0003 / architecture §3），不走 Proxy
     namesrv-addr: ${ROCKETMQ_NAMESRV:127.0.0.1:9876}
+  outbox:
+    # 封禁要发 UserBanned（P4.4）。必须显式打开：误开的代价是每秒扫一张不存在的表
+    enabled: true
+    relay-interval: 1s
+    batch-size: 100
+    max-retry: 20
+    keep-delivered: 7d
   auth:
     # RSA 密钥目录。落在挂载卷上，重启/重建容器后 kid 不变，
     # 否则所有已签发 token 会在重启时全部失效。

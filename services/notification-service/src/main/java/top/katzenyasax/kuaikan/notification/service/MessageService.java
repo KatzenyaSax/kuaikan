@@ -9,6 +9,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import top.katzenyasax.kuaikan.common.mq.CommentCreated;
 import top.katzenyasax.kuaikan.common.mq.InteractionChange;
+import top.katzenyasax.kuaikan.common.mq.UserBanned;
 import top.katzenyasax.kuaikan.notification.domain.Message;
 import top.katzenyasax.kuaikan.notification.mapper.MessageMapper;
 import top.katzenyasax.kuaikan.notification.service.SnapshotService.Actor;
@@ -288,6 +289,48 @@ public class MessageService {
             }
         }
         return new Unread(like, comment, mention, system, like + comment + mention + system);
+    }
+
+    /**
+     * 处理一条封禁事件 → SYSTEM 消息。
+     *
+     * <b>接收人就是被封的人，actor 为空</b>：这不是"某人对你做了什么"，
+     * 是平台对用户做的事。前端的文案分支按 type 走，不需要 actor。
+     *
+     * <b>一个反直觉的后果</b>：封禁同时会踢下线并拒绝登录，
+     * 所以用户在被封期间看不到这条消息。它实际上是**解封后可读的审计记录**。
+     * 这是刻意的——把封禁原因写成用户可见的记录，比只留在运维日志里更负责任。
+     */
+    @Transactional
+    public boolean onUserBanned(String rawPayload) {
+        UserBanned event;
+        try {
+            event = objectMapper.readValue(rawPayload, UserBanned.class);
+        } catch (Exception e) {
+            log.error("封禁事件反序列化失败，丢弃 payload={}", rawPayload, e);
+            return true;
+        }
+        Long userId = parse(event.userId());
+        if (userId == null) {
+            log.error("封禁事件缺少 userId，丢弃 eventId={}", event.eventId());
+            return true;
+        }
+
+        Message row = new Message();
+        row.setUserId(userId);
+        row.setType(Message.TYPE_SYSTEM);
+        row.setSourceEventId(event.eventId());
+        row.setActorId(null);
+        row.setExcerpt(SnapshotService.trim(event.reason(), EXCERPT_MAX));
+        row.setCreatedAt(LocalDateTime.now().truncatedTo(ChronoUnit.MILLIS));
+
+        if (messageMapper.insertIgnore(row) == 0) {
+            log.info("重复投递，已忽略 eventId={}", event.eventId());
+            return true;
+        }
+        pushAfterCommit(userId, row);
+        log.info("系统消息已落库 userId={} reason={}", userId, event.reason());
+        return true;
     }
 
     /**

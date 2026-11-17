@@ -43,6 +43,14 @@ public final class Topics {
      */
     public static final String COMMENT_CREATED = "kuaikan_comment_created";
 
+    /**
+     * 账号被封禁。载荷见 {@link UserBanned}。
+     *
+     * <b>只有封禁，没有解封</b>：解封是恢复访问，不是需要"通知"的事件——
+     * 用户下次登录自然就知道了。多一个 topic 只为对称，没有收益。
+     */
+    public static final String USER_BANNED = "kuaikan_user_banned";
+
     private Topics() {
     }
 }
