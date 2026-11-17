@@ -188,6 +188,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
                 .headers(h -> {
                     h.remove(Headers.USER_ID);
                     h.remove(Headers.USER_ROLES);
+                    h.remove(Headers.TOKEN_EXP);
                 })
                 .build();
         return exchange.mutate().request(mutated).build();
@@ -203,14 +204,20 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
         String userId = claims.getSubject();
         String roles = String.valueOf(claims.getClaim("roles"));
         String jti = claims.getJWTID();
+        Date exp = claims.getExpirationTime();
 
         ServerHttpRequest mutated = exchange.getRequest().mutate()
                 .headers(h -> {
                     // 先剥再注入。顺序写反就是漏洞：客户端自带的 X-User-Id 会残留。
                     h.remove(Headers.USER_ID);
                     h.remove(Headers.USER_ROLES);
+                    h.remove(Headers.TOKEN_EXP);
                     h.set(Headers.USER_ID, userId);
                     h.set(Headers.USER_ROLES, roles);
+                    // SSE 长连接要活过 token 有效期，得知道确切过期时刻
+                    if (exp != null) {
+                        h.set(Headers.TOKEN_EXP, String.valueOf(exp.toInstant().getEpochSecond()));
+                    }
                 })
                 .build();
         return exchange.mutate().request(mutated).build();

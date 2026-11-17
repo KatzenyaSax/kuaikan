@@ -5,6 +5,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import top.katzenyasax.kuaikan.common.mq.InteractionChange;
 import top.katzenyasax.kuaikan.notification.domain.Message;
 import top.katzenyasax.kuaikan.notification.mapper.MessageMapper;
@@ -32,13 +34,16 @@ public class MessageService {
     private final MessageMapper messageMapper;
     private final SnapshotService snapshotService;
     private final ObjectMapper objectMapper;
+    private final SseService sseService;
 
     public MessageService(MessageMapper messageMapper,
                           SnapshotService snapshotService,
-                          ObjectMapper objectMapper) {
+                          ObjectMapper objectMapper,
+                          SseService sseService) {
         this.messageMapper = messageMapper;
         this.snapshotService = snapshotService;
         this.objectMapper = objectMapper;
+        this.sseService = sseService;
     }
 
     /**
@@ -110,9 +115,32 @@ public class MessageService {
             log.info("重复投递，已忽略 eventId={}", event.eventId());
             return true;
         }
+        pushAfterCommit(ownerId, row);
         log.info("消息已落库 userId={} type=LIKE actor={} eventId={}",
                 ownerId, actor.nickname(), event.eventId());
         return true;
+    }
+
+    /**
+     * 事务**提交之后**才推送。
+     *
+     * 在事务里推的后果很具体：一旦回滚，红点已经亮了，而消息不存在。
+     * 用户点进去看到空列表，只会以为是 bug。
+     */
+    private void pushAfterCommit(Long userId, Message row) {
+        String messageId = String.valueOf(row.getId());
+        String type = row.getType();
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    sseService.pushNewMessage(userId, messageId, type);
+                }
+            });
+        } else {
+            // 没有事务上下文时直接推（正常路径不会走到这里）
+            sseService.pushNewMessage(userId, messageId, type);
+        }
     }
 
     /** 未读四类。没出现过的类型补 0，让前端不用判 undefined */

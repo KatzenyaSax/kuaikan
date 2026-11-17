@@ -3,19 +3,24 @@ package top.katzenyasax.kuaikan.notification.web;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import top.katzenyasax.kuaikan.common.api.CursorCodec;
 import top.katzenyasax.kuaikan.common.api.Result;
 import top.katzenyasax.kuaikan.common.error.BizException;
 import top.katzenyasax.kuaikan.common.error.CommonErrorCode;
+import top.katzenyasax.kuaikan.common.web.Headers;
 import top.katzenyasax.kuaikan.common.web.UserContext;
 import top.katzenyasax.kuaikan.notification.domain.Message;
 import top.katzenyasax.kuaikan.notification.mapper.MessageMapper;
 import top.katzenyasax.kuaikan.notification.service.MessageService;
+import top.katzenyasax.kuaikan.notification.service.SseService;
 import top.katzenyasax.kuaikan.notification.web.dto.MessagePage;
 import top.katzenyasax.kuaikan.notification.web.dto.MessageView;
 import top.katzenyasax.kuaikan.notification.web.dto.UnreadView;
@@ -50,10 +55,13 @@ public class NotificationController {
 
     private final MessageMapper messageMapper;
     private final MessageService messageService;
+    private final SseService sseService;
 
-    public NotificationController(MessageMapper messageMapper, MessageService messageService) {
+    public NotificationController(MessageMapper messageMapper, MessageService messageService,
+                                  SseService sseService) {
         this.messageMapper = messageMapper;
         this.messageService = messageService;
+        this.sseService = sseService;
     }
 
     @Operation(operationId = "listMessages",
@@ -110,6 +118,23 @@ public class NotificationController {
      *
      * 返回标记了多少条，便于前端提示与排查——不是错误信息。
      */
+    /**
+     * SSE 长连接。
+     *
+     * nginx 有一个专门 location 关掉 {@code proxy_buffering} 并把读超时放到 3600s，
+     * 网关与服务的响应超时也要大于心跳间隔（15s），否则心跳还没发就被断开。
+     *
+     * {@code X-Token-Exp} 由网关注入：连接建立后网关不再验签，
+     * 靠它让服务端在 token 真正过期时主动断流（见 {@link SseService}）。
+     */
+    @Operation(operationId = "streamMessages", summary = "消息推送（SSE）")
+    @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter stream(
+            @RequestHeader(value = Headers.TOKEN_EXP, required = false) String tokenExp) {
+        Long userId = requireUserId();
+        return sseService.subscribe(userId, parseEpochSecond(tokenExp));
+    }
+
     @Operation(operationId = "readAllMessages", summary = "全部标记为已读")
     @PostMapping("/read-all")
     public Result<Integer> readAll() {
@@ -126,6 +151,17 @@ public class NotificationController {
             throw new BizException(CommonErrorCode.UNAUTHORIZED);
         }
         return userId;
+    }
+
+    private static Long parseEpochSecond(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(raw.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     private static int normalizeLimit(Integer limit) {
