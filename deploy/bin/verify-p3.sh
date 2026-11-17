@@ -602,11 +602,16 @@ if want_heavy_layer l5; then
     && bash deploy/bin/verify.sh --no-restart --skip-log-check' 2>&1)
   printf '%s' "$out" | grep -q 'P0 验收通过' && ok "verify.sh（P0）全绿" \
     || ng "verify.sh（P0）有失败" "$(printf '%s' "$out" | tail -1)"
+  # 子脚本的输出必须转出来：原来吞掉 stderr 只报"有失败"，
+  # 结果排查时只能靠猜或者把整套重跑一遍——那正是最贵也最没信息量的做法。
   for script in verify-p05.sh verify-p1.sh verify-p2.sh; do
-    if bash "$APP_DIR/deploy/bin/$script" --fast >/dev/null 2>&1; then
+    child_log="/tmp/kuaikan-l5-${script%.sh}.log"
+    if bash "$APP_DIR/deploy/bin/$script" --fast >"$child_log" 2>&1; then
       ok "$script 全绿"
     else
-      ng "$script 有失败" "单独运行看详情"
+      # 只转失败的断言行，全量输出在 $child_log 里
+      detail=$(grep -E '^ *✗' "$child_log" | head -3 | sed 's/^ *//' | tr '\n' ';')
+      ng "$script 有失败" "${detail:-详见 $child_log}"
     fi
   done
 fi
