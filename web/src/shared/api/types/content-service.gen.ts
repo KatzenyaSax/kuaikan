@@ -224,8 +224,16 @@ export interface components {
              */
             replyCount?: number;
             deleted?: boolean;
+            /** @description 解析成功并被 @ 的用户；未解析到的 @ 不在这里，前端按普通文字渲染 */
+            mentions?: components["schemas"]["MentionView"][];
             /** Format: date-time */
             createdAt?: string;
+        };
+        MentionView: {
+            /** @description 被 @ 的用户 id */
+            userId?: string;
+            /** @description 写入时的昵称快照，用于在正文里定位这段文字 */
+            nickname?: string;
         };
         ResultCommentView: {
             /** Format: int32 */

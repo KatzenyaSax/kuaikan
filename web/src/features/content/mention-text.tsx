@@ -25,14 +25,18 @@ import { Link } from 'react-router'
  * 避免两个昵称互相包含时重复渲染（`林` 与 `林间`）。
  */
 
-export type Mention = { userId: string; nickname: string }
+/**
+ * 生成类型里 userId/nickname 都是可选的（OpenAPI 不区分必填与非必填的差别），
+ * 这里如实反映，缺失时按"不可链接"处理，不要假造空字符串。
+ */
+export type Mention = { userId?: string | undefined; nickname?: string | undefined }
 
 const LINK_CLASS = 'text-primary hover:underline rounded-[2px]'
 
 export function MentionText({ body, mentions }: {
   /** 生成类型里 body 是可选的（tombstone 时为空串），这里跟着放宽 */
-  body?: string
-  mentions?: Mention[] | null
+  body?: string | undefined
+  mentions?: Mention[] | null | undefined
 }) {
   const text = body ?? ''
   const nodes = useMemo(() => splitByMentions(text, mentions ?? []), [text, mentions])
@@ -46,9 +50,11 @@ function splitByMentions(body: string, mentions: Mention[]) {
 
   // 收集所有命中区间。按昵称长度倒序，让长昵称优先占位。
   const spans: { start: number; end: number; mention: Mention }[] = []
-  const ordered = [...mentions].sort((a, b) => b.nickname.length - a.nickname.length)
+  const ordered = [...mentions].sort(
+    (a, b) => (b.nickname?.length ?? 0) - (a.nickname?.length ?? 0),
+  )
   for (const m of ordered) {
-    if (!m.nickname) continue
+    if (!m.nickname || !m.userId) continue
     const token = `@${m.nickname}`
     let from = 0
     for (;;) {
@@ -74,7 +80,7 @@ function splitByMentions(body: string, mentions: Mention[]) {
     out.push(
       <Link
         key={`m${String(s.start)}`}
-        to={`/u/${encodeURIComponent(s.mention.userId)}`}
+        to={`/u/${encodeURIComponent(s.mention.userId ?? '')}`}
         className={LINK_CLASS}
         // 点昵称不该把读者带离当前上下文——用户主页还没做，先不跳
         onClick={(e) => e.stopPropagation()}
