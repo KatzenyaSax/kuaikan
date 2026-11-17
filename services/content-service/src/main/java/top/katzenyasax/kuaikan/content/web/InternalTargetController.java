@@ -23,6 +23,9 @@ import top.katzenyasax.kuaikan.content.web.dto.TargetView;
 @RequestMapping("/internal")
 public class InternalTargetController {
 
+    /** 消息快照只要一小段。整篇正文塞进一条消息没有意义 */
+    private static final int EXCERPT_MAX = 120;
+
     private final PostMapper postMapper;
     private final CommentMapper commentMapper;
 
@@ -38,15 +41,31 @@ public class InternalTargetController {
                 Post post = postMapper.selectById(id);
                 // 已删除的帖子对外一律"不存在"（与详情接口的语义保持一致）
                 yield (post == null || post.getStatus() != Post.STATUS_NORMAL)
-                        ? TargetView.missing() : TargetView.of(post.getAuthorId());
+                        ? TargetView.missing()
+                        : TargetView.of(post.getAuthorId(), post.getTitle(), excerpt(post.getBody()));
             }
             case "comment" -> {
                 Comment comment = commentMapper.selectById(id);
-                yield (comment == null || comment.getStatus() != Comment.STATUS_NORMAL)
-                        ? TargetView.missing() : TargetView.of(comment.getAuthorId());
+                if (comment == null || comment.getStatus() != Comment.STATUS_NORMAL) {
+                    yield TargetView.missing();
+                }
+                // 评论被赞时，消息里要显示"赞了你在《某帖》下的评论"——
+                // 所以标题取所属帖子，摘录取评论本身
+                Post parent = postMapper.selectById(comment.getPostId());
+                yield TargetView.of(comment.getAuthorId(),
+                        parent == null ? null : parent.getTitle(),
+                        excerpt(comment.getBody()));
             }
             default -> throw new BizException(CommonErrorCode.PARAM_INVALID,
                     "目标类型只能是 post 或 comment");
         });
+    }
+
+    private static String excerpt(String body) {
+        if (body == null) {
+            return null;
+        }
+        String flat = body.strip();
+        return flat.length() <= EXCERPT_MAX ? flat : flat.substring(0, EXCERPT_MAX) + "…";
     }
 }

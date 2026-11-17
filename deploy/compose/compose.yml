@@ -388,7 +388,20 @@ services:
     logging: *default-logging
     environment:
       <<: *default-app-env
-    depends_on: *default-app-depends
+      ROCKETMQ_NAMESRV: rmq-namesrv:9876
+      # 数据层（ADR 0006：只连自己的 schema，账号只有本库权限）
+      MYSQL_HOST: mysql
+      MYSQL_USER: u_notification
+      MYSQL_PASSWORD: ${MYSQL_PWD_NOTIFICATION:?}
+      # 雪花 id 的 worker-id 必须全局唯一：user=1 community=2 content=3
+      # interaction=4 notification=5。冲突不会在启动时暴露，要等到写入才炸。
+      ID_WORKER_ID: "5"
+    depends_on:
+      <<: *default-app-depends
+      rmq-broker:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
     networks:
       - kuaikan
     healthcheck:

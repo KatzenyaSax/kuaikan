@@ -13,6 +13,50 @@ spring:
         group: ${NACOS_GROUP:DEFAULT_GROUP}
         metadata:
           version: ${APP_VERSION:dev}
+    openfeign:
+      client:
+        config:
+          default:
+            # 消费事件时要拉快照（user 的昵称头像、content 的目标标题）。
+            # 这是 MQ 消费线程里的调用，不是用户请求——超时短一点，
+            # 失败了会重投，比让消费组卡住好。
+            connectTimeout: 800
+            readTimeout: 800
+
+  datasource:
+    # 只连自己的 schema。u_notification 只有 kuaikan_notification.* 的权限（ADR 0006）
+    url: jdbc:mysql://${MYSQL_HOST:mysql}:${MYSQL_PORT:3306}/kuaikan_notification?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USER:u_notification}
+    password: ${MYSQL_PASSWORD:}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 3000
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    banner: false
+    # 每个服务必须有独立的 worker-id（user=1 community=2 content=3 interaction=4
+    # notification=5）。冲突要等到写入时才暴露，不是启动时。
+    worker-id: ${ID_WORKER_ID:5}
+    datacenter-id: ${ID_DATACENTER_ID:1}
+
+kuaikan:
+  mq:
+    # 只用 Remoting 接入，不走 Proxy
+    namesrv-addr: ${ROCKETMQ_NAMESRV:127.0.0.1:9876}
+  notify:
+    # 消费组名。**必须与 content 的不同**：RocketMQ 里 group 才代表"我是谁"，
+    # 同一个 group 订阅同一个 topic 是负载均衡（各拿一半消息），不是广播。
+    interaction-consumer-group: kuaikan-notification-interaction-consumer
+    comment-consumer-group: kuaikan-notification-comment-consumer
 
 management:
   endpoints:
