@@ -377,6 +377,31 @@ docker exec kuaikan-user-service-1 \
 复测：无 token 401 / 有 token 200 / 篡改签名 401 / 登出后旧 token 401，
 且下游 503 原样透出、误报次数 0。
 
+### P4.0 outbox 抽取（已完成）
+
+P4 要让 content 发 `CommentCreated`，而 content 之前**一行 MQ 生产代码都没有**。
+把 interaction 里跑通的 outbox 抽成 `services/kuaikan-common-outbox`，两个服务共用。
+
+**为什么抽而不是复制**：这份代码的正确性全靠细节——`eventId` 必须与业务写入
+同事务生成（重投时不变，是幂等的前提）、`payload` 是序列化快照投递时不回查业务表、
+1s 轮询、指数退避、20 次放弃、原生 `rocketmq-client` 而非 starter
+（starter 把"发消息"变成立即调用，而 outbox 要的是由轮询决定时机）。
+复制第二份的那天起两边就会开始不一样。
+
+三个刻意的设计选择：
+
+| 选择 | 理由 |
+|---|---|
+| `kuaikan.outbox.enabled` **默认 false** | 不开只是不发事件；误开的代价是每秒扫一张不存在的表，日志刷屏还掩盖真错误 |
+| namesrv 不在 `OutboxProperties` 里 | 统一取 `kuaikan.mq.namesrv-addr`，放两份就会出现"改了一个不生效"。`relay-interval` 同理，由 `@Scheduled` 直接读 Environment |
+| **不在 auto-config 里替使用者做 Mapper 扫描** | `@MapperScan` 一旦出现就会关掉 MyBatis-Plus 的自动扫描（它带 `@ConditionalOnMissingBean(MapperScannerConfigurer.class)`），所以必须由服务自己显式列出两个包。漏了会在启动期报 `NoSuchBeanDefinition`，失败是响亮的；替使用者做反而把这条依赖关系变成隐式的 |
+
+**每个服务在自己的 schema 里建自己的 `t_outbox`**（content 是 V4），
+模块只给代码不给迁移脚本——outbox 必须与业务数据同库同事务，共用一张表就回到共享数据库了。
+
+实测：评论一篇帖子 → `content.t_outbox` 出现 `status=0` 的行 → 几秒后 `status=1`；
+点赞/取消赞的计数投影仍正常（重构没改行为，表结构、topic、事件载荷一个字没动）。
+
 ### 脚本基础设施：`check-scripts.mjs`
 
 `$VAR` 后面紧跟中文时，macOS 的 bash 3.2 会把中文字节吞进变量名
