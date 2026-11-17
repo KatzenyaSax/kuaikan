@@ -377,6 +377,45 @@ docker exec kuaikan-user-service-1 \
 复测：无 token 401 / 有 token 200 / 篡改签名 401 / 登出后旧 token 401，
 且下游 503 原样透出、误报次数 0。
 
+### P4.3 「评论 / @」的消息（已完成）
+
+| 件 | 位置 |
+|---|---|
+| `CommentCreated` 补 `actorId` | common（**契约缺口，见下**） |
+| `CommentEventConsumerRunner` | 组名 `kuaikan-notification-comment-consumer` |
+| `MessageService.onCommentCreated` | 接收人计算 + 合并 + 批量落库 |
+| `init-topics.sh` | 加 `kuaikan_comment_created` |
+
+#### 契约缺口：`CommentCreated` 当初漏了 `actorId`
+
+P4.1 定义这个载荷时只写了"谁该收到"，没写"谁干的"。消费者因此既不知道
+消息里该显示谁，也没法做自抑制（自己评论自己的帖子不该给自己发消息）。
+
+**这是设计时的遗漏，不是后来追加的功能。** 教训：事件载荷里
+"动作发起人"和"动作对象"一样是必需项，少一个就要靠额外查询补。
+
+修完之后有个真实后果：**P4.3 上线前发出的旧事件里没有 `actorId`**，
+被 `CONSUME_FROM_FIRST_OFFSET` 重放时 actor 解析成 null，
+消息显示成"已注销用户"。这印证了不变量 13 的用意——
+破坏性变更本该换新 topic 名并双写过渡，我这次是直接改了同一个 topic。
+
+#### 合并规则：同一接收人只一条，COMMENT 优先
+
+| 接收人 | 类型 |
+|---|---|
+| 帖子作者 | COMMENT |
+| 被回复者 | COMMENT（`putIfAbsent`，不会覆盖帖子作者的 COMMENT） |
+| 正文里 @ 到的人 | MENTION（同样 `putIfAbsent`） |
+
+实测："林间在小满的帖子下评论并 @ 小满" → 小满只收到**一条 COMMENT**，
+`mention` 计数不变。这条规则让 `uk_user_event` 两列就够用；
+若允许一人多条，唯一键就得加 `type`，约束也就弱了。
+
+#### 评论消息指向帖子而不是评论
+
+点进去要落到那条帖子的评论区，而不是某个孤立评论——
+按 commentId 跳转需要一个"锚点滚动"能力，P4 不做。
+
 ### P4.2 「赞」全链路（已完成）
 
 从 interaction 发事件 → MQ → notification 落库 → SSE → 前端红点，一次打通。
