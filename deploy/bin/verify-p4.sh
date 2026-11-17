@@ -216,6 +216,12 @@ prepare_fixture() {
     -d "{\"name\":\"$COMMUNITY_NAME\"}" | json_field 'data.id')
   [ -n "$COMMUNITY_ID" ] || return 1
 
+  # 第二个账号必须加入社群：评论与发帖都要求成员身份（41004）。
+  # 少了这一步，所有"评论"相关断言都会因为评论没建成而连坐失败。
+  curl -s --max-time 15 -o /dev/null -X POST \
+    "$SITE/api/community/communities/$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))" "$COMMUNITY_NAME")/membership" \
+    -H "Authorization: Bearer $TOKEN2"
+
   POST_ID=$(curl -s --max-time 15 -X POST "$SITE/api/content/posts" \
     -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
     -d "{\"communityId\":\"$COMMUNITY_ID\",\"title\":\"e2e P4 帖\",\"body\":\"正文\"}" \
@@ -325,8 +331,10 @@ if want_layer l2; then
     fi
     cmsg=$(curl -s --max-time 10 "$SITE/api/notification/messages?type=COMMENT&limit=1" \
       -H "Authorization: Bearer $TOKEN")
-    [ "$(printf '%s' "$cmsg" | json_field 'data.items.0.commentId')" = "$comment_id" ] \
-      && ok "评论消息带 commentId（能跳到那条评论）" || ng "commentId 不对或为空"
+    got_cid=$(printf '%s' "$cmsg" | json_field 'data.items.0.commentId')
+    # 护栏：两边都为空时 "空 == 空" 会假绿——那正是这条断言最容易骗过自己的地方
+    [ -n "$comment_id" ] && [ "$got_cid" = "$comment_id" ] \
+      && ok "评论消息带 commentId（能跳到那条评论）" || ng "commentId 不对或为空" "期望 $comment_id 实得 $got_cid"
 
     # ⑥ 回复我的评论 → 我收到 COMMENT，且带 root
     before=$(unread_total "$TOKEN")
@@ -340,8 +348,10 @@ if want_layer l2; then
     fi
     rmsg=$(curl -s --max-time 10 "$SITE/api/notification/messages?type=COMMENT&limit=1" \
       -H "Authorization: Bearer $TOKEN")
-    [ "$(printf '%s' "$rmsg" | json_field 'data.items.0.rootCommentId')" = "$comment_id" ] \
-      && ok "回复消息带 rootCommentId（能展开折叠的回复）" || ng "rootCommentId 为空，回复类消息跳不到"
+    got_root=$(printf '%s' "$rmsg" | json_field 'data.items.0.rootCommentId')
+    [ -n "$comment_id" ] && [ "$got_root" = "$comment_id" ] \
+      && ok "回复消息带 rootCommentId（能展开折叠的回复）" \
+      || ng "rootCommentId 为空，回复类消息跳不到" "期望 $comment_id 实得 $got_root"
 
     # ⑦ 回复 + 同时 @ 同一个人 → 仍然只有一条
     before=$(unread_total "$TOKEN")
