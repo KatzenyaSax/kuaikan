@@ -411,6 +411,16 @@ docker exec kuaikan-user-service-1 \
 改成 `TransactionTemplate` **显式**框住写入段——注意不能把 `@Transactional` 挪到本类的
 另一个方法上：**同类自调用不走代理，注解会静默失效**，事务根本没开。
 
+#### 「楼主」标记
+
+评论区与回复里，帖子作者自己的评论会带一个浅灰「楼主」小标。
+
+- 用模块内 context 传递 `postAuthorId`，不逐层传参：`CommentSection` → `TopLevelComment`
+  → `ReplyList` → `ReplyItem` 四层，多一个参数会把每层签名挤满
+- **浅灰不是蓝色**：蓝色在本项目里只表示"可点"，楼主标不可点
+- `useContext` 必须在顶层无条件调用——写在 `&&` 右边会因为短路被跳过，
+  渲染次数一变 hooks 顺序就变（`rules-of-hooks` 直接抓到了）
+
 #### 已知限制
 
 - **昵称带空格或标点时无法被 @**。昵称只校验了长度（2~32），没有字符集限制；而解析必须
