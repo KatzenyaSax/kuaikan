@@ -384,6 +384,26 @@ function EmptyTab({ tab }: { tab: MessageType }) {
 }
 
 /**
+ * 摘录只是"这条消息说了什么"的一句话提示，不是正文。
+ *
+ * 正文是 Markdown，直接截 120 字会把 `##`、`**`、反引号带进来，
+ * 看起来像坏了。在**展示层**清掉而不是写入时清：
+ * 已有的消息也能一起变干净，不需要回填。
+ *
+ * 只去掉最扎眼的几种标记，不做完整解析——过度清洗会把 `2*3` 变成 `23`。
+ */
+function cleanExcerpt(text: string | undefined): string {
+  if (!text) return ''
+  return text
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')   // 标题
+    .replace(/^\s{0,3}[-*+]\s+/gm, '')    // 无序列表
+    .replace(/^\s{0,3}\d+\.\s+/gm, '')   // 有序列表
+    .replace(/\*\*|__|`/g, '')            // 粗体 / 行内代码
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
  * 折叠连赞：相邻的、同类型 + 同目标的消息合成一条。
  *
  * <b>只在展示层折叠，存储不折叠</b>（不变量 9）。每一次点赞都是独立的事实，
@@ -476,8 +496,10 @@ function MessageRow({
             </>
           ) : null}
         </p>
-        {message.excerpt ? (
-          <p className="m-0 mt-1 line-clamp-2 text-aux text-faint">{message.excerpt}</p>
+        {cleanExcerpt(message.excerpt) ? (
+          <p className="m-0 mt-1 line-clamp-2 text-aux text-faint">
+            {cleanExcerpt(message.excerpt)}
+          </p>
         ) : null}
         <p className="m-0 mt-1.5 flex items-center gap-2 text-caption text-faint">
           <span>{relativeTime(message.createdAt)}</span>
