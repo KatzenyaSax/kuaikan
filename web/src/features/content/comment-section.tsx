@@ -261,6 +261,8 @@ function TopLevelComment({ comment, postId }: { comment: CommentView; postId: st
             onClick={() => setExpanded((v) => !v)}
             className="hover:text-foreground"
             data-testid="btn-expand-replies"
+            // 从消息跳进来时，滚动逻辑靠这个属性找到"要展开哪一个 root"
+            data-expand-root={comment.id}
           >
             {expanded ? '收起回复' : `展开 ${String(comment.replyCount ?? 0)} 条回复`}
           </button>

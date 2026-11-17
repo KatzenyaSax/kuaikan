@@ -46,6 +46,8 @@ public class Message {
     private String communityName;
     private Long postId;
     private Long commentId;
+    /** 回复所在的一级评论 id。前端要先展开它，才能滚到那条回复 */
+    private Long rootCommentId;
     private String excerpt;
 
     private LocalDateTime readAt;
@@ -79,6 +81,8 @@ public class Message {
     public void setPostId(Long postId) { this.postId = postId; }
     public Long getCommentId() { return commentId; }
     public void setCommentId(Long commentId) { this.commentId = commentId; }
+    public Long getRootCommentId() { return rootCommentId; }
+    public void setRootCommentId(Long rootCommentId) { this.rootCommentId = rootCommentId; }
     public String getExcerpt() { return excerpt; }
     public void setExcerpt(String excerpt) { this.excerpt = excerpt; }
     public LocalDateTime getReadAt() { return readAt; }

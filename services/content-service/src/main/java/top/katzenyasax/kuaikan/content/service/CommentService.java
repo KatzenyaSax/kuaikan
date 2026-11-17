@@ -331,6 +331,7 @@ public class CommentService {
                 String.valueOf(post.getCommunityId()),
                 String.valueOf(post.getAuthorId()),
                 comment.getReplyToUserId() == null ? null : String.valueOf(comment.getReplyToUserId()),
+                comment.getRootCommentId() == null ? null : String.valueOf(comment.getRootCommentId()),
                 mentionUserIds,
                 excerpt(comment.getBody()));
 

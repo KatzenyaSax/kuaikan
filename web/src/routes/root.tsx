@@ -410,7 +410,10 @@ function MessageRow({ message, onClose }: { message: MessageView; onClose: () =>
   const href =
     message.communityName && message.postId
       ? `/c/${encodeURIComponent(message.communityName)}/p/${message.postId}` +
-        (message.commentId ? `?comment=${encodeURIComponent(message.commentId)}` : '')
+        (message.commentId
+          ? `?comment=${encodeURIComponent(message.commentId)}` +
+            (message.rootCommentId ? `&root=${encodeURIComponent(message.rootCommentId)}` : '')
+          : '')
       : null
 
   const body = (

@@ -34,6 +34,9 @@ import java.util.List;
  *                       没有它，消费者既不知道"是谁评论的"（消息里要显示），
  *                       也没法做自抑制（自己评论自己的帖子不该给自己发消息）。
  *                       这是一个真实的设计缺口，不是后来想加的功能。
+ * @param rootCommentId  所在的一级评论 id；**顶层评论时为 null**。
+ *                       消费者用它做跳转：被回复的若是一条回复，它藏在
+ *                       「展开 N 条回复」里，前端必须先展开这个 root 才能滚过去。
  * @param commentId      新评论
  * @param postId         所在帖子
  * @param communityId    所在社群。消费方判断 @ 的有效范围时要用（@ 只对本社群成员生效）
@@ -51,6 +54,7 @@ public record CommentCreated(
         String communityId,
         String postAuthorId,
         String replyToUserId,
+        String rootCommentId,
         List<String> mentionUserIds,
         String excerpt
 ) {

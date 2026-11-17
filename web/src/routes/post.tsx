@@ -156,30 +156,50 @@ export function PostPage() {
 function useScrollToComment(postId: string | undefined) {
   const [searchParams, setSearchParams] = useSearchParams()
   const target = searchParams.get('comment')
+  const root = searchParams.get('root')
 
   useEffect(() => {
     if (!target || !postId) return
     let tries = 0
+    let expanded = false
     let timer: ReturnType<typeof setTimeout> | undefined
+
+    // 用完就摘掉参数：刷新或分享链接时不该一直高亮、也不该一直被当成"跳转请求"
+    const clear = () => {
+      const next = new URLSearchParams(searchParams)
+      next.delete('comment')
+      next.delete('root')
+      setSearchParams(next, { replace: true })
+    }
+
     const tick = () => {
       const el = document.querySelector<HTMLElement>(`[data-comment-anchor="${CSS.escape(target)}"]`)
       if (el) {
         el.scrollIntoView({ block: 'center', behavior: 'smooth' })
         el.dataset.highlighted = 'true'
         setTimeout(() => { delete el.dataset.highlighted }, 2000)
-        // 用完就把参数摘掉：刷新页面或分享链接时不该一直高亮
-        searchParams.delete('comment')
-        setSearchParams(searchParams, { replace: true })
+        clear()
         return
       }
+      // 目标可能在折叠的回复里：先点开它的 root，再继续找
+      if (!expanded && root) {
+        const btn = document.querySelector<HTMLElement>(`[data-expand-root="${CSS.escape(root)}"]`)
+        if (btn) {
+          btn.click()
+          expanded = true
+        }
+      }
       tries += 1
-      if (tries < 15) {
+      if (tries < 20) {
         timer = setTimeout(tick, 200)
+      } else {
+        // 找不到就停在帖子页，但参数要摘掉——否则地址栏会一直挂着一个无效锚点
+        clear()
       }
     }
     tick()
     return () => { if (timer) clearTimeout(timer) }
     // searchParams/setSearchParams 是稳定引用，不需要进依赖
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [target, postId])
+  }, [target, root, postId])
 }

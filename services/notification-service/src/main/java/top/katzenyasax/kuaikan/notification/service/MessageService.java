@@ -112,9 +112,11 @@ public class MessageService {
         row.setTargetId(parse(event.targetId()));
         row.setTargetTitle(SnapshotService.trim(target.title(), 255));
         row.setExcerpt(trimExcerpt(target.excerpt()));
+        // 点赞的是评论时，直接滚到那条评论；点赞帖子时没有锚点。
+        // 被赞的评论本身可能是回复，但 TargetView 没返回它的 root —— 那种情况
+        // 前端退化为停在帖子页（点赞回复的消息本来就少见）
         fillNavigation(row, target.postId(), target.communityId(),
-                // 点赞的是评论时，直接滚到那条评论；点赞帖子时没有锚点
-                isCommentTarget(event) ? parse(event.targetId()) : null);
+                isCommentTarget(event) ? parse(event.targetId()) : null, null);
         row.setCreatedAt(LocalDateTime.now().truncatedTo(ChronoUnit.MILLIS));
 
         if (messageMapper.insertIgnore(row) == 0) {
@@ -224,9 +226,9 @@ public class MessageService {
             row.setTargetId(parse(event.postId()));
             row.setTargetTitle(SnapshotService.trim(target.title(), 255));
             row.setExcerpt(trimExcerpt(event.excerpt()));
-            // 落在**新评论**上；commentId 在 P4.3 的载荷里已有，不需要额外查询
+            // 落在**新评论**上；rootCommentId 用来展开折叠的回复列表
             fillNavigation(row, parse(event.postId()), parse(event.communityId()),
-                    parse(event.commentId()));
+                    parse(event.commentId()), parse(event.rootCommentId()));
             row.setCreatedAt(LocalDateTime.now().truncatedTo(ChronoUnit.MILLIS));
             if (messageMapper.insertIgnore(row) == 1) {
                 created += 1;
@@ -251,9 +253,11 @@ public class MessageService {
      *
      * 社群名解析失败不能连累消息落库——名字拿不到就没有跳转，消息本身仍然有意义。
      */
-    private void fillNavigation(Message row, Long postId, Long communityId, Long commentId) {
+    private void fillNavigation(Message row, Long postId, Long communityId,
+                                Long commentId, Long rootCommentId) {
         row.setPostId(postId);
         row.setCommentId(commentId);
+        row.setRootCommentId(rootCommentId);
         if (communityId == null) {
             return;
         }
