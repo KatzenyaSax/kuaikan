@@ -1,4 +1,5 @@
-import { Link, useParams } from 'react-router'
+import { useEffect } from 'react'
+import { Link, useParams, useSearchParams } from 'react-router'
 import { useCommunityDetail } from '@/features/community/api'
 import { useInteractionStates } from '@/features/interaction/api'
 import { FavoriteButton, LikeButton } from '@/features/interaction/interaction-buttons'
@@ -32,6 +33,11 @@ export function PostPage() {
   const targets = post.data?.id ? [`post:${post.data.id}`] : []
   const states = useInteractionStates(targets, status === 'authenticated')
   const author = pickAuthor(authors.data, post.data?.authorId)
+
+  // 从消息点进来时带 ?comment=<id>，要滚到那条评论并高亮一下。
+  // 评论是分页加载的，可能还没到——所以用轮询尝试有限次数，
+  // 而不是"加载完立刻找一次"然后放弃。
+  useScrollToComment(postId)
 
   if (post.isPending) {
     return (
@@ -133,4 +139,47 @@ export function PostPage() {
       </div>
     </div>
   )
+}
+
+/**
+ * 从消息跳进来时滚到对应评论。
+ *
+ * 两个现实约束：
+ * 1. 评论是游标分页的，目标可能在第二页——所以查不到就继续等，最多约 3 秒
+ * 2. 目标若是**回复**，它藏在「展开 N 条回复」里，用户没点开就找不到。
+ *    这种情况退化为"停在帖子页"，不自动展开——自动展开别人没要求的回复
+ *    比不滚过去更打扰。
+ *
+ * 高亮用 2 秒后自动淡出的背景，是为了回答"我到底跳到了哪一条"，
+ * 而不是长期把某条评论标成特殊状态。
+ */
+function useScrollToComment(postId: string | undefined) {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const target = searchParams.get('comment')
+
+  useEffect(() => {
+    if (!target || !postId) return
+    let tries = 0
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const tick = () => {
+      const el = document.querySelector<HTMLElement>(`[data-comment-anchor="${CSS.escape(target)}"]`)
+      if (el) {
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        el.dataset.highlighted = 'true'
+        setTimeout(() => { delete el.dataset.highlighted }, 2000)
+        // 用完就把参数摘掉：刷新页面或分享链接时不该一直高亮
+        searchParams.delete('comment')
+        setSearchParams(searchParams, { replace: true })
+        return
+      }
+      tries += 1
+      if (tries < 15) {
+        timer = setTimeout(tick, 200)
+      }
+    }
+    tick()
+    return () => { if (timer) clearTimeout(timer) }
+    // searchParams/setSearchParams 是稳定引用，不需要进依赖
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target, postId])
 }

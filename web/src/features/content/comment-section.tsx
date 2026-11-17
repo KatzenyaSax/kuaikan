@@ -194,7 +194,11 @@ function TopLevelComment({ comment, postId }: { comment: CommentView; postId: st
   const states = useInteractionStates(comment.id ? [`comment:${comment.id}`] : [], authed)
 
   return (
-    <div data-testid="comment-item">
+    <div
+      data-testid="comment-item"
+      data-comment-anchor={comment.id}
+      className="scroll-mt-24 rounded-md transition-colors duration-500 data-[highlighted=true]:bg-primary-soft"
+    >
       <div className="flex items-center gap-2 text-aux text-faint">
         {comment.deleted ? (
           <span data-testid="comment-deleted">该评论已删除</span>
@@ -332,7 +336,14 @@ function ReplyItem({ comment, postId }: { comment: CommentView; postId: string }
   const isPostAuthor = !!comment.authorId && comment.authorId === postAuthorId
 
   return (
-    <div data-testid="reply-item" className={cn(comment.deleted && 'text-muted-foreground')}>
+    <div
+      data-testid="reply-item"
+      data-comment-anchor={comment.id}
+      className={cn(
+        'scroll-mt-24 rounded-md transition-colors duration-500 data-[highlighted=true]:bg-primary-soft',
+        comment.deleted && 'text-muted-foreground',
+      )}
+    >
       <div className="flex flex-wrap items-center gap-2 text-caption text-faint">
         {comment.deleted ? (
           <span data-testid="reply-deleted">该回复已删除</span>

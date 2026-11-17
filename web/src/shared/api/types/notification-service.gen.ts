@@ -154,6 +154,12 @@ export interface components {
             targetId?: string;
             /** @description 帖子标题快照；目标已删除时可能为 null */
             targetTitle?: string;
+            /** @description 社群名快照，用于拼跳转 URL；为 null 表示点不进去 */
+            communityName?: string;
+            /** @description 落点帖子 id */
+            postId?: string;
+            /** @description 滚动锚点；点赞帖子时为 null */
+            commentId?: string;
             /** @description 评论/正文摘录快照 */
             excerpt?: string;
             /**

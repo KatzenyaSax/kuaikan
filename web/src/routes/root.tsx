@@ -347,7 +347,7 @@ function MessageDrawer({ open, onClose }: { open: boolean; onClose: () => void }
                   className="border-b border-border px-5 py-4 last:border-b-0"
                   data-testid="message-item"
                 >
-                  <MessageRow message={m} />
+                  <MessageRow message={m} onClose={onClose} />
                 </li>
               ))}
             </ul>
@@ -387,7 +387,7 @@ function EmptyTab({ tab }: { tab: MessageType }) {
  * 显式列出四种文案，而不是拼 `actorNickname + '赞了你'`——
  * 后者的措辞会散落在各个分支里，以后想改"赞了你"为"觉得不错"要翻遍代码。
  */
-function MessageRow({ message }: { message: MessageView }) {
+function MessageRow({ message, onClose }: { message: MessageView; onClose: () => void }) {
   const text = (() => {
     switch (message.type) {
       case 'LIKE':
@@ -403,8 +403,15 @@ function MessageRow({ message }: { message: MessageView }) {
     }
   })()
   const unread = !message.readAt
+  // 跳转要社群名 + 帖子 id。V2 之前写的消息没有这两项（当初没存），
+  // 那种消息保持不可点——比点了跳到 404 好
+  const href =
+    message.communityName && message.postId
+      ? `/c/${encodeURIComponent(message.communityName)}/p/${message.postId}` +
+        (message.commentId ? `?comment=${encodeURIComponent(message.commentId)}` : '')
+      : null
 
-  return (
+  const body = (
     <div className="flex gap-3">
       <Avatar url={message.actorAvatar ?? null} name={message.actorNickname ?? ''} size={32} />
       <div className="min-w-0 flex-1">
@@ -427,5 +434,18 @@ function MessageRow({ message }: { message: MessageView }) {
         </p>
       </div>
     </div>
+  )
+
+  return href ? (
+    <Link
+      to={href}
+      onClick={onClose}
+      className="-mx-2 block rounded-md px-2 py-1 transition-colors duration-[150ms] hover:bg-surface"
+      data-testid="message-link"
+    >
+      {body}
+    </Link>
+  ) : (
+    body
   )
 }

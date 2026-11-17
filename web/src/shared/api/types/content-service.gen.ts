@@ -301,6 +301,10 @@ export interface components {
             title?: string;
             /** @description 正文摘录；目标为评论时是评论正文 */
             excerpt?: string;
+            /** @description 跳转用的帖子 id；目标为评论时是它所属帖子 */
+            postId?: string;
+            /** @description 跳转用的社群 id；名字由调用方另行解析 */
+            communityId?: string;
         };
         ResultVoid: {
             /** Format: int32 */
