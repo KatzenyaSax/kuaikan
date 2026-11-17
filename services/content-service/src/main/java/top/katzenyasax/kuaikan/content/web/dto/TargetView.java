@@ -19,13 +19,18 @@ public record TargetView(
         @Schema(description = "帖子标题；目标为评论时是它所属帖子的标题")
         String title,
         @Schema(description = "正文摘录；目标为评论时是评论正文")
-        String excerpt
+        String excerpt,
+        @Schema(type = "string", description = "跳转用的帖子 id；目标为评论时是它所属帖子")
+        Long postId,
+        @Schema(type = "string", description = "跳转用的社群 id；名字由调用方另行解析")
+        Long communityId
 ) {
     public static TargetView missing() {
-        return new TargetView(false, null, null, null);
+        return new TargetView(false, null, null, null, null, null);
     }
 
-    public static TargetView of(Long ownerId, String title, String excerpt) {
-        return new TargetView(true, ownerId, title, excerpt);
+    public static TargetView of(Long ownerId, String title, String excerpt,
+                                Long postId, Long communityId) {
+        return new TargetView(true, ownerId, title, excerpt, postId, communityId);
     }
 }

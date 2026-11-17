@@ -11,6 +11,8 @@ public record TargetView(
         boolean exists,
         @Schema(type = "string") Long ownerId,
         String title,
-        String excerpt
+        String excerpt,
+        @Schema(type = "string", description = "落点帖子 id；目标为评论时是它所属帖子") Long postId,
+        @Schema(type = "string", description = "社群 id，名字另行解析") Long communityId
 ) {
 }

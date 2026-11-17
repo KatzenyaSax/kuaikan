@@ -23,6 +23,9 @@ public record MessageView(
         @Schema(description = "POST / COMMENT；SYSTEM 为 null") String targetType,
         @Schema(type = "string") Long targetId,
         @Schema(description = "帖子标题快照；目标已删除时可能为 null") String targetTitle,
+        @Schema(description = "社群名快照，用于拼跳转 URL；为 null 表示点不进去") String communityName,
+        @Schema(type = "string", description = "落点帖子 id") Long postId,
+        @Schema(type = "string", description = "滚动锚点；点赞帖子时为 null") Long commentId,
         @Schema(description = "评论/正文摘录快照") String excerpt,
         @Schema(description = "已读时间；null 表示未读") LocalDateTime readAt,
         LocalDateTime createdAt
@@ -31,7 +34,8 @@ public record MessageView(
         return new MessageView(
                 m.getId(), m.getType(),
                 m.getActorId(), m.getActorNickname(), m.getActorAvatar(),
-                m.getTargetType(), m.getTargetId(), m.getTargetTitle(), m.getExcerpt(),
+                m.getTargetType(), m.getTargetId(), m.getTargetTitle(),
+                m.getCommunityName(), m.getPostId(), m.getCommentId(), m.getExcerpt(),
                 m.getReadAt(), m.getCreatedAt());
     }
 }

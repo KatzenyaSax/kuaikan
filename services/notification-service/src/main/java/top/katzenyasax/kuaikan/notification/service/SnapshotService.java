@@ -4,13 +4,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import top.katzenyasax.kuaikan.common.api.Result;
+import top.katzenyasax.kuaikan.notification.feign.CommunityDirectoryClient;
 import top.katzenyasax.kuaikan.notification.feign.ContentTargetClient;
 import top.katzenyasax.kuaikan.notification.feign.UserDirectoryClient;
 import top.katzenyasax.kuaikan.notification.feign.dto.TargetView;
+import top.katzenyasax.kuaikan.notification.feign.dto.CommunityRef;
 import top.katzenyasax.kuaikan.notification.feign.dto.UserSummaryView;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 给消息拼快照：拉 actor 的昵称头像、拉 target 的标题摘录。
@@ -58,16 +62,23 @@ public class SnapshotService {
     public record Actor(Status status, Long id, String nickname, String avatarUrl) {
     }
 
-    public record Target(Status status, Long ownerId, String title, String excerpt) {
+    public record Target(Status status, Long ownerId, String title, String excerpt,
+                         Long postId, Long communityId) {
     }
 
     private final UserDirectoryClient userDirectoryClient;
     private final ContentTargetClient contentTargetClient;
+    private final CommunityDirectoryClient communityDirectoryClient;
+
+    /** 社群名不可变，可以永久缓存。上限防止无限增长 */
+    private final Map<Long, String> communityNameCache = new ConcurrentHashMap<>();
 
     public SnapshotService(UserDirectoryClient userDirectoryClient,
-                           ContentTargetClient contentTargetClient) {
+                           ContentTargetClient contentTargetClient,
+                           CommunityDirectoryClient communityDirectoryClient) {
         this.userDirectoryClient = userDirectoryClient;
         this.contentTargetClient = contentTargetClient;
+        this.communityDirectoryClient = communityDirectoryClient;
     }
 
     /**
@@ -100,7 +111,7 @@ public class SnapshotService {
      */
     public Target target(String targetType, Long targetId) {
         if (targetType == null || targetId == null) {
-            return new Target(Status.GONE, null, null, null);
+            return new Target(Status.GONE, null, null, null, null, null);
         }
         String type = "POST".equals(targetType) ? "post" : "comment";
         Result<TargetView> result = contentTargetClient.target(type, targetId);
@@ -110,9 +121,39 @@ public class SnapshotService {
         }
         if (!view.exists()) {
             // 内容被删了。消息仍然发（"曾有人赞过你"是事实），只是点过去看不到
-            return new Target(Status.GONE, view.ownerId(), null, null);
+            return new Target(Status.GONE, view.ownerId(), null, null, view.postId(), view.communityId());
         }
-        return new Target(Status.OK, view.ownerId(), view.title(), view.excerpt());
+        return new Target(Status.OK, view.ownerId(), view.title(), view.excerpt(),
+                view.postId(), view.communityId());
+    }
+
+    /**
+     * 社群 id -> 名字。
+     *
+     * <b>可以永久缓存</b>：社群名创建后不可改（它就是 URL），不存在失效问题。
+     * 上限 1000 条防止无限增长——一个实例处理过的社群通常只有几十个。
+     */
+    public String communityName(Long communityId) {
+        if (communityId == null) {
+            return null;
+        }
+        String cached = communityNameCache.get(communityId);
+        if (cached != null) {
+            return cached;
+        }
+        Result<CommunityRef> result = communityDirectoryClient.byId(communityId);
+        CommunityRef ref = result == null ? null : result.data();
+        if (ref == null) {
+            throw new IllegalStateException("社群查询返回空 body communityId=" + communityId);
+        }
+        if (!ref.exists() || ref.name() == null) {
+            // 社群被删了。消息照发，只是点不进去
+            return null;
+        }
+        if (communityNameCache.size() < 1000) {
+            communityNameCache.put(communityId, ref.name());
+        }
+        return ref.name();
     }
 
     /** 快照里冗长的正文只留一小段 */

@@ -42,7 +42,8 @@ public class InternalTargetController {
                 // 已删除的帖子对外一律"不存在"（与详情接口的语义保持一致）
                 yield (post == null || post.getStatus() != Post.STATUS_NORMAL)
                         ? TargetView.missing()
-                        : TargetView.of(post.getAuthorId(), post.getTitle(), excerpt(post.getBody()));
+                        : TargetView.of(post.getAuthorId(), post.getTitle(), excerpt(post.getBody()),
+                                post.getId(), post.getCommunityId());
             }
             case "comment" -> {
                 Comment comment = commentMapper.selectById(id);
@@ -54,7 +55,9 @@ public class InternalTargetController {
                 Post parent = postMapper.selectById(comment.getPostId());
                 yield TargetView.of(comment.getAuthorId(),
                         parent == null ? null : parent.getTitle(),
-                        excerpt(comment.getBody()));
+                        excerpt(comment.getBody()),
+                        comment.getPostId(),
+                        parent == null ? null : parent.getCommunityId());
             }
             default -> throw new BizException(CommonErrorCode.PARAM_INVALID,
                     "目标类型只能是 post 或 comment");

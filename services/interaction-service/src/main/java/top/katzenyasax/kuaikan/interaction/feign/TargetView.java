@@ -9,4 +9,9 @@ package top.katzenyasax.kuaikan.interaction.feign;
  * （MQ 事件是另一回事——那是双向契约，所以放 common 共享。）
  */
 public record TargetView(boolean exists, String ownerId) {
+    /*
+     * content 侧 P4.3 追加了 title / excerpt / postId / communityId。
+     * 这里刻意不跟着加：interaction 用不到它们，而反序列化时会忽略未知字段。
+     * "我理解的你"只包含我需要的字段——这也是不复用远端 DTO 的好处。
+     */
 }

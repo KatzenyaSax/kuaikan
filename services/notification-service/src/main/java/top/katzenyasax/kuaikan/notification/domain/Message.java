@@ -42,6 +42,10 @@ public class Message {
     private String targetType;
     private Long targetId;
     private String targetTitle;
+    /** 跳转用的三个字段。快照，不随目标变化 */
+    private String communityName;
+    private Long postId;
+    private Long commentId;
     private String excerpt;
 
     private LocalDateTime readAt;
@@ -69,6 +73,12 @@ public class Message {
     public void setTargetId(Long targetId) { this.targetId = targetId; }
     public String getTargetTitle() { return targetTitle; }
     public void setTargetTitle(String targetTitle) { this.targetTitle = targetTitle; }
+    public String getCommunityName() { return communityName; }
+    public void setCommunityName(String communityName) { this.communityName = communityName; }
+    public Long getPostId() { return postId; }
+    public void setPostId(Long postId) { this.postId = postId; }
+    public Long getCommentId() { return commentId; }
+    public void setCommentId(Long commentId) { this.commentId = commentId; }
     public String getExcerpt() { return excerpt; }
     public void setExcerpt(String excerpt) { this.excerpt = excerpt; }
     public LocalDateTime getReadAt() { return readAt; }

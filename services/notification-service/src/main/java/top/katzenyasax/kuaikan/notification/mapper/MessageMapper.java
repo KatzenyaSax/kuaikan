@@ -28,10 +28,12 @@ public interface MessageMapper extends BaseMapper<Message> {
     @Insert("""
             INSERT IGNORE INTO t_message
               (id, user_id, type, source_event_id, actor_id, actor_nickname, actor_avatar,
-               target_type, target_id, target_title, excerpt, read_at, created_at)
+               target_type, target_id, target_title, community_name, post_id, comment_id,
+               excerpt, read_at, created_at)
             VALUES
               (#{id}, #{userId}, #{type}, #{sourceEventId}, #{actorId}, #{actorNickname}, #{actorAvatar},
-               #{targetType}, #{targetId}, #{targetTitle}, #{excerpt}, #{readAt}, #{createdAt})
+               #{targetType}, #{targetId}, #{targetTitle}, #{communityName}, #{postId}, #{commentId},
+               #{excerpt}, #{readAt}, #{createdAt})
             """)
     int insertIgnore(Message row);
 

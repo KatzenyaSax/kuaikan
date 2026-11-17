@@ -112,6 +112,9 @@ public class MessageService {
         row.setTargetId(parse(event.targetId()));
         row.setTargetTitle(SnapshotService.trim(target.title(), 255));
         row.setExcerpt(trimExcerpt(target.excerpt()));
+        fillNavigation(row, target.postId(), target.communityId(),
+                // 点赞的是评论时，直接滚到那条评论；点赞帖子时没有锚点
+                isCommentTarget(event) ? parse(event.targetId()) : null);
         row.setCreatedAt(LocalDateTime.now().truncatedTo(ChronoUnit.MILLIS));
 
         if (messageMapper.insertIgnore(row) == 0) {
@@ -221,6 +224,9 @@ public class MessageService {
             row.setTargetId(parse(event.postId()));
             row.setTargetTitle(SnapshotService.trim(target.title(), 255));
             row.setExcerpt(trimExcerpt(event.excerpt()));
+            // 落在**新评论**上；commentId 在 P4.3 的载荷里已有，不需要额外查询
+            fillNavigation(row, parse(event.postId()), parse(event.communityId()),
+                    parse(event.commentId()));
             row.setCreatedAt(LocalDateTime.now().truncatedTo(ChronoUnit.MILLIS));
             if (messageMapper.insertIgnore(row) == 1) {
                 created += 1;
@@ -230,6 +236,32 @@ public class MessageService {
         log.info("评论消息已落库 postId={} actor={} 接收人={} 新建={}",
                 event.postId(), actor.nickname(), recipients.size(), created);
         return true;
+    }
+
+    private static boolean isCommentTarget(InteractionChange event) {
+        return event.targetType() == InteractionChange.TargetType.COMMENT;
+    }
+
+    /**
+     * 填跳转需要的三个字段。
+     *
+     * <b>为什么在写入时固化，而不是读的时候现查</b>：
+     * 读一页消息要拼 N 个 URL，现查就是 N 次跨服务调用，
+     * 违反不变量 2（读路径禁止跨服务同步调用）。而消息本来就是快照。
+     *
+     * 社群名解析失败不能连累消息落库——名字拿不到就没有跳转，消息本身仍然有意义。
+     */
+    private void fillNavigation(Message row, Long postId, Long communityId, Long commentId) {
+        row.setPostId(postId);
+        row.setCommentId(commentId);
+        if (communityId == null) {
+            return;
+        }
+        try {
+            row.setCommunityName(snapshotService.communityName(communityId));
+        } catch (Exception e) {
+            log.warn("社群名解析失败，本条消息没有跳转 communityId={} 原因={}", communityId, e.toString());
+        }
     }
 
     /** 未读四类。没出现过的类型补 0，让前端不用判 undefined */
