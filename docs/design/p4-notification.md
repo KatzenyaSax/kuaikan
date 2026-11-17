@@ -208,6 +208,13 @@ UPDATE t_message SET read_at = NOW(3) WHERE user_id = ? AND read_at IS NULL;
 
 ### 链路 4：`@` 解析（content 内，写评论时）
 
+> **P4.1 落地时的两处修正**：
+> 1. 解析结果**落库**到 `t_comment.mentions`（JSON，元素 `{id, nickname}`），
+>    不只放进事件。原因：读评论的人需要知道哪几个 @ 可点，不落库就得让每个读者重解析，
+>    还会因后来的改名/退社得出不同结论。
+> 2. 解析从 `@Transactional` 里移到事务外（`TransactionTemplate` 只包写入段）。
+>    否则数据库连接会横跨 1+N 次远程调用。详见 `docs/project.md` 的 P4.1 一节。
+
 ```
 正文正则提取 @昵称 候选（通常 1~3 个）
   → user/internal/users/by-nicknames?names=a,b,c → [(id, nickname)]
