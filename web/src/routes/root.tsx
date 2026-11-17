@@ -376,7 +376,7 @@ function EmptyTab({ tab }: { tab: MessageType }) {
     LIKE: '还没有人赞过你的内容',
     COMMENT: '还没有评论消息',
     MENTION: '还没有人 @ 你',
-    SYSTEM: '系统通知还没开始发',
+    SYSTEM: '还没有系统通知',
   }
   return (
     <p className="px-5 py-14 text-center text-aux text-muted-foreground">{hint[tab]}</p>
