@@ -41,8 +41,15 @@ spring:
 
 kuaikan:
   mq:
-    # 只用 Remoting 接入，不走 Proxy
+    # 只用 Remoting 接入，不走 Proxy。投递端（common-outbox）与消费端共用这一个来源
     namesrv-addr: ${ROCKETMQ_NAMESRV:127.0.0.1:9876}
+  outbox:
+    # 评论/回复写入后发 CommentCreated。与评论插入在同一个本地事务里
+    enabled: true
+    relay-interval: 1s
+    batch-size: 100
+    max-retry: 20
+    keep-delivered: 7d
   reconcile:
     # 计数对账周期。它兜住三类事件管不了的情况：
     # 事件超过重试上限被放弃、消费逻辑有 bug、有人手工改过计数

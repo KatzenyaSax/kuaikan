@@ -53,6 +53,8 @@ kuaikan:
     # 只用 Remoting 接入，不走 Proxy
     namesrv-addr: ${ROCKETMQ_NAMESRV:127.0.0.1:9876}
   outbox:
+    # 必须显式打开：误开的代价是每秒扫一张不存在的表，比漏开更吵
+    enabled: true
     # 轮询投递。**不做"提交后立即发"**：那要两套代码路径（立即发 + 轮询兜底），
     # 而轮询最坏延迟 1 秒，远小于计数允许的 5 秒滞后。一条路径、可测、进程崩溃也不丢。
     relay-interval: 1s

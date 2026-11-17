@@ -11,12 +11,12 @@ import top.katzenyasax.kuaikan.common.error.BizException;
 import top.katzenyasax.kuaikan.common.error.CommonErrorCode;
 import top.katzenyasax.kuaikan.common.mq.InteractionChange;
 import top.katzenyasax.kuaikan.common.mq.Topics;
+import top.katzenyasax.kuaikan.common.outbox.OutboxEvent;
+import top.katzenyasax.kuaikan.common.outbox.OutboxMapper;
 import top.katzenyasax.kuaikan.interaction.domain.Interaction;
-import top.katzenyasax.kuaikan.interaction.domain.OutboxEvent;
 import top.katzenyasax.kuaikan.interaction.feign.ContentTargetClient;
 import top.katzenyasax.kuaikan.interaction.feign.TargetView;
 import top.katzenyasax.kuaikan.interaction.mapper.InteractionMapper;
-import top.katzenyasax.kuaikan.interaction.mapper.OutboxMapper;
 import top.katzenyasax.kuaikan.interaction.web.dto.InteractionState;
 import top.katzenyasax.kuaikan.interaction.web.dto.TargetCount;
 

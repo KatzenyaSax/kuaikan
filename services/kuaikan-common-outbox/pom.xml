@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>top.katzenyasax.kuaikan</groupId>
+        <artifactId>kuaikan-services</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>kuaikan-common-outbox</artifactId>
+    <name>kuaikan-common-outbox</name>
+    <description>
+        本地消息表（outbox）投递基础设施。P4.0 从 interaction-service 抽出来。
+
+        放这里的理由不是"优雅"，是这份代码的正确性全靠细节：
+        eventId 必须与业务写入同事务生成、投递时原样发出不回查业务表、
+        1 秒轮询、指数退避、20 次后放弃。复制第二份的那天起，
+        两边就会开始不一样。
+
+        它是基础设施而不是业务（不违反「common 只放非业务」）：
+        t_outbox 没有任何领域语义，只有"待办事项"这一件事。
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>top.katzenyasax.kuaikan</groupId>
+            <artifactId>kuaikan-common</artifactId>
+        </dependency>
+
+        <!-- 声明为 optional：只有真正要发事件的服务才会引 rocketmq-client 与 mybatis-plus。
+             不引的服务里 OutboxAutoConfiguration 由 @ConditionalOnClass 整体跳过。 -->
+        <dependency>
+            <groupId>org.apache.rocketmq</groupId>
+            <artifactId>rocketmq-client</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+    </dependencies>
+</project>

@@ -1,4 +1,4 @@
-package top.katzenyasax.kuaikan.interaction.domain;
+package top.katzenyasax.kuaikan.common.outbox;
 
 import com.baomidou.mybatisplus.annotation.FieldFill;
 import com.baomidou.mybatisplus.annotation.IdType;
@@ -8,23 +8,34 @@ import com.baomidou.mybatisplus.annotation.TableName;
 
 import java.time.LocalDateTime;
 
-/** 待投递事件。表结构见 V1 迁移的注释 */
+/**
+ * 待投递事件。`t_outbox` 一行的实体。
+ *
+ * <b>每个服务在自己的 schema 里建自己的 {@code t_outbox}</b>，结构完全一致。
+ * 模块只提供代码，不提供迁移脚本 —— 因为 outbox 必须与业务数据在**同一个库、
+ * 同一个事务**里，跨服务共用一张表就回到了共享数据库。
+ *
+ * 建表语句见任一使用者服务的 Flyway 迁移（如 interaction V1、content V4）。
+ */
 @TableName("t_outbox")
 public class OutboxEvent {
 
+    /** 待投递 */
     public static final int STATUS_PENDING = 0;
+    /** 已投递 */
     public static final int STATUS_SENT = 1;
+    /** 超过重试上限，放弃。放弃后事件就真丢了 —— 这正是对账不是可选项的原因 */
     public static final int STATUS_ABANDONED = 2;
 
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
-    /** 重投时保持不变 —— 这是消费端幂等的前提 */
+    /** 重投时保持不变 —— 这是消费端幂等的前提。换了 id 就等于换了一个事件 */
     private String eventId;
 
     private String topic;
 
-    /** 序列化后的事件快照 */
+    /** 序列化后的事件快照。投递时原样发出，不回查业务表 */
     private String payload;
 
     /** 见 STATUS_* */

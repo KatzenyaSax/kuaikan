@@ -25,6 +25,11 @@
             <groupId>top.katzenyasax.kuaikan</groupId>
             <artifactId>kuaikan-common-web</artifactId>
         </dependency>
+        <!-- outbox 投递（P4.0 从本服务抽出，见 kuaikan-common-outbox 的说明） -->
+        <dependency>
+            <groupId>top.katzenyasax.kuaikan</groupId>
+            <artifactId>kuaikan-common-outbox</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>

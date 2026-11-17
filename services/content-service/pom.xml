@@ -25,6 +25,11 @@
             <groupId>top.katzenyasax.kuaikan</groupId>
             <artifactId>kuaikan-common-web</artifactId>
         </dependency>
+        <!-- 发 CommentCreated（P4）。outbox 与评论插入必须在同一事务里 -->
+        <dependency>
+            <groupId>top.katzenyasax.kuaikan</groupId>
+            <artifactId>kuaikan-common-outbox</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>

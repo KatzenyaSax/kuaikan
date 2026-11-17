@@ -31,6 +31,18 @@ public final class Topics {
      */
     public static final String INTERACTION_CHANGED = "kuaikan_interaction_changed";
 
+    /**
+     * 评论 / 回复的发布。载荷见 {@code CommentCreated}。
+     *
+     * <b>为什么由 content 发而不是 interaction</b>：评论是**内容**，不是关系。
+     * 边界按聚合归属划，不按产品概念划（见 architecture §5 的那一节）。
+     *
+     * <b>为什么不在 P3 就建</b>：P3 时没有消费者，建了也只是空转。
+     * 评论数走的是 content 的本地事务，压根不需要广播。
+     * 有消费方（notification）才是它存在的理由。
+     */
+    public static final String COMMENT_CREATED = "kuaikan_comment_created";
+
     private Topics() {
     }
 }

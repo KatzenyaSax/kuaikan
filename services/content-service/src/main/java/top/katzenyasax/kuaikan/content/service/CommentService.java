@@ -1,5 +1,6 @@
 package top.katzenyasax.kuaikan.content.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -10,6 +11,10 @@ import top.katzenyasax.kuaikan.common.error.BizException;
 import top.katzenyasax.kuaikan.common.error.CommonErrorCode;
 import top.katzenyasax.kuaikan.common.error.CommunityErrorCode;
 import top.katzenyasax.kuaikan.common.error.ContentErrorCode;
+import top.katzenyasax.kuaikan.common.mq.CommentCreated;
+import top.katzenyasax.kuaikan.common.mq.Topics;
+import top.katzenyasax.kuaikan.common.outbox.OutboxEvent;
+import top.katzenyasax.kuaikan.common.outbox.OutboxMapper;
 import top.katzenyasax.kuaikan.content.domain.Comment;
 import top.katzenyasax.kuaikan.content.domain.Post;
 import top.katzenyasax.kuaikan.content.feign.CommunityMembershipClient;
@@ -25,6 +30,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * 评论。
@@ -52,13 +58,19 @@ public class CommentService {
     private final CommentMapper commentMapper;
     private final PostMapper postMapper;
     private final CommunityMembershipClient membershipClient;
+    private final OutboxMapper outboxMapper;
+    private final ObjectMapper objectMapper;
 
     public CommentService(CommentMapper commentMapper,
                           PostMapper postMapper,
-                          CommunityMembershipClient membershipClient) {
+                          CommunityMembershipClient membershipClient,
+                          OutboxMapper outboxMapper,
+                          ObjectMapper objectMapper) {
         this.commentMapper = commentMapper;
         this.postMapper = postMapper;
         this.membershipClient = membershipClient;
+        this.outboxMapper = outboxMapper;
+        this.objectMapper = objectMapper;
     }
 
     /**
@@ -107,6 +119,11 @@ public class CommentService {
         if (rootId != null) {
             commentMapper.incrementReplyCount(rootId);
         }
+
+        // 与上面的写入在**同一个本地事务**里。事务提交 = 事件一定被记住，
+        // 投递由 OutboxRelay 轮询负责，失败可重试。
+        // 若这里抛异常，整个事务回滚 —— 宁可不发消息，也不留下"评论在但事件丢"的状态。
+        enqueueCommentCreated(post, comment);
 
         log.info("评论已发布 id={} postId={} rootId={} authorId={}",
                 comment.getId(), postId, rootId, userId);
@@ -257,5 +274,51 @@ public class CommentService {
 
     private static long toMillis(LocalDateTime t) {
         return t.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+    }
+
+    /**
+     * 写一条 {@code CommentCreated} 到 outbox。
+     *
+     * <b>接收人由消费者算，这里只报事实</b>：谁该收到消息（帖子作者 / 被回复者 / 被 @ 的人）
+     * 是产品规则，属于 notification 的判断；content 只负责如实描述"发生了什么"。
+     * 唯一例外是 {@code postAuthorId} 与 {@code replyToUserId}——它们本来就是评论的属性。
+     */
+    private void enqueueCommentCreated(Post post, Comment comment) {
+        // @ 解析在 P4.1 接上。这里先给空列表：字段先立住，比以后改契约便宜得多。
+        List<String> mentionUserIds = List.of();
+
+        CommentCreated event = new CommentCreated(
+                UUID.randomUUID().toString(),
+                System.currentTimeMillis(),
+                String.valueOf(comment.getId()),
+                String.valueOf(comment.getPostId()),
+                String.valueOf(post.getCommunityId()),
+                String.valueOf(post.getAuthorId()),
+                comment.getReplyToUserId() == null ? null : String.valueOf(comment.getReplyToUserId()),
+                mentionUserIds,
+                excerpt(comment.getBody()));
+
+        OutboxEvent row = new OutboxEvent();
+        row.setEventId(event.eventId());
+        row.setTopic(Topics.COMMENT_CREATED);
+        try {
+            row.setPayload(objectMapper.writeValueAsString(event));
+        } catch (Exception e) {
+            // 序列化失败说明契约本身有问题，不能静默吞掉：整个事务回滚
+            throw new IllegalStateException("事件序列化失败", e);
+        }
+        row.setStatus(OutboxEvent.STATUS_PENDING);
+        row.setRetryCount(0);
+        row.setNextRetryAt(LocalDateTime.now());
+        outboxMapper.insert(row);
+    }
+
+    /** 消息快照只要一小段，不需要整篇正文 */
+    private static String excerpt(String body) {
+        if (body == null) {
+            return null;
+        }
+        String flat = body.strip();
+        return flat.length() <= 120 ? flat : flat.substring(0, 120) + "…";
     }
 }
