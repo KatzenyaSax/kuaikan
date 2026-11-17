@@ -149,7 +149,7 @@ public class MentionResolver {
     private boolean isMember(Long communityId, Long userId) {
         try {
             Result<MembershipView> result = membershipClient.membership(communityId, userId);
-            return result != null && result.data() != null && result.data().joined();
+            return result != null && result.data() != null && result.data().member();
         } catch (Exception e) {
             // 同样是降级：不确定就当没 @
             log.warn("成员校验失败，跳过该 @ communityId={} userId={} 原因={}",
