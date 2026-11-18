@@ -153,6 +153,9 @@ POST_ID=""
 TOKEN=""
 TOKEN2=""
 FIXTURE_READY=0
+# 夹具失败时要能说清是哪一步。原来只报"无法 SSH 或建号失败"，
+# 遇到偶发失败根本没法定位，只能重跑——正好违反"失败先读详情"。
+FIXTURE_STEP=""
 
 cleanup() {
   if [ -n "$USER_ID" ]; then
@@ -193,7 +196,9 @@ trap cleanup EXIT
 
 prepare_fixture() {
   [ "$FIXTURE_READY" = "1" ] && return 0
+  FIXTURE_STEP="SSH"
   ssh_run 'true' || return 1
+  FIXTURE_STEP="建测试账号"
   out=$(sql_exec "INSERT INTO kuaikan_user.t_user (id, email, password_hash, nickname, roles, status)
       VALUES (FLOOR(RAND()*900000000000000000)+100000000000000000, '$EMAIL', '$FIXTURE_HASH', 'e2e-p4', 'USER', 1),
              (FLOOR(RAND()*900000000000000000)+100000000000000000, '$EMAIL2', '$FIXTURE_HASH', 'e2e-p4b', 'USER', 1);
@@ -203,14 +208,17 @@ prepare_fixture() {
   USER_ID2=$(printf '%s' "$out" | sed -n '2p' | tr -d '\r\n ')
   [ -n "$USER_ID" ] && [ -n "$USER_ID2" ] || return 1
 
+  FIXTURE_STEP="账号 1 登录"
   TOKEN=$(curl -s --max-time 15 -X POST "$SITE/api/user/auth/login" \
     -H 'Content-Type: application/json' \
     -d "{\"email\":\"$EMAIL\",\"password\":\"$FIXTURE_PASS\"}" | json_field 'data.accessToken')
+  FIXTURE_STEP="账号 2 登录"
   TOKEN2=$(curl -s --max-time 15 -X POST "$SITE/api/user/auth/login" \
     -H 'Content-Type: application/json' \
     -d "{\"email\":\"$EMAIL2\",\"password\":\"$FIXTURE_PASS\"}" | json_field 'data.accessToken')
   [ -n "$TOKEN" ] && [ -n "$TOKEN2" ] || return 1
 
+  FIXTURE_STEP="建社群"
   COMMUNITY_ID=$(curl -s --max-time 15 -X POST "$SITE/api/community/communities" \
     -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
     -d "{\"name\":\"$COMMUNITY_NAME\"}" | json_field 'data.id')
@@ -222,6 +230,7 @@ prepare_fixture() {
     "$SITE/api/community/communities/$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))" "$COMMUNITY_NAME")/membership" \
     -H "Authorization: Bearer $TOKEN2"
 
+  FIXTURE_STEP="发帖"
   POST_ID=$(curl -s --max-time 15 -X POST "$SITE/api/content/posts" \
     -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
     -d "{\"communityId\":\"$COMMUNITY_ID\",\"title\":\"e2e P4 帖\",\"body\":\"正文\"}" \
@@ -229,6 +238,7 @@ prepare_fixture() {
   [ -n "$POST_ID" ] || return 1
 
   info "夹具：userId=$USER_ID / $USER_ID2  postId=$POST_ID"
+  FIXTURE_STEP=""
   FIXTURE_READY=1
   return 0
 }
@@ -274,7 +284,7 @@ if want_layer l2; then
   section "L2 写入与幂等"
 
   if ! prepare_fixture; then
-    ng "创建夹具失败" "无法 SSH 或建号失败"
+    ng "创建夹具失败" "失败在：${FIXTURE_STEP:-未知}"
   else
     # ① 先证明产生路径确实通，后面的「不产生」才有意义
     drop_like "$TOKEN2" "$POST_ID"
@@ -399,7 +409,7 @@ if want_layer l3; then
   section "L3 未读与已读"
 
   if ! prepare_fixture; then
-    ng "创建夹具失败" "无法 SSH 或建号失败"
+    ng "创建夹具失败" "失败在：${FIXTURE_STEP:-未知}"
   else
     total=$(unread_total "$TOKEN")
     [ -n "$total" ] && ok "未读接口可用（total=${total}）" || ng "未读接口不可用"
@@ -452,7 +462,7 @@ if want_layer l4; then
   section "L4 单条已读"
 
   if ! prepare_fixture; then
-    ng "创建夹具失败" "无法 SSH 或建号失败"
+    ng "创建夹具失败" "失败在：${FIXTURE_STEP:-未知}"
   else
     # L4 需要在"只有一条未读"的干净状态下测。
     # 前面几层共用同一套夹具（FIXTURE_READY 是全局的），
