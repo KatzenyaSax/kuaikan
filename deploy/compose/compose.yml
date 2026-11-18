@@ -445,6 +445,9 @@ services:
     logging: *default-logging
     environment:
       <<: *default-app-env
+      # rank 只连 Redis：它是纯投影，**没有 datasource**（不拥有任何事实）
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?}
     depends_on:
       <<: *default-app-depends
       redis:
