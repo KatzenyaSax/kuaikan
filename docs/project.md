@@ -442,6 +442,55 @@ V2 上线后的一段时间里，评论/@ 消息仍然点不动——因为**那
 2. **目标若是回复**，它藏在「展开 N 条回复」里 → 退化为停在帖子页，
    **不自动展开**。自动展开别人没要求的回复比不滚过去更打扰
 
+### P5.0 热度所需的数据基础（已完成）
+
+| 件 | 位置 |
+|---|---|
+| `t_post` 加 `view_count` / `share_count` / `last_interaction_at` + 两个候选索引 | content V6 |
+| `idx_kind_type_created` | interaction V2 |
+| `PostViewCounter`（Redis 缓冲 + 60s 回写） | content |
+| `POST /posts/{id}/share` | content（游客可调） |
+| `last_interaction_at` 的两个写入者 | 消费互动事件 / 评论写入（同事务） |
+
+#### 浏览量为什么不直接 UPDATE
+
+让 `GET /posts/{id}` 变成写操作会同时踩三件事：
+
+1. GET 语义被破坏——不能缓存、不能重试
+2. 热点帖每看一次打一次 MySQL
+3. **与缓存根本不兼容**：nginx 的 L0 与 Caffeine 的 L1 命中时请求到不了服务
+
+所以走 Redis 缓冲：`INCR view:post:{id}` + `SADD view:dirty {id}`，每 60 秒
+用 `getAndDelete` 取出增量回写。用 SET 记脏 id 而不是 `SCAN`（生产 Redis 上危险）；
+用 `getAndDelete` 而不是 `GET` 再 `DEL`（后者会丢并发增量）。
+
+写库失败或 Redis 挂掉丢一批——**这就是"不要求精确"的含义**，也是它敢这么做的原因。
+
+分享反而直接 UPDATE：低频动作，没有浏览那种热点写问题。**不为统一而统一。**
+
+#### 一个静默失败的配置前缀
+
+写成了 `spring.redis`，而 Spring Boot 3 已把它移到 `spring.data.redis`。
+**旧前缀不会报错，是被静默忽略的**——客户端回落到 `localhost:6379`，
+直到第一次使用才报 `Unable to connect to Redis`。
+
+更麻烦的是：浏览量计数是**显式降级**的（失败只记 WARN），所以页面照常工作、
+帖子照常打开，只有 `viewCount` 一直是 0。这类"配置写错但功能看起来正常"
+的问题，靠看页面发现不了，只能靠盯着那个数字。
+
+#### `last_interaction_at` 只在更晚时更新
+
+```sql
+UPDATE t_post SET last_interaction_at = ?
+WHERE id = ? AND (last_interaction_at IS NULL OR last_interaction_at < ?)
+```
+
+并发下两个事件可能乱序到达，不加条件会把时间往回拨，让帖子凭空"变旧"。
+
+点赞的是**评论**时，时间要记到它所属的**帖子**上（热度对帖子算）——
+多一次 SELECT，可以接受。任何失败只记 WARN：**计数投影已经成功了**，
+不能让这一列拖累整条事件重投，否则计数会被重复加上去。
+
 ### P4.4 系统消息 + 折叠 + 验收（已完成）
 
 | 件 | 位置 |
