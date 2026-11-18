@@ -80,6 +80,42 @@ public interface PostMapper extends BaseMapper<Post> {
     int incrementShareCount(@Param("id") Long id);
 
     /**
+     * 热榜候选帖：窗口内**创建**或**有过互动**的帖子。
+     *
+     * <b>为什么写成 UNION 而不是 OR</b>：`WHERE a >= x OR b >= y` 在 MySQL 里
+     * 通常退化成全表扫描。拆成两条各走各的索引（`idx_status_created` /
+     * `idx_status_last_interaction`）再 UNION 去重，两个分支都能用上索引。
+     *
+     * <b>为什么用 id 游标而不是 offset</b>：不变量 11。这里按 id 倒序翻页，
+     * 与"最新帖"无关——候选集不需要有意义的时间序，只需要**不重不漏**。
+     *
+     * 窗口 `since` 由调用方按"半衰期的若干倍"算出来（见 p5-rank.md §3），
+     * 不是拍脑袋的一刀切。
+     */
+    @Select("""
+            <script>
+            SELECT * FROM (
+              SELECT id, title, author_id, community_id, comment_count, like_count,
+                     favorite_count, view_count, share_count, last_interaction_at, created_at
+              FROM t_post
+              WHERE status = 1 AND created_at &gt;= #{since}
+              <if test="cursor != null"> AND id &lt; #{cursor} </if>
+              UNION
+              SELECT id, title, author_id, community_id, comment_count, like_count,
+                     favorite_count, view_count, share_count, last_interaction_at, created_at
+              FROM t_post
+              WHERE status = 1 AND last_interaction_at &gt;= #{since}
+              <if test="cursor != null"> AND id &lt; #{cursor} </if>
+            ) x
+            ORDER BY x.id DESC
+            LIMIT #{limit}
+            </script>
+            """)
+    List<Post> rankCandidates(@Param("since") LocalDateTime since,
+                              @Param("cursor") Long cursor,
+                              @Param("limit") int limit);
+
+    /**
      * 刷新最后互动时刻。热度用它当衰减基准。
      *
      * <b>只在更晚时更新</b>：并发下两个事件可能乱序到达，

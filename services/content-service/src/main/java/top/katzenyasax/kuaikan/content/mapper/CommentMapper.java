@@ -76,4 +76,28 @@ public interface CommentMapper extends BaseMapper<Comment> {
             WHERE id = #{id} AND reply_count > 0
             """)
     int decrementReplyCount(@Param("id") Long id);
+
+    /**
+     * 一批帖子在窗口内新增的可见评论数。
+     *
+     * <b>只算 status=1</b>：tombstone（status=0）是"已删除但有回复"的占位，
+     * 它不该算作新增互动——否则删一条评论反而让热度涨。
+     *
+     * 按 post_id 分组返回，没出现的帖子由调用方补 0。
+     */
+    @Select("""
+            <script>
+            SELECT post_id AS postId, COUNT(*) AS cnt FROM t_comment
+            WHERE status = 1 AND created_at &gt;= #{since}
+              AND post_id IN
+              <foreach collection="postIds" item="pid" open="(" separator="," close=")">#{pid}</foreach>
+            GROUP BY post_id
+            </script>
+            """)
+    List<PostCommentCount> recentCommentCounts(@Param("postIds") List<Long> postIds,
+                                               @Param("since") LocalDateTime since);
+
+    /** 计数载体。字段名与 SQL 别名一致 */
+    record PostCommentCount(Long postId, long cnt) {
+    }
 }

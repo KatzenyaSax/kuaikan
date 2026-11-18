@@ -5,7 +5,12 @@ import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 import top.katzenyasax.kuaikan.interaction.domain.Interaction;
+import top.katzenyasax.kuaikan.interaction.web.dto.TargetDelta;
+
+import java.time.LocalDateTime;
+import java.util.List;
 
 @Mapper
 public interface InteractionMapper extends BaseMapper<Interaction> {
@@ -41,4 +46,32 @@ public interface InteractionMapper extends BaseMapper<Interaction> {
                        @Param("kind") Integer kind,
                        @Param("targetType") Integer targetType,
                        @Param("targetId") Long targetId);
+
+    /**
+     * 窗口内新增的某种互动数，按目标分组。
+     *
+     * <b>必须在 WHERE 里带上 kind 和 target_type</b>：这样正好命中
+     * {@code idx_kind_type_created (kind, target_type, created_at, target_id)} 的前缀，
+     * 范围扫描只覆盖窗口内的行。
+     *
+     * 如果去掉 kind 条件、想一次查出两种 kind，索引的第一列就用不上了，
+     * 会退化成整表扫描——所以调用方按 kind 调两次，不图省一次往返。
+     *
+     * `target_id IN (...)` 在 created_at 这个范围列之后，所以它只起过滤作用、
+     * 不能被索引定位。这是有意的：窗口内的行本来就都要读，
+     * 而所有这些列都在索引里，查询是**覆盖扫描**，不回表。
+     */
+    @Select("""
+            <script>
+            SELECT target_id AS targetId, COUNT(*) AS cnt FROM t_interaction
+            WHERE kind = #{kind} AND target_type = #{targetType} AND created_at &gt;= #{since}
+              AND target_id IN
+              <foreach collection="targetIds" item="tid" open="(" separator="," close=")">#{tid}</foreach>
+            GROUP BY target_id
+            </script>
+            """)
+    List<TargetDelta> countSince(@Param("kind") Integer kind,
+                                 @Param("targetType") Integer targetType,
+                                 @Param("since") LocalDateTime since,
+                                 @Param("targetIds") List<Long> targetIds);
 }
