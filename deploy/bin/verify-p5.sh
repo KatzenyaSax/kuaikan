@@ -361,23 +361,40 @@ print('ok' if all(scores[i] >= scores[i+1] for i in range(len(scores)-1)) else '
   # 切换的原子性：重建期间并发读，**任何一条都不能缺标题**
   # 这正是版本化要解决的问题——RENAME 两个 key 之间会出现"新分数配旧标题"
   trigger_rebuild >/dev/null 2>&1 &
-  # -w '\n' 是必须的：curl 输出完不加换行，50 个 JSON 会粘成一行，
-  # json.loads 解析失败会被误判成"读到了不完整的条目"——一次彻头彻尾的假红。
-  bad=$(seq 1 50 | xargs -P 10 -I{} curl -s -w '\n' --max-time 10 "$SITE/api/rank/hot?range=day" 2>/dev/null \
-    | python3 -c "
-import json,sys
-bad=0
-for line in sys.stdin:
-    line=line.strip()
-    if not line: continue
-    try: d=json.loads(line)
-    except Exception: bad+=1; continue
-    if d.get('code') != 0: bad+=1; continue
-    for it in (d.get('data') or {}).get('items') or []:
-        if not it.get('title') or not it.get('postId'): bad+=1
-print(bad)
-" 2>/dev/null)
+  # 每个并发请求写**自己的文件**，不能共用一个管道：
+  # 10 个进程往同一个管道写，单次输出超过 PIPE_BUF(4096) 时会交错，
+  # 拼出来的 JSON 必然解析失败——那是假红，不是产品的原子性问题。
+  probe_dir=$(mktemp -d)
+  trigger_rebuild >/dev/null 2>&1 &
+  seq 1 50 | xargs -P 10 -I{} sh -c "curl -s --max-time 10 '$SITE/api/rank/hot?range=day' -o '$probe_dir/{}.json' 2>/dev/null || true"
   wait
+  bad=$(python3 - "$probe_dir" <<'PYEOF'
+import glob, json, os, sys
+bad = 0
+files = glob.glob(os.path.join(sys.argv[1], "*.json"))
+for f in files:
+    raw = open(f, encoding="utf-8", errors="replace").read()
+    if not raw.strip():
+        bad += 1
+        continue
+    try:
+        d = json.loads(raw)
+    except Exception:
+        bad += 1
+        continue
+    if d.get("code") != 0:
+        bad += 1
+        continue
+    for it in (d.get("data") or {}).get("items") or []:
+        if not it.get("title") or not it.get("postId"):
+            bad += 1
+            break
+if len(files) < 50:
+    bad += 50 - len(files)
+print(bad)
+PYEOF
+)
+  rm -rf "$probe_dir"
   [ "${bad:-1}" = "0" ] && ok "重建期间 50 次并发读，0 条缺标题（切换原子）" \
     || ng "重建期间读到了不完整的条目" "${bad} 处"
 
