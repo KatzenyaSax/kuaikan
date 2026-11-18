@@ -47,6 +47,13 @@
         </dependency>
 
         <!-- 只引 api 版，不引 swagger-ui 版：契约端点放在 /internal/api-docs，且不暴露 UI -->
+        <!-- 榜单唯一的数据结构：Redis ZSet + Hash。
+             **没有 datasource** —— rank 不拥有任何事实，它是纯投影 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-api</artifactId>

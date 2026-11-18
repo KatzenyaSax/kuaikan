@@ -112,6 +112,8 @@ kuaikan:
       # 与详情那条一样把路径形状钉死（数字 id + 字面量 share 尾巴），
       # 将来在 /posts/{id}/ 下加写端点不会被顺带放行。
       - POST ^/api/content/posts/[0-9]+/share$
+      # P5.2：热榜游客可读。字面量路径，不会被其他规则误伤
+      - GET /api/rank/hot
 
 management:
   endpoints:

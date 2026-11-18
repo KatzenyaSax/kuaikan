@@ -13,6 +13,52 @@ spring:
         group: ${NACOS_GROUP:DEFAULT_GROUP}
         metadata:
           version: ${APP_VERSION:dev}
+    openfeign:
+      client:
+        config:
+          default:
+            # 重建时要向 content / interaction / community 取数。
+            # 这是定时任务，不是用户请求——超时短一点，失败就保留上一版榜单。
+            connectTimeout: 800
+            readTimeout: 1500
+
+  data:
+    # 前缀必须是 spring.data.redis。Spring Boot 3 移除了 spring.redis，
+    # 写错不会报错而是被静默忽略（P5.0 在 content 上踩过）
+    redis:
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 3s
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 4
+          min-idle: 1
+
+kuaikan:
+  rank:
+    # 重建周期。热榜不是秒级产品，5 分钟完全够，
+    # 而且定时全量重算让整个投影天然可自愈
+    rebuild-interval: 5m
+    # 榜上最多多少条。架构已定 Top 50、不分页
+    top-n: 50
+    # 低于这个分数不上榜。0 分的帖子占满榜比空榜更糟
+    min-score: 0.5
+    # 候选窗口 = span × 半衰期。10 个半衰期后衰减到 1e-3，进不了榜
+    candidate-span: 10
+    # 半衰期（小时）。日榜看重"现在"，周榜看重"这一周"
+    day-half-life-hours: 24
+    week-half-life-hours: 168
+    # 热度因子权重。评论 > 收藏 > 分享 > 点赞 > 浏览。
+    # 前三个走窗口增量，后两个走累计并额外乘 longtail-factor
+    weights:
+      comment: 5
+      favorite: 4
+      share: 3
+      like: 2
+      view: 0.5
+    longtail-factor: 0.3
 
 management:
   endpoints:
