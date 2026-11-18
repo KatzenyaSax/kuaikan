@@ -90,9 +90,11 @@ sql_exec() {
 redis_eval() {
   local b64
   b64=$(printf 'redis-cli --no-auth-warning -a "$REDIS_PASSWORD" %s\n' "$1" | base64 | tr -d '\n')
+  # 脚本写在**宿主机**上，所以要 `sh -s` 从 stdin 喂给容器内的 sh。
+  # 写成 `docker exec ... sh /tmp/p5-redis.sh` 会去找容器里的 /tmp——那里没有这个文件。
   ssh_run "echo '$b64' | base64 -d > /tmp/p5-redis.sh
     set -a; . $ENV_FILE; set +a
-    docker exec -i kuaikan-redis-1 sh /tmp/p5-redis.sh
+    docker exec -i kuaikan-redis-1 sh -s < /tmp/p5-redis.sh
     rm -f /tmp/p5-redis.sh"
 }
 
