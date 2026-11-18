@@ -87,6 +87,21 @@ public class PostService {
     }
 
     /**
+     * 记一次分享，返回新的分享数。
+     *
+     * 直接 UPDATE 而不是走 Redis 缓冲：分享是低频动作（一次点击一次写），
+     * 没有浏览那种"热点帖每秒几千次"的问题。**不要为了统一而统一**。
+     */
+    @org.springframework.transaction.annotation.Transactional
+    public long recordShare(Long postId) {
+        // 先确认帖子存在：给一个不存在的 id 加 1 是无意义的写
+        getById(postId);
+        postMapper.incrementShareCount(postId);
+        Post fresh = postMapper.selectById(postId);
+        return fresh == null || fresh.getShareCount() == null ? 0 : fresh.getShareCount();
+    }
+
+    /**
      * 社群时间线。按发布时间倒序，游标分页。
      *
      * P2 只实现 {@code sort=new}，其他值**明确拒绝**（40010）而不是静默降级：

@@ -328,6 +328,8 @@ services:
       MYSQL_HOST: mysql
       MYSQL_USER: u_content
       MYSQL_PASSWORD: ${MYSQL_PWD_CONTENT:?}
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?}
       ROCKETMQ_NAMESRV: rmq-namesrv:9876
       ID_WORKER_ID: "3"
     depends_on:

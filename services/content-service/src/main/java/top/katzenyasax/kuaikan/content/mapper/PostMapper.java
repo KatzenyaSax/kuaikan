@@ -71,4 +71,24 @@ public interface PostMapper extends BaseMapper<Post> {
             WHERE id = #{id} AND comment_count > 0
             """)
     int decrementCommentCount(@Param("id") Long id);
+
+    /** 浏览量批量回写。由 PostViewCounter 定时调用，一次一批增量 */
+    @Update("UPDATE t_post SET view_count = view_count + #{delta} WHERE id = #{id}")
+    int addViewCount(@Param("id") Long id, @Param("delta") int delta);
+
+    @Update("UPDATE t_post SET share_count = share_count + 1 WHERE id = #{id}")
+    int incrementShareCount(@Param("id") Long id);
+
+    /**
+     * 刷新最后互动时刻。热度用它当衰减基准。
+     *
+     * <b>只在更晚时更新</b>：并发下两个事件可能乱序到达，
+     * 不加条件会把时间往回拨，让帖子凭空"变旧"。
+     */
+    @Update("""
+            UPDATE t_post SET last_interaction_at = #{at}
+            WHERE id = #{id}
+              AND (last_interaction_at IS NULL OR last_interaction_at < #{at})
+            """)
+    int touchLastInteraction(@Param("id") Long id, @Param("at") LocalDateTime at);
 }

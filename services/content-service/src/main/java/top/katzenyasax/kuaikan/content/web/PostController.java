@@ -30,9 +30,12 @@ import top.katzenyasax.kuaikan.content.web.dto.PostSummary;
 public class PostController {
 
     private final PostService postService;
+    private final top.katzenyasax.kuaikan.content.service.PostViewCounter viewCounter;
 
-    public PostController(PostService postService) {
+    public PostController(PostService postService,
+                          top.katzenyasax.kuaikan.content.service.PostViewCounter viewCounter) {
         this.postService = postService;
+        this.viewCounter = viewCounter;
     }
 
     /**
@@ -74,6 +77,24 @@ public class PostController {
     @PublicEndpoint
     @GetMapping("/{postId}")
     public Result<PostDetail> detail(@PathVariable("postId") Long postId) {
-        return Result.ok(postService.getById(postId));
+        PostDetail detail = postService.getById(postId);
+        // 记一次浏览。放在 getById **之后**：帖子不存在时不该计一次浏览。
+        // 内部是 Redis INCR，失败只记 WARN，不会让详情页 500。
+        viewCounter.recordView(postId);
+        return Result.ok(detail);
+    }
+
+    /**
+     * 记一次分享。
+     *
+     * <b>允许游客</b>：分享本身不该要求登录。代价是可被刷，
+     * 但分享在热度公式里权重不高，而且这是"不要求精确"的计数之一。
+     * 真要防刷是 P7 的限流的事。
+     */
+    @Operation(operationId = "sharePost")
+    @PublicEndpoint
+    @PostMapping("/{postId}/share")
+    public Result<Long> share(@PathVariable("postId") Long postId) {
+        return Result.ok(postService.recordShare(postId));
     }
 }

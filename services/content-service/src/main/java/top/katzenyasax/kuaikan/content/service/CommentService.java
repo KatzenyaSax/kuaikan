@@ -149,6 +149,9 @@ public class CommentService {
 
         commentMapper.insert(comment);
         postMapper.incrementCommentCount(postId);
+        // 评论也是一次互动。同事务更新：热度的衰减基准不能落后于事实。
+        postMapper.touchLastInteraction(postId,
+                LocalDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.MILLIS));
         if (rootId != null) {
             commentMapper.incrementReplyCount(rootId);
         }

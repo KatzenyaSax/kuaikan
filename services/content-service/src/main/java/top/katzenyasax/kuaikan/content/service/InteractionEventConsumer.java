@@ -8,7 +8,10 @@ import org.springframework.transaction.annotation.Transactional;
 import top.katzenyasax.kuaikan.common.mq.InteractionChange;
 import top.katzenyasax.kuaikan.content.domain.ConsumeLog;
 import top.katzenyasax.kuaikan.content.mapper.ConsumeLogMapper;
+import top.katzenyasax.kuaikan.content.domain.Comment;
+import top.katzenyasax.kuaikan.content.mapper.CommentMapper;
 import top.katzenyasax.kuaikan.content.mapper.CountProjectionMapper;
+import top.katzenyasax.kuaikan.content.mapper.PostMapper;
 
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -34,13 +37,19 @@ public class InteractionEventConsumer {
 
     private final ConsumeLogMapper consumeLogMapper;
     private final CountProjectionMapper projectionMapper;
+    private final PostMapper postMapper;
+    private final CommentMapper commentMapper;
     private final ObjectMapper objectMapper;
 
     public InteractionEventConsumer(ConsumeLogMapper consumeLogMapper,
                                     CountProjectionMapper projectionMapper,
+                                    PostMapper postMapper,
+                                    CommentMapper commentMapper,
                                     ObjectMapper objectMapper) {
         this.consumeLogMapper = consumeLogMapper;
         this.projectionMapper = projectionMapper;
+        this.postMapper = postMapper;
+        this.commentMapper = commentMapper;
         this.objectMapper = objectMapper;
     }
 
@@ -83,8 +92,36 @@ public class InteractionEventConsumer {
             log.warn("计数未更新（目标不存在或已在下界）eventId={} target={}:{}",
                     event.eventId(), event.targetType(), targetId);
         }
+        touchPost(targetId, event.targetType());
         log.info("事件已消费 eventId={} kind={} change={} target={}:{}",
                 event.eventId(), event.kind(), event.change(), event.targetType(), targetId);
         return true;
+    }
+
+    /**
+     * 刷新帖子的最后互动时刻 —— 热度用它当衰减基准。
+     *
+     * 点赞的是**评论**时，要把时间记到它所属的**帖子**上：热度是对帖子算的。
+     * 这会多一次 SELECT（查评论拿 postId）。可以接受：事件消费是异步的，
+     * 而热度的准确性靠这一列。
+     *
+     * 任何失败都只记 WARN：**计数投影已经成功了**，不能因为这一列没更新
+     * 就让整条事件重投——那会把计数重复加上去。
+     */
+    private void touchPost(Long targetId, InteractionChange.TargetType targetType) {
+        try {
+            Long postId = targetId;
+            if (targetType == InteractionChange.TargetType.COMMENT) {
+                Comment comment = commentMapper.selectById(targetId);
+                if (comment == null) {
+                    return;
+                }
+                postId = comment.getPostId();
+            }
+            postMapper.touchLastInteraction(postId, LocalDateTime.now().truncatedTo(ChronoUnit.MILLIS));
+        } catch (Exception e) {
+            log.warn("刷新 last_interaction_at 失败 target={}:{} 原因={}",
+                    targetType, targetId, e.toString());
+        }
     }
 }

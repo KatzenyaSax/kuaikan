@@ -39,6 +39,13 @@ public class Post {
     private Integer likeCount;
     private Integer favoriteCount;
 
+    /** 累计浏览。不精确——Redis 缓冲后定期回写，Redis 挂了会丢一批 */
+    private Integer viewCount;
+    /** 累计分享 */
+    private Integer shareCount;
+    /** 最后一次互动时刻。热度的衰减基准（不是 created_at） */
+    private LocalDateTime lastInteractionAt;
+
     private Integer status;
 
     @TableField(fill = FieldFill.INSERT)
@@ -61,6 +68,12 @@ public class Post {
     public void setLikeCount(Integer likeCount) { this.likeCount = likeCount; }
     public Integer getFavoriteCount() { return favoriteCount; }
     public void setFavoriteCount(Integer favoriteCount) { this.favoriteCount = favoriteCount; }
+    public Integer getViewCount() { return viewCount; }
+    public void setViewCount(Integer viewCount) { this.viewCount = viewCount; }
+    public Integer getShareCount() { return shareCount; }
+    public void setShareCount(Integer shareCount) { this.shareCount = shareCount; }
+    public LocalDateTime getLastInteractionAt() { return lastInteractionAt; }
+    public void setLastInteractionAt(LocalDateTime lastInteractionAt) { this.lastInteractionAt = lastInteractionAt; }
     public Integer getCommentCount() { return commentCount; }
     public void setCommentCount(Integer commentCount) { this.commentCount = commentCount; }
     public Integer getStatus() { return status; }

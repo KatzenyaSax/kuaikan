@@ -107,6 +107,11 @@ kuaikan:
       # P3：评论区游客可读。同样只认数字 id，把路径形状钉死。
       - GET ^/api/content/posts/[0-9]+/comments$
       - GET ^/api/content/comments/[0-9]+/replies$
+      # P5.0：分享计数。**游客可分享**，与点赞/收藏不同——
+      # 分享是"把内容带出去"，不该要求登录。
+      # 与详情那条一样把路径形状钉死（数字 id + 字面量 share 尾巴），
+      # 将来在 /posts/{id}/ 下加写端点不会被顺带放行。
+      - POST ^/api/content/posts/[0-9]+/share$
 
 management:
   endpoints:

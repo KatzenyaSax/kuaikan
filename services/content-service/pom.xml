@@ -62,6 +62,12 @@
             <artifactId>mysql-connector-j</artifactId>
             <scope>runtime</scope>
         </dependency>
+        <!-- P5：浏览量的 Redis 缓冲。不直接 UPDATE MySQL——
+             那会让 GET 变成写操作、热点帖打爆磁盘，且与 nginx/Caffeine 缓存不兼容 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-core</artifactId>

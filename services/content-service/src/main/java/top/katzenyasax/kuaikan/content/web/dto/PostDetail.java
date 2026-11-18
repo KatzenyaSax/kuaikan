@@ -29,6 +29,10 @@ public record PostDetail(
         long likeCount,
         @Schema(description = "收藏数（最终一致，滞后 ≤5s）")
         long favoriteCount,
+        @Schema(description = "累计浏览。**不精确**：Redis 缓冲后回写，最多滞后约 60 秒")
+        long viewCount,
+        @Schema(description = "累计分享")
+        long shareCount,
         LocalDateTime createdAt
 ) {
     public static PostDetail of(Post post) {
@@ -37,6 +41,8 @@ public record PostDetail(
                 post.getCommentCount() == null ? 0 : post.getCommentCount(),
                 post.getLikeCount() == null ? 0 : post.getLikeCount(),
                 post.getFavoriteCount() == null ? 0 : post.getFavoriteCount(),
+                post.getViewCount() == null ? 0 : post.getViewCount(),
+                post.getShareCount() == null ? 0 : post.getShareCount(),
                 post.getCreatedAt());
     }
 }
