@@ -410,41 +410,44 @@ fi
 # ================================================================ L5 评论排序
 
 if want_layer l5; then
+  # 用 postB 而不是 postA：L2 已经在 postA 上发过一条评论，
+  # 而这一层要断言"先发的那条排第一"——共用同一个帖子会让它不成立。
+  # 这是 P4 的 L4 踩过的同一个坑：各层共用夹具（FIXTURE_READY 是全局的）。
   section "L5 评论排序"
 
   if ! prepare_fixture; then
     ng "创建夹具失败" "失败在：${FIXTURE_STEP:-未知}"
   else
     # 造两条评论：B 有回复（热度 1），A 没有（热度 0）
-    c1=$(curl -s --max-time 15 -X POST "$SITE/api/content/posts/$POST_ID/comments" \
+    c1=$(curl -s --max-time 15 -X POST "$SITE/api/content/posts/$POST_ID2/comments" \
       -H "Authorization: Bearer $TOKEN2" -H 'Content-Type: application/json' \
       -d '{"body":"e2e 先发的评论"}' | json_field 'data.id')
-    c2=$(curl -s --max-time 15 -X POST "$SITE/api/content/posts/$POST_ID/comments" \
+    c2=$(curl -s --max-time 15 -X POST "$SITE/api/content/posts/$POST_ID2/comments" \
       -H "Authorization: Bearer $TOKEN2" -H 'Content-Type: application/json' \
       -d '{"body":"e2e 后发的评论"}' | json_field 'data.id')
     [ -n "$c1" ] && [ -n "$c2" ] || ng "评论创建失败"
-    curl -s --max-time 15 -o /dev/null -X POST "$SITE/api/content/posts/$POST_ID/comments" \
+    curl -s --max-time 15 -o /dev/null -X POST "$SITE/api/content/posts/$POST_ID2/comments" \
       -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
       -d "{\"replyToCommentId\":\"$c1\",\"body\":\"e2e 给先发的回复\"}"
 
-    time_first=$(curl -s --max-time 10 "$SITE/api/content/posts/$POST_ID/comments?limit=20" \
+    time_first=$(curl -s --max-time 10 "$SITE/api/content/posts/$POST_ID2/comments?limit=20" \
       | json_field 'data.items.0.id')
     [ "$time_first" = "$c1" ] && ok "默认仍是时间序（先发的在前）" \
       || ng "默认排序被改动了" "首条=$time_first 期望 $c1"
 
-    hot_first=$(curl -s --max-time 10 "$SITE/api/content/posts/$POST_ID/comments?sort=hot&limit=20" \
+    hot_first=$(curl -s --max-time 10 "$SITE/api/content/posts/$POST_ID2/comments?sort=hot&limit=20" \
       | json_field 'data.items.0.id')
     [ "$hot_first" = "$c1" ] && ok "sort=hot：有回复的排前面" \
       || ng "热度序没生效" "首条=$hot_first"
 
-    bad=$(curl -s --max-time 10 "$SITE/api/content/posts/$POST_ID/comments?sort=new")
+    bad=$(curl -s --max-time 10 "$SITE/api/content/posts/$POST_ID2/comments?sort=new")
     printf '%s' "$bad" | grep -q '40010' && ok "非法 sort 返回 40010" || ng "非法 sort 未被拒绝"
 
     # 跨排序复用游标必须被拒绝：三段游标喂给四段的分数序接口
-    tc=$(curl -s --max-time 10 "$SITE/api/content/posts/$POST_ID/comments?limit=1" | json_field 'data.nextCursor')
+    tc=$(curl -s --max-time 10 "$SITE/api/content/posts/$POST_ID2/comments?limit=1" | json_field 'data.nextCursor')
     if [ -n "$tc" ]; then
       enc=$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))" "$tc")
-      cross=$(curl -s --max-time 10 "$SITE/api/content/posts/$POST_ID/comments?sort=hot&limit=1&cursor=$enc")
+      cross=$(curl -s --max-time 10 "$SITE/api/content/posts/$POST_ID2/comments?sort=hot&limit=1&cursor=$enc")
       printf '%s' "$cross" | grep -q '40010' && ok "跨排序复用游标被拒绝（40010）" \
         || ng "跨排序游标被接受了"
     else
