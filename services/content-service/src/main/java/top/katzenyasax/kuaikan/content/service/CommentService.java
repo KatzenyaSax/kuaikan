@@ -52,6 +52,8 @@ public class CommentService {
      * 共用一个标记的话，拿错列表的游标会被静默解析成错误结果。
      */
     private static final String SORT_TOP = "comment-top";
+    /** 热度序一级评论。**必须与时间序用不同的标记**：跨排序复用游标会被明确拒绝 */
+    private static final String SORT_TOP_HOT = "comment-top-hot";
     private static final String SORT_REPLIES = "comment-replies";
 
     private static final int DEFAULT_LIMIT = 20;
@@ -166,17 +168,57 @@ public class CommentService {
         return CommentView.of(comment, mentions);
     }
 
-    /** 一级评论列表，按时间正序 */
-    public CommentPage listTopLevel(Long postId, String cursor, Integer limit) {
+    /**
+     * 一级评论列表。
+     *
+     * <b>默认时间正序</b>（老的在上）——评论读起来像对话，倒序会让人从结尾往回读。
+     * {@code sort=hot} 时按 {@code like_count + reply_count} 降序，并列按时间正序。
+     *
+     * <b>默认值保持 time 是刻意的</b>：P3 的验收断言全部依赖时间序，
+     * 而且"我刚发的评论应该看得见"是用户的直觉。热度序是可选视图，不是替换。
+     *
+     * 未知 sort 值**明确拒绝**（40010）而不是静默降级成 time——
+     * 静默降级会把前端的 bug 藏起来，也会让人以为"热度排序生效了"。
+     */
+    public CommentPage listTopLevel(Long postId, String sort, String cursor, Integer limit) {
         requirePost(postId);
         int size = normalizeLimit(limit);
-        CursorCodec.Cursor c = CursorCodec.decode(cursor, SORT_TOP);
+        String effective = (sort == null || sort.isBlank()) ? "time" : sort.trim().toLowerCase();
 
+        if ("hot".equals(effective)) {
+            return listTopLevelHot(postId, cursor, size);
+        }
+        if (!"time".equals(effective)) {
+            throw new BizException(CommonErrorCode.PARAM_INVALID, "sort 只能是 time 或 hot");
+        }
+
+        CursorCodec.Cursor c = CursorCodec.decode(cursor, SORT_TOP);
         List<Comment> rows = (c == null)
                 ? commentMapper.topFirstPage(postId, size + 1)
                 : commentMapper.topPageAfter(postId, toTime(c), c.id(), size + 1);
-
         return page(rows, size, SORT_TOP);
+    }
+
+    /**
+     * 热度序。
+     *
+     * <b>已知性质：翻页是"尽力而为"的，不像时间序那样稳定。</b>
+     * 排序键 {@code like_count + reply_count} 是会被别人改的——
+     * 翻页期间某条评论被点赞，它可能在第二页重复出现或被跳过。
+     *
+     * 时间序没有这个问题（created_at 永不改变）。要彻底解决热度序的稳定性，
+     * 得在翻页开始时冻结整份分数快照，那需要额外存储——不划算。
+     * 前端的表现是可接受的：翻一次页最多多看/少看一条。
+     */
+    private CommentPage listTopLevelHot(Long postId, String cursor, int size) {
+        CursorCodec.ScoredCursor c = CursorCodec.decodeScored(cursor, SORT_TOP_HOT);
+
+        List<Comment> rows = (c == null)
+                ? commentMapper.topFirstPageHot(postId, size + 1)
+                : commentMapper.topPageAfterHot(postId, c.score(), toTime(c.timestampMillis(), c.id()),
+                        c.id(), size + 1);
+
+        return pageScored(rows, size);
     }
 
     /** 某个一级评论下的回复，按时间正序（两级平铺，不再嵌套） */
@@ -248,6 +290,36 @@ public class CommentService {
     }
 
     // ---------------------------------------------------------------- 内部
+
+    /**
+     * 分数序的收口。游标要带上 score 才能唯一定位——
+     * 只带 (created_at, id) 的话，同分数的两条评论之间翻页就会错。
+     */
+    private CommentPage pageScored(List<Comment> rows, int size) {
+        List<CommentView> items = new ArrayList<>();
+        for (int i = 0; i < rows.size() && i < size; i++) {
+            Comment row = rows.get(i);
+            items.add(CommentView.of(row, mentionResolver.fromJson(row.getMentions())));
+        }
+        String next = null;
+        if (rows.size() > size) {
+            Comment last = rows.get(size - 1);
+            next = CursorCodec.encodeScored(SORT_TOP_HOT, hotScore(last),
+                    toMillis(last.getCreatedAt()), last.getId());
+        }
+        return new CommentPage(items, next);
+    }
+
+    /** 评论热度。与 Mapper 里的排序表达式必须一致，改一处就要改另一处 */
+    private static long hotScore(Comment c) {
+        long like = c.getLikeCount() == null ? 0 : c.getLikeCount();
+        long reply = c.getReplyCount() == null ? 0 : c.getReplyCount();
+        return like + reply;
+    }
+
+    private static LocalDateTime toTime(long millis, long ignoredId) {
+        return LocalDateTime.ofInstant(Instant.ofEpochMilli(millis), ZoneId.systemDefault());
+    }
 
     private CommentPage page(List<Comment> rows, int size, String sort) {
         List<CommentView> items = new ArrayList<>();

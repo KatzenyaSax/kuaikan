@@ -41,9 +41,10 @@ public class CommentController {
     @PublicEndpoint
     @GetMapping("/posts/{postId}/comments")
     public Result<CommentPage> list(@PathVariable("postId") Long postId,
+                                    @RequestParam(required = false) String sort,
                                     @RequestParam(required = false) String cursor,
                                     @RequestParam(required = false) Integer limit) {
-        return Result.ok(commentService.listTopLevel(postId, cursor, limit));
+        return Result.ok(commentService.listTopLevel(postId, sort, cursor, limit));
     }
 
     @Operation(operationId = "createComment")

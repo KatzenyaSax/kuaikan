@@ -40,6 +40,51 @@ public interface CommentMapper extends BaseMapper<Comment> {
                                @Param("id") Long id,
                                @Param("limit") int limit);
 
+    /**
+     * 一级评论第一页，**按热度**。
+     *
+     * 热度 = {@code like_count + reply_count}（与帖子的口径同构：点赞 + 回复）。
+     * 并列时按创建时间**正序**——同热度下先说的更有价值。
+     *
+     * <b>会 filesort</b>：排序键是表达式，走不了
+     * {@code idx_post_root_comment (post_id, root_comment_id, created_at, id)}。
+     * 一个帖子的评论数是有限且小的（几十到几百），可以接受。
+     *
+     * <b>不复用 {@code idx_...} 覆盖</b>：这里没有 status 过滤——不变量规定
+     * {@code status=0} 的评论一定有回复，列表本来就该显示 tombstone 占位。
+     */
+    @Select("""
+            SELECT * FROM t_comment
+            WHERE post_id = #{postId} AND root_comment_id IS NULL
+            ORDER BY (like_count + reply_count) DESC, created_at ASC, id ASC
+            LIMIT #{limit}
+            """)
+    List<Comment> topFirstPageHot(@Param("postId") Long postId, @Param("limit") int limit);
+
+    /**
+     * 热度序后续页。
+     *
+     * 条件读法：分数更小，或者**分数相同且 (created_at, id) 更大**。
+     * 后半段用行值比较 {@code (created_at, id) > (?, ?)}，比
+     * {@code created_at > ? OR (created_at = ? AND id > ?)} 更清晰也不容易写错。
+     */
+    @Select("""
+            SELECT * FROM t_comment
+            WHERE post_id = #{postId} AND root_comment_id IS NULL
+              AND (
+                (like_count + reply_count) < #{score}
+                OR ((like_count + reply_count) = #{score}
+                    AND (created_at, id) > (#{createdAt}, #{id}))
+              )
+            ORDER BY (like_count + reply_count) DESC, created_at ASC, id ASC
+            LIMIT #{limit}
+            """)
+    List<Comment> topPageAfterHot(@Param("postId") Long postId,
+                                  @Param("score") long score,
+                                  @Param("createdAt") LocalDateTime createdAt,
+                                  @Param("id") Long id,
+                                  @Param("limit") int limit);
+
     /** 某个一级评论下的回复，同样正序 */
     @Select("""
             SELECT * FROM t_comment
