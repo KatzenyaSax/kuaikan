@@ -428,6 +428,7 @@ export interface operations {
     listComments: {
         parameters: {
             query?: {
+                sort?: string;
                 cursor?: string;
                 limit?: number;
             };

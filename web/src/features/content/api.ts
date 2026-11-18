@@ -108,12 +108,21 @@ const COMMENT_BASE = '/api/content'
  * 与帖子列表一样用 useInfiniteQuery —— 手写"每页一个 query + 游标数组"
  * 会导致加载更多替换而不是追加（P2.4 踩过）。
  */
-export function useComments(postId: string | undefined) {
+export type CommentSort = 'time' | 'hot'
+
+/**
+ * 一级评论。**默认时间序**（老的在上）——评论读起来像对话。
+ *
+ * sort 进 queryKey：切排序就是换一个 query，游标不会串。
+ * 服务端把排序标记编进游标，拿 A 排序的游标去请求 B 排序会被明确拒绝（40010）。
+ */
+export function useComments(postId: string | undefined, sort: CommentSort = 'time') {
   return useInfiniteQuery({
-    queryKey: ['comments', postId],
+    queryKey: ['comments', postId, sort],
     queryFn: ({ pageParam }) =>
       api.get<CommentPage>(
-        `${COMMENT_BASE}/posts/${encodeURIComponent(postId ?? '')}/comments?limit=20` +
+        `${COMMENT_BASE}/posts/${encodeURIComponent(postId ?? '')}/comments` +
+          `?sort=${sort}&limit=20` +
           (pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : ''),
       ),
     initialPageParam: '',

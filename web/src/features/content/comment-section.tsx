@@ -7,6 +7,7 @@ import {
   useDeleteComment,
   useReplies,
   useUserSummaries,
+  type CommentSort,
   type CommentView,
 } from '@/features/content/api'
 import { authErrorMessage } from '@/features/auth/auth-error'
@@ -18,6 +19,7 @@ import { Button } from '@/shared/ui/button'
 import { Textarea } from '@/shared/ui/field'
 import { relativeTime } from '@/shared/lib/time'
 import { MentionText } from '@/features/content/mention-text'
+import { Segmented } from '@/shared/ui/segmented'
 import { cn } from '@/shared/lib/cn'
 
 /**
@@ -64,7 +66,9 @@ export function CommentSection({
 }) {
   const status = useSession((s) => s.status)
   const authed = status === 'authenticated'
-  const list = useComments(postId)
+  // 默认时间序。热度序是可选视图，不是替换——"我刚发的评论应该看得见"更符合直觉。
+  const [sort, setSort] = useState<CommentSort>('time')
+  const list = useComments(postId, sort)
   const items = (list.data?.pages ?? []).flatMap((p) => p.items ?? [])
 
   return (
@@ -77,6 +81,18 @@ export function CommentSection({
           <span className="text-aux text-faint" data-testid="comment-count">
             {commentCount}
           </span>
+        ) : null}
+        {/* 只有一个评论时不显示切换——切了也看不出区别 */}
+        {commentCount > 1 ? (
+          <Segmented
+            className="ml-auto"
+            value={sort}
+            onChange={setSort}
+            options={[
+              { value: 'time', label: '最新' },
+              { value: 'hot', label: '热度' },
+            ]}
+          />
         ) : null}
       </div>
 
