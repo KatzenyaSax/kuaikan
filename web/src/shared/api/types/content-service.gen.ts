@@ -26,6 +26,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/posts/{postId}/share": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["sharePost"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/posts/{postId}/comments": {
         parameters: {
             query?: never;
@@ -188,6 +204,16 @@ export interface components {
              * @description 收藏数（最终一致，滞后 ≤5s）
              */
             favoriteCount?: number;
+            /**
+             * Format: int64
+             * @description 累计浏览。**不精确**：Redis 缓冲后回写，最多滞后约 60 秒
+             */
+            viewCount?: number;
+            /**
+             * Format: int64
+             * @description 累计分享
+             */
+            shareCount?: number;
             /** Format: date-time */
             createdAt?: string;
         };
@@ -196,6 +222,13 @@ export interface components {
             code?: number;
             message?: string;
             data?: components["schemas"]["PostDetail"];
+        };
+        ResultLong: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            /** Format: int64 */
+            data?: number;
         };
         CreateCommentRequest: {
             /** @description 回复的评论 id；为空表示发一级评论 */
@@ -366,6 +399,28 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ResultPostDetail"];
+                };
+            };
+        };
+    };
+    sharePost: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                postId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultLong"];
                 };
             };
         };

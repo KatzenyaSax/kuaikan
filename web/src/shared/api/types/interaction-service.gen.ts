@@ -26,6 +26,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/internal/counts/since": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["since"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/favorites": {
         parameters: {
             query?: never;
@@ -103,6 +119,34 @@ export interface components {
             code?: number;
             message?: string;
             data?: unknown;
+        };
+        SinceRequest: {
+            /**
+             * @description targetType：POST 或 COMMENT
+             * @example POST
+             */
+            targetType?: string;
+            /**
+             * Format: int64
+             * @description 窗口起点，epoch 毫秒
+             * @example 1794900000000
+             */
+            since?: number;
+            /** @description 要查的目标 id 列表 */
+            targetIds?: string[];
+        };
+        ResultListSinceResponse: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: components["schemas"]["SinceResponse"][];
+        };
+        SinceResponse: {
+            targetId?: string;
+            /** Format: int64 */
+            likeDelta?: number;
+            /** Format: int64 */
+            favoriteDelta?: number;
         };
         InteractionState: {
             /** @description post 或 comment */
@@ -192,6 +236,30 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ResultVoid"];
+                };
+            };
+        };
+    };
+    since: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SinceRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultListSinceResponse"];
                 };
             };
         };

@@ -26,6 +26,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/hot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 热榜（Top 50，不分页） */
+        get: operations["hotRank"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -37,6 +54,32 @@ export interface components {
             data?: {
                 [key: string]: unknown;
             };
+        };
+        HotItem: {
+            /** Format: int32 */
+            rank?: number;
+            /** @description 帖子 id */
+            postId?: string;
+            title?: string;
+            /** @description 社群名快照；为 null 表示社群已被删 */
+            communityName?: string;
+            /** @description 作者 id，昵称由前端批量获取 */
+            authorId?: string;
+            /** Format: double */
+            score?: number;
+        };
+        HotPage: {
+            /** @description day 或 week */
+            range?: string;
+            items?: components["schemas"]["HotItem"][];
+            /** Format: int32 */
+            total?: number;
+        };
+        ResultHotPage: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: components["schemas"]["HotPage"];
         };
     };
     responses: never;
@@ -63,6 +106,28 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ResultMapStringObject"];
+                };
+            };
+        };
+    };
+    hotRank: {
+        parameters: {
+            query?: {
+                range?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultHotPage"];
                 };
             };
         };
