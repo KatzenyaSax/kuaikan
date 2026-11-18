@@ -361,7 +361,9 @@ print('ok' if all(scores[i] >= scores[i+1] for i in range(len(scores)-1)) else '
   # 切换的原子性：重建期间并发读，**任何一条都不能缺标题**
   # 这正是版本化要解决的问题——RENAME 两个 key 之间会出现"新分数配旧标题"
   trigger_rebuild >/dev/null 2>&1 &
-  bad=$(seq 1 50 | xargs -P 10 -I{} curl -s --max-time 10 "$SITE/api/rank/hot?range=day" 2>/dev/null \
+  # -w '\n' 是必须的：curl 输出完不加换行，50 个 JSON 会粘成一行，
+  # json.loads 解析失败会被误判成"读到了不完整的条目"——一次彻头彻尾的假红。
+  bad=$(seq 1 50 | xargs -P 10 -I{} curl -s -w '\n' --max-time 10 "$SITE/api/rank/hot?range=day" 2>/dev/null \
     | python3 -c "
 import json,sys
 bad=0
