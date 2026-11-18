@@ -72,7 +72,7 @@ except Exception: print(''); raise SystemExit(0)
 v=d
 for k in sys.argv[1].split('.'):
     if isinstance(v,dict) and k in v: v=v[k]
-    elif isinstance(v,list) and k.isdigit() and int(v) < len(v): v=v[int(k)]
+    elif isinstance(v,list) and k.isdigit() and int(k) < len(v): v=v[int(k)]
     else: print(''); raise SystemExit(0)
 print('' if v is None else v)
 " "$1" 2>/dev/null; }
