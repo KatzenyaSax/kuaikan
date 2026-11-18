@@ -24,16 +24,21 @@ spring:
             connectTimeout: 500
             readTimeout: 500
 
-  redis:
-    host: ${REDIS_HOST:redis}
-    port: ${REDIS_PORT:6379}
-    password: ${REDIS_PASSWORD:}
-    timeout: 3s
-    lettuce:
-      pool:
-        max-active: 8
-        max-idle: 4
-        min-idle: 1
+  data:
+    # ⚠️ 前缀必须是 spring.data.redis。Spring Boot 3 移除了 spring.redis，
+    # 写错不会报错——配置被静默忽略，客户端回落到 localhost:6379，
+    # 然后在**第一次使用**时才报 "Unable to connect to Redis"。
+    # 因为浏览量计数是显式降级的，页面照常工作，只有日志里有 WARN。
+    redis:
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 3s
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 4
+          min-idle: 1
 
   datasource:
     # 只连自己的 schema。u_content 只有 kuaikan_content.* 的权限（ADR 0006）
