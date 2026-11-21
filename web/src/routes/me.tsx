@@ -354,6 +354,7 @@ export function MePage() {
                 <Button
                   variant="ghost"
                   size="sm"
+                  className="shrink-0 whitespace-nowrap"
                   onClick={() => revoke.mutate(s.jti ?? '')}
                   disabled={revoke.isPending}
                 >
@@ -483,7 +484,10 @@ function FavoritesSection() {
                     <div className="mt-1.5 flex flex-wrap items-center gap-2 text-caption text-faint">
                       {post && communityName ? <Pill>{communityName}</Pill> : null}
                       {post?.authorId && !users.isPending ? (
-                        <span>{authorNameById.get(post.authorId) ?? '已注销用户'}</span>
+                        <>
+                          <span>{authorNameById.get(post.authorId) ?? '已注销用户'}</span>
+                          <span>·</span>
+                        </>
                       ) : null}
                       <span>收藏于 {relativeTime(item.createdAt)}</span>
                     </div>
