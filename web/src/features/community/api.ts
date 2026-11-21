@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/shared/api/client'
 import type { OkData, RequestBody } from '@/shared/api/typed'
 
@@ -8,6 +8,9 @@ export type CommunityDetail = OkData<'getCommunity'>
 export type CreateCommunityBody = RequestBody<'createCommunity'>
 
 const BASE = '/api/community/communities'
+
+/** 用户主页「ta 加入的社群」的路径。首段是 users，与 /communities/... 错开 */
+const USERS_BASE = '/api/community/users'
 
 /**
  * 社群列表。游客可读。
@@ -33,6 +36,29 @@ export function useCommunityDetail(name: string | undefined) {
     queryKey: ['community', 'detail', name],
     queryFn: () => api.get<CommunityDetail>(`${BASE}/${encodeURIComponent(name ?? '')}`),
     enabled: Boolean(name),
+  })
+}
+
+/**
+ * 指定用户已加入的社群（游客可读）。用户主页的「社群」Tab。
+ *
+ * 与 /mine 是同一查询结构（joined_at DESC, id DESC），但游标标记不同：
+ * 拿 /mine 的游标到这里会被服务端明确拒绝（40010）。
+ *
+ * 用户不存在时服务端返回空页（读路径不做跨服务校验，ADR 0005），
+ * 所以前端不需要区分「不存在」与「没加入任何社群」。
+ */
+export function useUserCommunities(userId: string | undefined, limit = 20) {
+  return useInfiniteQuery({
+    queryKey: ['community', 'user', userId],
+    queryFn: ({ pageParam }) =>
+      api.get<CommunityPage>(
+        `${USERS_BASE}/${encodeURIComponent(userId ?? '')}/communities?limit=${String(limit)}` +
+          (pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : ''),
+      ),
+    initialPageParam: '',
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    enabled: Boolean(userId),
   })
 }
 

@@ -1,6 +1,10 @@
 import Markdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import type { PostDetail } from '@/features/content/api'
+import { Link } from 'react-router'
+import { pickAuthor, useUserSummaries, type PostDetail } from '@/features/content/api'
+import { FollowButton } from '@/features/social/follow-button'
+import { Avatar } from '@/shared/ui/avatar'
+import { relativeTime } from '@/shared/lib/time'
 
 /**
  * 帖子正文。
@@ -91,6 +95,12 @@ const MD_COMPONENTS: Components = {
 }
 
 export function PostContent({ post }: { post: PostDetail }) {
+  // 作者摘要与帖子详情是两个请求：`authorId` 是跨服务引用（ADR 0009），
+  // 后端不会在帖子 DTO 里拼昵称头像。
+  const authors = useUserSummaries([post.authorId])
+  const author = pickAuthor(authors.data, post.authorId)
+  const authorId = post.authorId ?? undefined
+
   return (
     <article>
       <h1
@@ -106,6 +116,40 @@ export function PostContent({ post }: { post: PostDetail }) {
         <Markdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
           {post.body ?? ''}
         </Markdown>
+      </div>
+
+      {/*
+        作者行：上下 hairline，不用卡片。
+        头像与昵称整体是一个链接（不是两个），点击热区才够大；
+        右侧是关注按钮 —— 读完一篇帖子最想做的动作就是“关注这个人”，
+        把它放在作者名旁边而不是页面底部。
+      */}
+      <div
+        className="mt-5 flex items-center gap-2.5 border-y border-border py-3.5 text-aux text-muted-foreground"
+        data-testid="post-author"
+      >
+        {author ? (
+          <>
+            <Link
+              to={`/u/${encodeURIComponent(authorId ?? '')}`}
+              className="inline-flex min-w-0 items-center gap-2.5 hover:opacity-80"
+              data-testid="post-author-link"
+            >
+              <Avatar url={author.avatarUrl ?? null} name={author.nickname ?? ''} size={28} />
+              <span className="truncate font-medium text-foreground">{author.nickname}</span>
+            </Link>
+            <span className="text-faint">·</span>
+            <span>{relativeTime(post.createdAt)}</span>
+          </>
+        ) : authors.isPending ? (
+          // 作者摘要没回来时不要渲染“已注销用户”——那会闪一下又变，比留白更像 bug
+          <span>加载作者…</span>
+        ) : (
+          <span data-testid="post-author-deleted">已注销用户</span>
+        )}
+        <div className="ml-auto shrink-0">
+          <FollowButton userId={authorId} size="sm" />
+        </div>
       </div>
     </article>
   )

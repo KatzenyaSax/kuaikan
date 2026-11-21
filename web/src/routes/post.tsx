@@ -3,12 +3,11 @@ import { Link, useParams, useSearchParams } from 'react-router'
 import { useCommunityDetail } from '@/features/community/api'
 import { useInteractionStates } from '@/features/interaction/api'
 import { FavoriteButton, LikeButton } from '@/features/interaction/interaction-buttons'
-import { pickAuthor, usePostDetail, useUserSummaries } from '@/features/content/api'
+import { usePostDetail } from '@/features/content/api'
 import { PostContent } from '@/features/content/post-content'
 import { CommentSection } from '@/features/content/comment-section'
 import { authErrorMessage } from '@/features/auth/auth-error'
 import { useSession } from '@/features/auth/session'
-import { Avatar } from '@/shared/ui/avatar'
 import { Skeleton } from '@/shared/ui/skeleton'
 import { relativeTime } from '@/shared/lib/time'
 import { buttonClass } from '@/shared/ui/button'
@@ -26,13 +25,9 @@ export function PostPage() {
   const { name, postId } = useParams<{ name: string; postId: string }>()
   const post = usePostDetail(postId)
   const community = useCommunityDetail(name)
-  // 单个作者也走批量接口：列表页会有多个作者，接口只有一个，
-  // 不要为"单个"再造一条只有自己用的路径
-  const authors = useUserSummaries([post.data?.authorId])
   const status = useSession((s) => s.status)
   const targets = post.data?.id ? [`post:${post.data.id}`] : []
   const states = useInteractionStates(targets, status === 'authenticated')
-  const author = pickAuthor(authors.data, post.data?.authorId)
 
   // 从消息点进来时带 ?comment=<id>，要滚到那条评论并高亮一下。
   // 评论是分页加载的，可能还没到——所以用轮询尝试有限次数，
@@ -79,28 +74,8 @@ export function PostPage() {
 
       <PostContent post={data} />
 
-      {/* 作者行：上下 hairline，不用卡片 */}
-      <div
-        className="mt-5 flex items-center gap-2.5 border-y border-border py-3.5 text-aux text-muted-foreground"
-        data-testid="post-author"
-      >
-        {author ? (
-          <>
-            <Avatar url={author.avatarUrl ?? null} name={author.nickname ?? ''} size={28} />
-            <span className="font-medium text-foreground">{author.nickname}</span>
-            <span className="text-faint">·</span>
-            <span>{relativeTime(data.createdAt)}</span>
-          </>
-        ) : authors.isPending ? (
-          // 作者摘要没回来时不要渲染"已注销用户"——那会闪一下又变，比留白更像 bug
-          <span>加载作者…</span>
-        ) : (
-          <span data-testid="post-author-deleted">已注销用户</span>
-        )}
-      </div>
-
       {/*
-        这里**不能**再画一条 border-t：上面的作者行已经用 border-y 收口了，
+        这里**不能**再画一条 border-t：PostContent 末尾的作者行已经用 border-y 收口了，
         两条 hairline 之间只隔 24px，看起来像"多出一条线"（确实被这么报过）。
         左右负边距抵掉 ghost 按钮的内边距，让文字和上面的作者名左对齐。
       */}

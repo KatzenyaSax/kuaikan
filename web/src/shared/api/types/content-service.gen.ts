@@ -58,6 +58,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/posts/by-authors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["listPostsByAuthors"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/internal/admin/reconcile": {
         parameters: {
             query?: never;
@@ -274,13 +290,16 @@ export interface components {
             message?: string;
             data?: components["schemas"]["CommentView"];
         };
-        ResultMapStringObject: {
-            /** Format: int32 */
-            code?: number;
-            message?: string;
-            data?: {
-                [key: string]: unknown;
-            };
+        PostsByAuthorsRequest: {
+            /** @description 作者 id 列表（字符串雪花 id）；上限 kuaikan.content.max-author-ids */
+            authorIds?: string[];
+            /** @description 下一页游标；为 null 表示第一页 */
+            cursor?: string;
+            /**
+             * Format: int32
+             * @description 每页条数，默认 20，最大 50
+             */
+            limit?: number;
         };
         PostPage: {
             items?: components["schemas"]["PostSummary"][];
@@ -303,6 +322,14 @@ export interface components {
             code?: number;
             message?: string;
             data?: components["schemas"]["PostPage"];
+        };
+        ResultMapStringObject: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: {
+                [key: string]: unknown;
+            };
         };
         CommentPage: {
             items?: components["schemas"]["CommentView"][];
@@ -356,8 +383,9 @@ export type $defs = Record<string, never>;
 export interface operations {
     listPosts: {
         parameters: {
-            query: {
-                communityId: number;
+            query?: {
+                communityId?: number;
+                authorId?: number;
                 sort?: string;
                 cursor?: string;
                 limit?: number;
@@ -473,6 +501,30 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ResultCommentView"];
+                };
+            };
+        };
+    };
+    listPostsByAuthors: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PostsByAuthorsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultPostPage"];
                 };
             };
         };

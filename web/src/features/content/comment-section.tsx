@@ -1,4 +1,5 @@
 import { createContext, useContext, useState } from 'react'
+import { Link } from 'react-router'
 import {
   collectCommentUserIds,
   pickAuthor,
@@ -220,10 +221,17 @@ function TopLevelComment({ comment, postId }: { comment: CommentView; postId: st
           <span data-testid="comment-deleted">该评论已删除</span>
         ) : (
           <>
-            <Avatar url={author?.avatarUrl ?? null} name={author?.nickname ?? ''} size={24} />
-            <span className="font-medium text-foreground" data-testid="comment-author">
-              {author?.nickname ?? '…'}
-            </span>
+            {/* 头像 + 昵称整体是一个链接：点击热区够大，也支持 cmd+click */}
+            <Link
+              to={`/u/${encodeURIComponent(comment.authorId ?? '')}`}
+              className="inline-flex min-w-0 items-center gap-2 hover:opacity-80"
+              data-testid="comment-author-link"
+            >
+              <Avatar url={author?.avatarUrl ?? null} name={author?.nickname ?? ''} size={24} />
+              <span className="truncate font-medium text-foreground" data-testid="comment-author">
+                {author?.nickname ?? '…'}
+              </span>
+            </Link>
             {isPostAuthor ? <AuthorBadge /> : null}
             <span>·</span>
             <span>{relativeTime(comment.createdAt)}</span>
@@ -367,14 +375,26 @@ function ReplyItem({ comment, postId }: { comment: CommentView; postId: string }
           <span data-testid="reply-deleted">该回复已删除</span>
         ) : (
           <>
-            <Avatar url={author?.avatarUrl ?? null} name={author?.nickname ?? ''} size={18} />
-            <span className="font-medium text-foreground" data-testid="reply-author">
-              {author?.nickname ?? '…'}
-            </span>
+            <Link
+              to={`/u/${encodeURIComponent(comment.authorId ?? '')}`}
+              className="inline-flex min-w-0 items-center gap-1.5 hover:opacity-80"
+              data-testid="reply-author-link"
+            >
+              <Avatar url={author?.avatarUrl ?? null} name={author?.nickname ?? ''} size={18} />
+              <span className="truncate font-medium text-foreground" data-testid="reply-author">
+                {author?.nickname ?? '…'}
+              </span>
+            </Link>
             {isPostAuthor ? <AuthorBadge /> : null}
             {/* 「回复 @某人」——两级平铺下用它表达对话关系，不用缩进 */}
             {comment.replyToUserId ? (
-              <span data-testid="reply-to">回复 @{replyTo?.nickname ?? '某人'}</span>
+              <Link
+                to={`/u/${encodeURIComponent(comment.replyToUserId)}`}
+                className="hover:text-foreground hover:underline"
+                data-testid="reply-to"
+              >
+                回复 @{replyTo?.nickname ?? '某人'}
+              </Link>
             ) : null}
             <span>·</span>
             <span>{relativeTime(comment.createdAt)}</span>

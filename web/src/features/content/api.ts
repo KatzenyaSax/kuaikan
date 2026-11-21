@@ -9,6 +9,7 @@ export type CommentPage = OkData<'listComments'>
 export type CommentView = NonNullable<CommentPage['items']>[number]
 export type CreateCommentBody = RequestBody<'createComment'>
 export type CreatePostBody = RequestBody<'createPost'>
+export type PostsByAuthorsBody = RequestBody<'listPostsByAuthors'>
 export type UserSummary = OkData<'batchUserSummaries'>[number]
 
 const BASE = '/api/content/posts'
@@ -57,6 +58,57 @@ export function useLatestPosts(limit = 10) {
   return useQuery({
     queryKey: ['posts', 'latest', limit],
     queryFn: () => api.get<PostSummary[]>(`${BASE}/latest?limit=${String(limit)}`),
+  })
+}
+
+/**
+ * 某个作者的帖子（游客可读）。用户主页的「ta 发的帖子」与 /following 单人筛选。
+ *
+ * 与社群时间线共用 POST /posts 的 response 形状（`PostPage`），只是 query 参数从
+ * `communityId` 换成 `authorId`。游标标记是独立的（`author-posts`）：
+ * 把社群列表的游标拿到这里会被服务端明确拒绝（40010），不会静默串用。
+ *
+ * queryKey 里带 `author` 段：与`社群列表`的 `['posts', communityId]` 区分开，
+ * 否则两边会互相覆盖缓存（communityId 和 userId 都是字符串，前缀相同）。
+ */
+export function useAuthorPosts(authorId: string | undefined, limit = 20) {
+  return useInfiniteQuery({
+    queryKey: ['posts', 'author', authorId],
+    queryFn: ({ pageParam }) =>
+      api.get<PostPage>(
+        `${BASE}?authorId=${encodeURIComponent(authorId ?? '')}&limit=${String(limit)}` +
+          (pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : ''),
+      ),
+    initialPageParam: '',
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    enabled: Boolean(authorId),
+  })
+}
+
+/**
+ * 一批作者的帖子（/following 的「全部关注」）。**需要登录**。
+ *
+ * 用 POST body 而不是把 200 个 id 拼进 query（p55-social.md §3.3）。
+ * 空数组时 `enabled: false`：不该为了一个必然返回空页的请求去惊动后端，
+ * 也避免 `POST ... { authorIds: [] }` 在日志里制造噪声。
+ *
+ * authorIds 排序后再进 queryKey：同一批作者以不同顺序传进来必须命中同一个缓存，
+ * 否则翻一页、切一次选人就会白白重拉。
+ */
+export function usePostsByAuthors(authorIds: string[], limit = 20) {
+  const unique = [...new Set(authorIds.filter((id) => Boolean(id)))].sort()
+  return useInfiniteQuery({
+    queryKey: ['posts', 'by-authors', unique.join(',')],
+    queryFn: ({ pageParam }) =>
+      api.post<PostPage>(`${BASE}/by-authors`, {
+        authorIds: unique,
+        limit,
+        // exactOptionalPropertyTypes：无游标时**省略**该字段，不能传 undefined
+        ...(pageParam ? { cursor: pageParam } : {}),
+      }),
+    initialPageParam: '',
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    enabled: unique.length > 0,
   })
 }
 
