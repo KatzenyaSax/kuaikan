@@ -21,10 +21,14 @@ public class Message {
     public static final String TYPE_LIKE = "LIKE";
     public static final String TYPE_COMMENT = "COMMENT";
     public static final String TYPE_MENTION = "MENTION";
+    /** P5.5：关注。与点赞/评论不同，它**不折叠**（每条都是一次可回关的具体关系） */
+    public static final String TYPE_FOLLOW = "FOLLOW";
     public static final String TYPE_SYSTEM = "SYSTEM";
 
     public static final String TARGET_POST = "POST";
     public static final String TARGET_COMMENT = "COMMENT";
+    /** 关注消息的目标是「人」。跳转直接用 actorId（/u/{actorId}） */
+    public static final String TARGET_USER = "USER";
 
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;

@@ -58,6 +58,12 @@ kuaikan:
     interaction-consumer-group: kuaikan-notification-interaction-consumer
     comment-consumer-group: kuaikan-notification-comment-consumer
     banned-consumer-group: kuaikan-notification-banned-consumer
+    # P5.5.1：FOLLOW 是第五类消息，用**第四个**组名，不复用上面任何一个。
+    follow-consumer-group: kuaikan-notification-follow-consumer
+  notification:
+    # FOLLOW 的 24h 同人冷却窗口（ISO-8601，默认 PT24H）。
+    # 可被 Nacos 覆盖：验收要测"取关再关注 24h 内只收 1 条"，得能把窗口调小。
+    follow-cooldown: ${FOLLOW_COOLDOWN:PT24H}
 
 management:
   endpoints:

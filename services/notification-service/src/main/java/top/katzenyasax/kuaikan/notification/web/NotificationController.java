@@ -107,11 +107,12 @@ public class NotificationController {
         return Result.ok(new MessagePage(items, next));
     }
 
-    @Operation(operationId = "getUnread", summary = "四类未读计数")
+    @Operation(operationId = "getUnread", summary = "五类未读计数")
     @GetMapping("/unread")
     public Result<UnreadView> unread() {
         MessageService.Unread u = messageService.unread(requireUserId());
-        return Result.ok(new UnreadView(u.like(), u.comment(), u.mention(), u.system(), u.total()));
+        return Result.ok(new UnreadView(u.like(), u.comment(), u.mention(), u.system(),
+                u.follow(), u.total()));
     }
 
     /**
@@ -187,10 +188,11 @@ public class NotificationController {
     private static String normalizeType(String type) {
         String t = type.trim().toUpperCase();
         return switch (t) {
-            case Message.TYPE_LIKE, Message.TYPE_COMMENT, Message.TYPE_MENTION, Message.TYPE_SYSTEM -> t;
+            case Message.TYPE_LIKE, Message.TYPE_COMMENT, Message.TYPE_MENTION,
+                 Message.TYPE_FOLLOW, Message.TYPE_SYSTEM -> t;
             // 未知类型不静默变成"全部"——那会让前端以为筛选生效了其实是全量
             default -> throw new BizException(CommonErrorCode.PARAM_INVALID,
-                    "type 只能是 LIKE / COMMENT / MENTION / SYSTEM");
+                    "type 只能是 LIKE / COMMENT / MENTION / FOLLOW / SYSTEM");
         };
     }
 }

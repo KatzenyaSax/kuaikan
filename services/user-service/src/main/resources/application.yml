@@ -94,6 +94,11 @@ kuaikan:
     code-ip-hourly-limit: 10
   mail:
     from: ${MAIL_FROM:no-reply@katzenyasax.top}
+  follow:
+    # 单人关注上限（docs/design/p55-social.md §3.1）。真值可放 Nacos 热切换。
+    # 它不是强金融约束：普通操作精确卡死 200，极端并发下最多多出 1~2 条，
+    # 为此加行锁或分布式锁是过度设计（同文档 §6.4）。
+    max-following: ${FOLLOW_MAX_FOLLOWING:200}
 
 management:
   endpoints:

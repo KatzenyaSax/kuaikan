@@ -16,11 +16,11 @@ import java.time.LocalDateTime;
  */
 public record MessageView(
         @Schema(type = "string") Long id,
-        @Schema(description = "LIKE / COMMENT / MENTION / SYSTEM") String type,
+        @Schema(description = "LIKE / COMMENT / MENTION / FOLLOW / SYSTEM") String type,
         @Schema(type = "string", description = "动作发起人；SYSTEM 为 null") Long actorId,
         @Schema(description = "写入时的昵称快照，不会是当前昵称") String actorNickname,
         String actorAvatar,
-        @Schema(description = "POST / COMMENT；SYSTEM 为 null") String targetType,
+        @Schema(description = "POST / COMMENT / USER（关注消息）；SYSTEM 为 null") String targetType,
         @Schema(type = "string") Long targetId,
         @Schema(description = "帖子标题快照；目标已删除时可能为 null") String targetTitle,
         @Schema(description = "社群名快照，用于拼跳转 URL；为 null 表示点不进去") String communityName,

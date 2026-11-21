@@ -3,6 +3,7 @@ package top.katzenyasax.kuaikan.notification.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -10,11 +11,13 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import top.katzenyasax.kuaikan.common.mq.CommentCreated;
 import top.katzenyasax.kuaikan.common.mq.InteractionChange;
 import top.katzenyasax.kuaikan.common.mq.UserBanned;
+import top.katzenyasax.kuaikan.common.mq.UserFollowed;
 import top.katzenyasax.kuaikan.notification.domain.Message;
 import top.katzenyasax.kuaikan.notification.mapper.MessageMapper;
 import top.katzenyasax.kuaikan.notification.service.SnapshotService.Actor;
 import top.katzenyasax.kuaikan.notification.service.SnapshotService.Target;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
@@ -40,14 +43,22 @@ public class MessageService {
     private final ObjectMapper objectMapper;
     private final SseService sseService;
 
+    /**
+     * FOLLOW 的 24h 同人冷却窗口（P5.5.1）。默认 PT24H，可被 Nacos 覆盖
+     * （验收要测"取关再关注 24h 内只收 1 条"，测试窗口得能调小）。
+     */
+    private final Duration followCooldown;
+
     public MessageService(MessageMapper messageMapper,
                           SnapshotService snapshotService,
                           ObjectMapper objectMapper,
-                          SseService sseService) {
+                          SseService sseService,
+                          @Value("${kuaikan.notification.follow-cooldown:PT24H}") Duration followCooldown) {
         this.messageMapper = messageMapper;
         this.snapshotService = snapshotService;
         this.objectMapper = objectMapper;
         this.sseService = sseService;
+        this.followCooldown = followCooldown;
     }
 
     /**
@@ -269,12 +280,13 @@ public class MessageService {
         }
     }
 
-    /** 未读四类。没出现过的类型补 0，让前端不用判 undefined */
+    /** 未读五类。没出现过的类型补 0，让前端不用判 undefined */
     public Unread unread(Long userId) {
         List<MessageMapper.TypeCount> rows = messageMapper.countUnreadByType(userId);
         long like = 0;
         long comment = 0;
         long mention = 0;
+        long follow = 0;
         long system = 0;
         for (MessageMapper.TypeCount r : rows) {
             long n = r.cnt();
@@ -282,13 +294,87 @@ public class MessageService {
                 case Message.TYPE_LIKE -> like = n;
                 case Message.TYPE_COMMENT -> comment = n;
                 case Message.TYPE_MENTION -> mention = n;
+                case Message.TYPE_FOLLOW -> follow = n;
                 case Message.TYPE_SYSTEM -> system = n;
                 default -> {
                     // 未知类型不参与统计，但不能抛：多一个类型不该让整个接口挂掉
                 }
             }
         }
-        return new Unread(like, comment, mention, system, like + comment + mention + system);
+        return new Unread(like, comment, mention, follow, system,
+                like + comment + mention + follow + system);
+    }
+
+    /**
+     * 处理一条关注事件 → FOLLOW 消息（P5.5.1）。
+     *
+     * <h2>三道门，全部在落库前</h2>
+     *
+     * 1. <b>自抑制</b>：{@code followerId == followeeId} 直接忽略。
+     *    user-service 已经在写路径上挡了（40210），这里是纵深防御：
+     *    消费者不该因为生产端的一个 bug 就给自己发一条"你关注了你自己"。
+     * 2. <b>24h 同人冷却</b>：命中 {@code (user_id, type='FOLLOW', actor_id, created_at > now - cooldown)}
+     *    就直接跳过落库与 SSE 并**正常 ACK**。这不是失败——
+     *    否则重投会变成无限重试，而且用户永远只会看到满屏的同一个人。
+     * 3. <b>幂等</b>：{@code uk_user_event} 挡住 MQ 重投。
+     *
+     * <h2>快照取自事件载荷，不回查 user-service</h2>
+     *
+     * {@code followerNickname / followerAvatar} 由 user-service 在写 outbox 的同一事务里固化，
+     * 所以这里不需要一次跨服务调用（见 UserFollowed 的注释）。
+     */
+    @Transactional
+    public boolean onUserFollowed(String rawPayload) {
+        UserFollowed event;
+        try {
+            event = objectMapper.readValue(rawPayload, UserFollowed.class);
+        } catch (Exception e) {
+            log.error("关注事件反序列化失败，丢弃 payload={}", rawPayload, e);
+            return true;
+        }
+
+        Long followerId = parse(event.followerId());
+        Long followeeId = parse(event.followeeId());
+        if (followerId == null || followeeId == null) {
+            // 载荷缺 id 是生产端 bug，重投没用
+            log.error("关注事件缺少 id，丢弃 eventId={}", event.eventId());
+            return true;
+        }
+        // ① 自抑制
+        if (followerId.equals(followeeId)) {
+            return true;
+        }
+
+        LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.MILLIS);
+        // ② 24h 冷却：命中即跳过落库与推流，但**正常 ACK**
+        if (messageMapper.existsRecentFollow(followeeId, followerId, now.minus(followCooldown)) != null) {
+            log.info("关注消息在冷却窗口内，已跳过 userId={} actor={} cooldown={}",
+                    followeeId, followerId, followCooldown);
+            return true;
+        }
+
+        Message row = new Message();
+        row.setUserId(followeeId);
+        row.setType(Message.TYPE_FOLLOW);
+        row.setSourceEventId(event.eventId());
+        row.setActorId(followerId);
+        row.setActorNickname(clamp(event.followerNickname(), 64));
+        row.setActorAvatar(clamp(event.followerAvatar(), 512));
+        // 目标是「人」，跳转直接用 actorId → /u/{actorId}。
+        // 没有 postId / commentId / communityName：关注消息不指向内容
+        row.setTargetType(Message.TARGET_USER);
+        row.setTargetId(followerId);
+        row.setCreatedAt(now);
+
+        // ③ 幂等：同一事件重投不会产生第二条
+        if (messageMapper.insertIgnore(row) == 0) {
+            log.info("重复投递，已忽略 eventId={}", event.eventId());
+            return true;
+        }
+        pushAfterCommit(followeeId, row);
+        log.info("关注消息已落库 userId={} actor={} eventId={}",
+                followeeId, event.followerNickname(), event.eventId());
+        return true;
     }
 
     /**
@@ -356,12 +442,35 @@ public class MessageService {
         return messageMapper.markAllRead(userId, LocalDateTime.now().truncatedTo(ChronoUnit.MILLIS));
     }
 
-    /** 四类未读 + 总数 */
-    public record Unread(long like, long comment, long mention, long system, long total) {
+    /**
+     * 五类未读 + 总数。顺序与抽屉 Tab 一致（点赞 / 评论 / @ / 关注 / 系统）。
+     *
+     * 注意：{@code UnreadView} 为了向后兼容把 {@code follow} 追加在 {@code system} 之后，
+     * 两份记录的字段顺序**故意不同**，别按位置互传。
+     */
+    public record Unread(long like, long comment, long mention, long follow, long system, long total) {
     }
 
     private static String trimExcerpt(String text) {
         return SnapshotService.trim(text, EXCERPT_MAX);
+    }
+
+    /**
+     * 硬截断到列宽。
+     *
+     * 不能用 {@link SnapshotService#trim}：它会补一个省略号，
+     * 于是 64 字的昵称变成 65 字，VARCHAR(64) 在严格模式下直接插入失败。
+     * 关注消息的昵称/头像来自事件载荷（对方可控的输入），必须自己把宽度钉死。
+     */
+    private static String clamp(String text, int max) {
+        if (text == null) {
+            return null;
+        }
+        String flat = text.strip();
+        if (flat.isEmpty()) {
+            return null;
+        }
+        return flat.length() <= max ? flat : flat.substring(0, max);
     }
 
     private static Long parse(String s) {

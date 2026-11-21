@@ -26,6 +26,10 @@ TOPICS=(
   "kuaikan_interaction_changed"
   "kuaikan_comment_created"
   "kuaikan_user_banned"
+  # P5.5.1：关注事件（user-service → notification-service）。
+  # 它必须在 notification-service **启动之前**就存在：消费者在 topic 创建前
+  # 订阅的话拿不到路由，要重启才能把积压的消息读走（见文件头的实测记录）。
+  "kuaikan_user_followed"
 )
 
 mqadmin() {

@@ -52,6 +52,26 @@ public interface MessageMapper extends BaseMapper<Message> {
     List<TypeCount> countUnreadByType(@Param("userId") Long userId);
 
     /**
+     * FOLLOW 的 24h 同人冷却判定（P5.5.1）。
+     *
+     * 命中就跳过落库与 SSE 并正常 ACK —— 不是失败。
+     * 四列条件与 {@code idx_follow_cooldown (user_id, type, actor_id, created_at)} 完全对齐，
+     * 等值三列定位 + 范围一列扫描，命中即返回。
+     *
+     * 返回 Integer 而不是 boolean：没有命中时 SELECT 1 ... LIMIT 1 是空结果集，
+     * MyBatis 映射成 null 最自然。
+     */
+    @Select("""
+            SELECT 1 FROM t_message
+            WHERE user_id = #{userId} AND type = 'FOLLOW' AND actor_id = #{actorId}
+              AND created_at > #{cutoff}
+            LIMIT 1
+            """)
+    Integer existsRecentFollow(@Param("userId") Long userId,
+                               @Param("actorId") Long actorId,
+                               @Param("cutoff") LocalDateTime cutoff);
+
+    /**
      * 全部已读。
      *
      * <b>这条语句没有竞态</b>：并发到达的新消息要么落在 UPDATE 之前（一起被标已读，
