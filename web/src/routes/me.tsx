@@ -105,13 +105,15 @@ export function MePage() {
    * 交给服务端判定 —— 那两条必须由 40207 / 40208 回答，前端抢先拦掉等于
    * 让服务端的权威判定永远不被走到。
    *
-   * 成功之后服务端已经把全部 refresh / access 吊销。本地收尾的**顺序不能换**：
-   * 先 navigate 离开 `/me`，再 `clearLocalSession()`。
+   * 成功之后服务端已经把全部 refresh / access 吊销。本地收尾：
+   * `clearLocalSession('password_changed')` + `navigate('/login', { replace: true })`。
    *
-   * 反过来的话，`clear()` 会把 status 置为 anonymous，`<RequireAuth>` 立刻
-   * 渲染 `<Navigate to="/login?returnTo=%2Fme" replace />`，抢在我们的
-   * navigate 之前把页面切走，`location.state.notice` 就被吃掉了——
-   * 用户只看到一个没有任何说明的登录页。
+   * 提示文案**走 store 的 `logoutReason` 而不是 `location.state`**：
+   * clear() 会把 status 置成 anonymous，`<RequireAuth>` 立刻渲染
+   * `<Navigate to="/login?returnTo=%2Fme" replace />`，那次 replace 会把
+   * `location.state` 抹掉（实测 history 里先有 `{notice}`，紧接着被 `{usr:null}`
+   * 覆盖），用户只看到一个没有任何说明的登录页。logoutReason 在 Zustand 里，
+   * 重定向改不动它，登录页读到的永远是准确的原因。
    *
    * **仍不再发 /auth/logout**（那会带着一枚死 access 换回 401）。
    */
@@ -134,12 +136,9 @@ export function MePage() {
       { oldPassword, newPassword },
       {
         onSuccess: () => {
-          // 先离开 <RequireAuth>，再清会话（顺序见上方注释）
-          navigate('/login', {
-            replace: true,
-            state: { notice: '密码已修改，请使用新密码重新登录' },
-          })
-          clearLocalSession()
+          // 原因写进 store：即使 RequireAuth 同帧把页面切到 /login，提示也不会丢
+          clearLocalSession('password_changed')
+          navigate('/login', { replace: true })
         },
         onError: (err) => setPasswordError(authErrorMessage(err)),
       },

@@ -44,6 +44,13 @@ export function LoginForm() {
         <p className="m-0 mb-4 text-aux text-warning" data-testid="session-notice">
           登录状态已过期，请重新登录。
         </p>
+      ) : logoutReason === 'password_changed' ? (
+        // 改密成功必然全端下线：这句话必须出现在**登录页本身**。
+        // 从前它靠 router location.state 传递，被 RequireAuth 的同帧重定向抹掉，
+        // 用户只看到一个空白登录页（以为改密失败了）。现在改走 store 的 logoutReason。
+        <p className="m-0 mb-4 text-aux text-success" data-testid="login-notice">
+          密码已修改，请使用新密码重新登录
+        </p>
       ) : null}
 
       {params.get('registered') ? (

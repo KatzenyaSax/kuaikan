@@ -69,8 +69,13 @@ export type AuthStatus = 'unknown' | 'authenticated' | 'anonymous'
  * 区分这个的唯一目的是**给用户一句准确的话**：
  * "登录已过期，请重新登录" 和 "账号已被封禁" 是完全不同的两件事，
  * 前者他会重试，后者他该去找管理员。
+ *
+ * `password_changed` 也是同一类事实：改密成功必然全端下线，
+ * 登录页必须说清"是你自己改的密码"，否则用户会以为刚才的操作失败了。
+ * 它放在 store 而不是 router `location.state` 里，是为了躲开
+ * `<RequireAuth>` 在 clear() 之后的同帧重定向——那条重定向会把 state 抹掉。
  */
-export type LogoutReason = 'manual' | 'expired' | 'banned' | null
+export type LogoutReason = 'manual' | 'expired' | 'banned' | 'password_changed' | null
 
 type SessionState = {
   status: AuthStatus
@@ -81,7 +86,13 @@ type SessionState = {
   bootstrap: () => Promise<void>
   login: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
-  clear: () => void
+  /**
+   * 静默清空本地会话（服务端凭证已由调用方处理）。
+   *
+   * `reason` 可选：不传保持既有行为（不动 `logoutReason`）；
+   * 传 `'password_changed'` 时把原因写进 store，登录页据此给出提示。
+   */
+  clear: (reason?: LogoutReason) => void
   /** 资料更新后回写 store（服务端返回的是真相，不要本地拼） */
   setUser: (user: UserProfile) => void
 }
@@ -149,7 +160,14 @@ export const useSession = create<SessionState>((set, get) => ({
     set({ status: 'anonymous', accessToken: null, user: null, logoutReason: 'manual' })
   },
 
-  clear: () => set({ status: 'anonymous', accessToken: null, user: null }),
+  clear: (reason) =>
+    set({
+      status: 'anonymous',
+      accessToken: null,
+      user: null,
+      // 不传 reason 时保持既有行为：不动 logoutReason（登出/守卫清场都不该改口）
+      ...(reason ? { logoutReason: reason } : {}),
+    }),
 
   setUser: (user) => set({ user }),
 }))

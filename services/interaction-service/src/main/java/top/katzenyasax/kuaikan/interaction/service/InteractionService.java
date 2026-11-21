@@ -101,14 +101,36 @@ public class InteractionService {
         // affectedRows == 0 表示本来就存在：幂等返回，且**不产生事件**
     }
 
-    /** 设为未赞 / 未收藏。幂等：本来就没有则不发事件 */
+    /**
+     * 设为未赞 / 未收藏。幂等：本来就没有则不发事件。
+     *
+     * <b>先删本地事实，再问目标</b>（顺序与 P3 的 add 相反，理由有三个）：
+     * <ol>
+     *   <li>affectedRows == 0 就是"本来没有这条互动"，幂等返回即可，
+     *       连一次 Feign 都不用发——重复点取消赞是常态。</li>
+     *   <li>目标被删之后，用户唯一还能做的就是把它从「我的收藏」里清掉。
+     *       如果取消也要求目标存在，那条占位行就成了死胡同
+     *       （p55-social.md §7 的"已删帖灰色占位 + 取消收藏"直接失效）。</li>
+     *   <li>减计数事件只是为了 content 的派生计数对账；目标都没了，
+     *       那张帖子也不会再展示计数，跳过事件是正确的。</li>
+     * </ol>
+     *
+     * <b>下游不可用时仍然抛 50300</b>：异常会让本事务回滚，
+     * 不会出现"互动删了、计数没减"的中间态（与 P3 的语义保持一致）。
+     */
     @Transactional
     public void remove(Long userId, int kind, int targetType, Long targetId) {
-        TargetView target = requireTarget(targetType, targetId);
-        if (interactionMapper.deleteByUnique(userId, kind, targetType, targetId) == 1) {
-            enqueue(InteractionChange.Change.REMOVED, kind, targetType, targetId, userId, target.ownerId());
-            log.info("取消互动 kind={} target={}:{} userId={}", kind, targetType, targetId, userId);
+        if (interactionMapper.deleteByUnique(userId, kind, targetType, targetId) != 1) {
+            // 本来就没赞/没收藏：幂等返回，不发事件、也不发无意义的跨服务调用
+            return;
         }
+        // 走到这里说明本地事实已删，必须保证计数侧也收到通知（或明确不需要通知）
+        TargetView target = findTargetForRemove(targetType, targetId);
+        if (target != null) {
+            enqueue(InteractionChange.Change.REMOVED, kind, targetType, targetId, userId, target.ownerId());
+        }
+        log.info("取消互动 kind={} target={}:{} userId={} 目标已删除={}",
+                kind, targetType, targetId, userId, target == null);
     }
 
     /** (目标类型, 目标 id) 的组合，仅本类内部使用 */
@@ -308,7 +330,12 @@ public class InteractionService {
 
     // ---------------------------------------------------------------- 内部
 
-    /** 目标必须存在。失败一律 50300（沿用 P2.3 先例：这是必要的依赖，不是可选的增强） */
+    /**
+     * 目标必须存在。失败一律 50300（沿用 P2.3 先例：这是必要的依赖，不是可选的增强）
+     *
+     * <b>只给写"新增互动"用</b>：点赞/收藏一个不存在的帖子仍然是错误。
+     * 取消互动走 {@link #findTargetForRemove}——那里"目标不存在"不是错误。
+     */
     private TargetView requireTarget(int targetType, Long targetId) {
         String type = targetType == Interaction.TARGET_POST ? "post" : "comment";
         Result<TargetView> result;
@@ -326,6 +353,35 @@ public class InteractionService {
             throw new BizException(targetType == Interaction.TARGET_POST
                     ? top.katzenyasax.kuaikan.common.error.ContentErrorCode.POST_NOT_FOUND
                     : top.katzenyasax.kuaikan.common.error.ContentErrorCode.COMMENT_NOT_FOUND);
+        }
+        return result.data();
+    }
+
+    /**
+     * 取消互动时查目标："目标已删除"返回 null（调用方跳过减计数事件），
+     * 其余异常照旧 50300 让事务回滚。
+     *
+     * 为什么不复用 {@link #requireTarget}：它把 exists == false 抛成 42001/42002，
+     * 那正是"已删帖的收藏永远取消不掉"的成因。两条路径的语义本来就不同，
+     * 硬揉成一个带开关的方法会让"新增必须存在、取消不必须"变成隐式约定。
+     */
+    private TargetView findTargetForRemove(int targetType, Long targetId) {
+        String type = targetType == Interaction.TARGET_POST ? "post" : "comment";
+        Result<TargetView> result;
+        try {
+            result = targetClient.target(type, targetId);
+        } catch (Exception e) {
+            // content 不可用：与 add 一样，宁可回滚也不能"互动删了、计数没减"
+            log.error("取消互动时目标校验失败 type={} id={}", type, targetId, e);
+            throw new BizException(CommonErrorCode.UPSTREAM_UNAVAILABLE);
+        }
+        if (result == null || result.data() == null) {
+            log.error("取消互动时目标校验返回空 body type={} id={}", type, targetId);
+            throw new BizException(CommonErrorCode.UPSTREAM_UNAVAILABLE);
+        }
+        if (!result.data().exists()) {
+            log.info("取消互动时目标已删除，跳过减计数事件 type={} id={}", type, targetId);
+            return null;
         }
         return result.data();
     }
