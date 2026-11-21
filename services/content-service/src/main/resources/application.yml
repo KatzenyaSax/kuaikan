@@ -70,6 +70,10 @@ kuaikan:
     # 计数对账周期。它兜住三类事件管不了的情况：
     # 事件超过重试上限被放弃、消费逻辑有 bug、有人手工改过计数
     interval: 10m
+  content:
+    # 单次按作者集合拉帖的上限（POST /posts/by-authors）。
+    # 与单人关注上限 200 对齐，让 /following 的「全部关注」一次就能拉全
+    max-author-ids: ${MAX_AUTHOR_IDS:200}
 
 mybatis-plus:
   configuration:

@@ -17,6 +17,7 @@ import top.katzenyasax.kuaikan.content.web.dto.CreatePostRequest;
 import top.katzenyasax.kuaikan.content.web.dto.PostDetail;
 import top.katzenyasax.kuaikan.content.web.dto.PostPage;
 import top.katzenyasax.kuaikan.content.web.dto.PostSummary;
+import top.katzenyasax.kuaikan.content.web.dto.PostsByAuthorsRequest;
 
 /**
  * 帖子。网关剥掉 /api/content 前缀后映射到 /posts。
@@ -39,19 +40,41 @@ public class PostController {
     }
 
     /**
-     * 社群时间线。游客可读。
+     * 帖子列表。游客可读。
      *
-     * 路径与发帖相同（都是 /posts），靠 (方法, 路径) 二元组的放行规则区分：
-     * GET 公开、POST 需要登录。
+     * P5.5 起接受 {@code communityId} 或 {@code authorId}（**二选一**，两个都空或都传都是 40010）：
+     *   - communityId：P2 既有行为，游标格式与游标标记保持原样；
+     *   - authorId：用户主页「ta 发的帖子」与 /following 单人筛选，
+     *     使用独立游标标记，拿错游标会明确报 40010 而不是静默串用。
+     *
+     * 网关放行规则是 {@code GET /api/content/posts}（精确路径，不含 query），
+     * 所以加参数不需要新增白名单。
      */
     @Operation(operationId = "listPosts")
     @PublicEndpoint
     @GetMapping
-    public Result<PostPage> list(@RequestParam("communityId") Long communityId,
+    public Result<PostPage> list(@RequestParam(required = false) Long communityId,
+                                 @RequestParam(required = false) Long authorId,
                                  @RequestParam(required = false) String sort,
                                  @RequestParam(required = false) String cursor,
                                  @RequestParam(required = false) Integer limit) {
-        return Result.ok(postService.list(communityId, sort, cursor, limit));
+        return Result.ok(postService.list(communityId, authorId, sort, cursor, limit));
+    }
+
+    /**
+     * 一批作者的帖子。{@code /following} 页的「全部关注」专用。
+     *
+     * <b>需要登录</b>：不标 {@link PublicEndpoint}（网关白名单里也刻意没有它），
+     * 入口显式拦一道 —— 这条读路径面向「已登录用户的关注流」，游客没有意义。
+     *
+     * 用 POST 放 body 而不是 GET 拼 query：200 个雪花 id 的 query string 约 4 KB，
+     * 正好在容器/代理的 URI 长度上限附近（p55-social.md §3.3）。
+     */
+    @Operation(operationId = "listPostsByAuthors")
+    @PostMapping("/by-authors")
+    public Result<PostPage> listByAuthors(@Valid @RequestBody PostsByAuthorsRequest body) {
+        UserContext.requireUserId();
+        return Result.ok(postService.listByAuthors(body));
     }
 
     /**

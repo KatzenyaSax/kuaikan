@@ -50,6 +50,15 @@ public class CommunityService {
     /** /mine 的排序标记：按加入时间倒序，与会话游标分开 */
     private static final String SORT_MINE = "mine";
 
+    /**
+     * 公开版「某人加入的社群」的排序标记。
+     *
+     * 查询结构与 /mine 完全一样，但游标标记必须另一个：
+     * 否则拿 A 的 /mine 游标去查 B 的列表也能“成功”，跳出一个
+     * 看起来正常实际跟前一次无关的页 —— 那是没有人能复现的 bug。
+     */
+    private static final String SORT_USER_JOINED = "user-joined";
+
     private static final int DEFAULT_LIMIT = 20;
     private static final int MAX_LIMIT = 50;
 
@@ -211,15 +220,31 @@ public class CommunityService {
         return CommunityDetail.of(requireById(community.getId()));
     }
 
+    /** 我加入的社群。按 joined_at DESC, id DESC 游标分页（见 {@link #joinedCommunities}） */
+    public CommunityPage mine(Long userId, String cursor, Integer limit) {
+        return joinedCommunities(userId, cursor, limit, SORT_MINE);
+    }
+
     /**
-     * 我加入的社群。按加入时间倒序，游标分页。
+     * 指定用户已加入的社群（用户主页「社群」Tab，游客可读）。
+     *
+     * 与 {@link #mine} 是同一条查询（同一组索引 idx_user_joined），
+     * 区别只有两点：用户来自路径参数而不是 UserContext，且**不校验用户是否存在**——
+     * 校验意味着同步调 user-service，读路径不允许（ADR 0005）。
+     */
+    public CommunityPage userCommunities(Long userId, String cursor, Integer limit) {
+        return joinedCommunities(userId, cursor, limit, SORT_USER_JOINED);
+    }
+
+    /**
+     * 我 / 他加入的社群。按加入时间倒序，游标分页。
      *
      * 顺序以成员行的 joined_at 为准（不是社群的创建时间）——"我刚加的"应该在前面。
      * 游标里存的是成员行 id，与社群列表的游标含义不同，所以两者的排序标记也不同。
      */
-    public CommunityPage mine(Long userId, String cursor, Integer limit) {
+    private CommunityPage joinedCommunities(Long userId, String cursor, Integer limit, String sort) {
         int size = normalizeLimit(limit);
-        CursorCodec.Cursor c = CursorCodec.decode(cursor, SORT_MINE);
+        CursorCodec.Cursor c = CursorCodec.decode(cursor, sort);
 
         LambdaQueryWrapper<CommunityMember> q = new LambdaQueryWrapper<CommunityMember>()
                 .eq(CommunityMember::getUserId, userId)
@@ -253,7 +278,7 @@ public class CommunityService {
         String next = null;
         if (rows.size() > size) {
             CommunityMember last = page.get(page.size() - 1);
-            next = CursorCodec.encode(SORT_MINE, toMillis(last.getJoinedAt()), last.getId());
+            next = CursorCodec.encode(sort, toMillis(last.getJoinedAt()), last.getId());
         }
         return new CommunityPage(items, next);
     }

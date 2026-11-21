@@ -45,6 +45,73 @@ public interface PostMapper extends BaseMapper<Post> {
                          @Param("limit") int limit);
 
     /**
+     * 某个作者的时间线第一页（用户主页「ta 发的帖子」与 /following 单人筛选）。
+     *
+     * 走 {@code idx_author_created (author_id, created_at, id)}：等值前缀 + 排序键
+     * 都被覆盖，不需要额外排序。**零 DDL**（见 p55-social.md §5.4）。
+     */
+    @Select("""
+            SELECT * FROM t_post
+            WHERE author_id = #{authorId} AND status = 1
+            ORDER BY created_at DESC, id DESC
+            LIMIT #{limit}
+            """)
+    List<Post> firstPageByAuthor(@Param("authorId") Long authorId, @Param("limit") int limit);
+
+    /** 某个作者的后续页。参数是上一页最后一行的 (created_at, id) */
+    @Select("""
+            SELECT * FROM t_post
+            WHERE author_id = #{authorId} AND status = 1
+              AND (created_at, id) < (#{createdAt}, #{id})
+            ORDER BY created_at DESC, id DESC
+            LIMIT #{limit}
+            """)
+    List<Post> pageAfterByAuthor(@Param("authorId") Long authorId,
+                                 @Param("createdAt") LocalDateTime createdAt,
+                                 @Param("id") Long id,
+                                 @Param("limit") int limit);
+
+    /**
+     * 一批作者的时间线第一页（/following 的「全部关注」）。
+     *
+     * {@code IN (...)} 会对每个 author_id 各做一次 idx_author_created 的范围扫描再归并；
+     * 单批 200 个作者在 1 万用户规模下是毫秒级，而且全在本地 schema 内（ADR 0006）。
+     *
+     * 调用方必须先剔除空列表：空 {@code IN ()} 是 SQL 语法错误。
+     */
+    @Select("""
+            <script>
+            SELECT * FROM t_post
+            WHERE status = 1 AND author_id IN
+            <foreach collection="authorIds" item="authorId" open="(" separator="," close=")">
+              #{authorId}
+            </foreach>
+            ORDER BY created_at DESC, id DESC
+            LIMIT #{limit}
+            </script>
+            """)
+    List<Post> firstPageByAuthors(@Param("authorIds") List<Long> authorIds,
+                                  @Param("limit") int limit);
+
+    /** 一批作者的后续页。游标仍是 (created_at, id)，与单作者列表完全一致 */
+    @Select("""
+            <script>
+            SELECT * FROM t_post
+            WHERE status = 1 AND author_id IN
+            <foreach collection="authorIds" item="authorId" open="(" separator="," close=")">
+              #{authorId}
+            </foreach>
+              AND (created_at, id) &lt; (#{createdAt}, #{id})
+            ORDER BY created_at DESC, id DESC
+            LIMIT #{limit}
+            </script>
+            """)
+    List<Post> pageAfterByAuthors(@Param("authorIds") List<Long> authorIds,
+                                  @Param("createdAt") LocalDateTime createdAt,
+                                  @Param("id") Long id,
+                                  @Param("limit") int limit);
+
+    /**
      * 全站最新帖（跨社群）。首页用。
      *
      * 走 {@code idx_community_created} 用不上（没有 community_id 前缀），
