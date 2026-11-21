@@ -52,6 +52,7 @@
 | 有人评论/回复 | content | `kuaikan_comment_created` |
 | 有人点赞/收藏 | interaction | `kuaikan_interaction_changed` |
 | 有人被封禁 | user | `kuaikan_user_banned` |
+| 有人关注 | user | `kuaikan_user_followed` |
 
 **`rank-service` 与 `search-service` 是读侧投影，不拥有任何事实。** 数据只来自事件订阅或对 `content-service` 的内部只读接口：
 
@@ -114,6 +115,7 @@
 | `CommentCreated` | content | notification | commentId, postId, communityId, **postAuthorId**, replyToUserId, mentionUserIds, excerpt（详见 [`p4-notification.md`](./p4-notification.md) §3） |
 | `LikeAdded` / `LikeRemoved` | interaction | content（计数）、notification（仅 Added） | eventId, actorId, targetType, targetId, targetOwnerId |
 | `UserBanned` | user | notification | userId, reason |
+| `UserFollowed` | user | notification | eventId, occurredAt, followerId, followeeId, followerNickname, followerAvatar（详见 [`p55-social.md`](./p55-social.md) §4） |
 | `LocalCacheEvict`（广播） | content, user | 全部 | cacheKey |
 
 **收藏不产生消息**，也不发事件——收藏是用户的私密行为，只有计数变化（由 interaction 与 content 之间的内部接口或事件处理，见 §7）。
@@ -148,7 +150,7 @@
 | `post.like_count` / `post.favorite_count` | content | — | 消费 interaction 事件 | 允许滞后 ≤5s |
 | `comment.like_count` | content | — | 消费 interaction 事件 | 允许滞后 ≤5s |
 | `community.member_count` | community | — | 本地事务 | 强一致 |
-| `unread:{userId}` 四类 | notification | 点赞/评论/@/系统 | **P4 改为派生**：`COUNT(*) WHERE read_at IS NULL GROUP BY type`，不做 Redis 计数器 | 精确（无需对账） |
+| `unread:{userId}` 五类 | notification | 点赞/评论/@/关注/系统（P5.5 扩增「关注」） | **P4 改为派生**：`COUNT(*) WHERE read_at IS NULL GROUP BY type`，不做 Redis 计数器 | 精确（无需对账） |
 
 > ⚠️ **P4 对上一行的修改**：原设计是 Redis 四类计数器 + 每日对账。改为 MySQL 派生，原因：“全部已读”与并发新消息在计数器方案下有**吞消息**的真 bug（`SET 0` 会抹掉期间到达的增量），而 `UPDATE ... WHERE read_at IS NULL` 天然无竞态。
 > 详见 [`p4-notification.md`](./p4-notification.md) §6.5。这与 ADR 0010 同一套哲学：**计数是派生状态，能算就别存。**
@@ -190,7 +192,7 @@
 | notification | `t_message` | id, user_id, type, actor_id, actor_nickname, actor_avatar, target_type, target_id, target_title, excerpt, read_at, created_at；索引 `(user_id,type,created_at,id)` |
 | search | ES 索引 `post_v1` | IK 分词 title/body, communityId, authorId, createdAt |
 
-**消息类型只有四种**：`LIKE` / `COMMENT` / `MENTION` / `SYSTEM`。"评论了你的帖子"与"回复了你的评论"同为 `COMMENT`，用 `reply_to_user_id` 是否为空区分文案，**不新增类型**。
+**消息类型固定为五种**：`LIKE` / `COMMENT` / `MENTION` / `FOLLOW` / `SYSTEM`（P5.5 扩增 `FOLLOW`）。"评论了你的帖子"与"回复了你的评论"同为 `COMMENT`，用 `reply_to_user_id` 是否为空区分文案，**不新增类型**。
 
 **所有主键为雪花 ID（`BIGINT`），全局 Jackson 将 `Long` 序列化为字符串。所有删除为逻辑删除。所有列表分页用游标（`created_at, id`），不用 `offset`。**
 
