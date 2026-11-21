@@ -49,7 +49,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** 我的收藏（游标分页，仅本人） */
+        get: operations["listMyFavorites"];
         put?: never;
         post: operations["favoriteTarget"];
         delete: operations["unfavoriteTarget"];
@@ -184,6 +185,26 @@ export interface components {
             /** Format: int64 */
             favoriteCount?: number;
         };
+        FavoriteItem: {
+            /** @description 帖子 id（雪花 id，字符串下发） */
+            postId?: string;
+            /**
+             * Format: date-time
+             * @description 收藏时间，列表按它倒序
+             */
+            createdAt?: string;
+        };
+        PageResultFavoriteItem: {
+            items?: components["schemas"]["FavoriteItem"][];
+            nextCursor?: string;
+            hasMore?: boolean;
+        };
+        ResultPageResultFavoriteItem: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: components["schemas"]["PageResultFavoriteItem"];
+        };
     };
     responses: never;
     parameters: never;
@@ -260,6 +281,29 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ResultListSinceResponse"];
+                };
+            };
+        };
+    };
+    listMyFavorites: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultPageResultFavoriteItem"];
                 };
             };
         };

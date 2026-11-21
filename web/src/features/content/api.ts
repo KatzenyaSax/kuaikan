@@ -10,9 +10,17 @@ export type CommentView = NonNullable<CommentPage['items']>[number]
 export type CreateCommentBody = RequestBody<'createComment'>
 export type CreatePostBody = RequestBody<'createPost'>
 export type PostsByAuthorsBody = RequestBody<'listPostsByAuthors'>
+export type BatchPostsBody = RequestBody<'batchPosts'>
+export type BatchPostSummary = OkData<'batchPosts'>[number]
 export type UserSummary = OkData<'batchUserSummaries'>[number]
 
 const BASE = '/api/content/posts'
+
+/**
+ * `POST /posts/batch` 的单批上限，与服务端（p55-social.md §3.3）一致。
+ * 超过这个数客户端自己拆，不让用户撞 40010。
+ */
+const MAX_BATCH_IDS = 50
 
 export function usePostDetail(postId: string | undefined) {
   return useQuery({
@@ -109,6 +117,36 @@ export function usePostsByAuthors(authorIds: string[], limit = 20) {
     initialPageParam: '',
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     enabled: unique.length > 0,
+  })
+}
+
+/**
+ * 批量取帖子摘要（P5.5.3）。「我的收藏」用它把 `(postId, createdAt)` 补成可渲染的行。
+ *
+ * 三件事要注意：
+ *   1. **超 50 自动分批**：服务端上限是 50（超了 40010）。收藏列表滑到第 3 页时
+ *      postId 会超过 50 个，分批是客户端的责任，不是让用户看到报错。
+ *   2. 空数组 `enabled: false`：收藏为空时不该发一个必然返回 [] 的请求。
+ *   3. **只返回 `status = 1` 的帖子**。所以调用方用「返回的 Map 里缺席」来判定
+ *      「这篇已删」—— 这正是删帖占位不需要额外字段的原因。
+ */
+export function useBatchPosts(ids: string[]) {
+  const unique = [...new Set(ids.filter((id) => Boolean(id)))].sort()
+  const chunks: string[][] = []
+  for (let i = 0; i < unique.length; i += MAX_BATCH_IDS) {
+    chunks.push(unique.slice(i, i + MAX_BATCH_IDS))
+  }
+  return useQuery({
+    queryKey: ['posts', 'batch', unique.join(',')],
+    queryFn: async () => {
+      const pages = await Promise.all(
+        chunks.map((chunk) => api.post<BatchPostSummary[]>(`${BASE}/batch`, { ids: chunk })),
+      )
+      return pages.flat()
+    },
+    enabled: unique.length > 0,
+    // 收藏列表反复翻页时同一批 id 应该命中缓存；帖子被判删由 30 秒内的窗口接受
+    staleTime: 30_000,
   })
 }
 

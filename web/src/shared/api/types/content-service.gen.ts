@@ -74,6 +74,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/posts/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 批量查帖子摘要（仅返回未删除，上限 50） */
+        post: operations["batchPosts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/internal/admin/reconcile": {
         parameters: {
             query?: never;
@@ -323,6 +340,16 @@ export interface components {
             message?: string;
             data?: components["schemas"]["PostPage"];
         };
+        BatchPostsRequest: {
+            /** @description 帖子 id 列表（字符串雪花 id）；上限 50 */
+            ids?: string[];
+        };
+        ResultListPostSummary: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: components["schemas"]["PostSummary"][];
+        };
         ResultMapStringObject: {
             /** Format: int32 */
             code?: number;
@@ -341,12 +368,6 @@ export interface components {
             code?: number;
             message?: string;
             data?: components["schemas"]["CommentPage"];
-        };
-        ResultListPostSummary: {
-            /** Format: int32 */
-            code?: number;
-            message?: string;
-            data?: components["schemas"]["PostSummary"][];
         };
         ResultTargetView: {
             /** Format: int32 */
@@ -525,6 +546,30 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ResultPostPage"];
+                };
+            };
+        };
+    };
+    batchPosts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchPostsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultListPostSummary"];
                 };
             };
         };

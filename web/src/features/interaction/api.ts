@@ -1,9 +1,14 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/shared/api/client'
 import type { OkData, RequestBody } from '@/shared/api/typed'
 
 export type InteractionState = OkData<'interactionStates'>[number]
 export type TargetBody = RequestBody<'likeTarget'>
+
+/** 「我的收藏」列表项：只有帖子 id 与收藏时间（帖子摘要由 content 的 batch 补） */
+export type FavoriteItem = NonNullable<OkData<'listMyFavorites'>['items']>[number]
+
+export type FavoritesPage = OkData<'listMyFavorites'>
 
 const BASE = '/api/interaction'
 
@@ -22,6 +27,30 @@ export function useInteractionStates(targets: string[], enabled: boolean) {
         `${BASE}/states?targets=${unique.map(encodeURIComponent).join(',')}`,
       ),
     enabled: enabled && unique.length > 0,
+  })
+}
+
+/**
+ * 我的收藏（P5.5.3）。**需要登录**，只查得到自己的。
+ *
+ * 游标分页 + `useInfiniteQuery`：手写"游标数组 + 多 query"会让加载更多变成替换
+ * ——这个 bug P2.4 踩过一次（HTTP 层看不出，只有浏览器验收能看见）。
+ *
+ * 只拿 `(postId, createdAt)`：帖子标题/社群/作者由页面调 `useBatchPosts` 补齐
+ * （ADR 0005，interaction 不跨库）。batch 里缺席的 postId = 该帖子已被删除。
+ */
+export function useMyFavorites(enabled: boolean) {
+  return useInfiniteQuery({
+    queryKey: ['my-favorites'],
+    queryFn: ({ pageParam }) =>
+      api.get<FavoritesPage>(
+        `${BASE}/favorites?limit=20` +
+          (pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : ''),
+      ),
+    initialPageParam: '',
+    // nextCursor 为 null 表示没有下一页；undefined 让 infiniteQuery 停下
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    enabled,
   })
 }
 
@@ -73,6 +102,9 @@ export function useToggleFavorite() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['interaction', 'states'] })
       void queryClient.invalidateQueries({ queryKey: ['post'] })
+      // 「我的收藏」列表：取消收藏后那一行必须消失，收藏后（比如在详情页点了收藏）
+      // 再回 /me 也要看得见
+      void queryClient.invalidateQueries({ queryKey: ['my-favorites'] })
       window.setTimeout(() => {
         void queryClient.invalidateQueries({ queryKey: ['post'] })
       }, 2000)
