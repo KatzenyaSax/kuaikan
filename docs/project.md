@@ -442,6 +442,28 @@ V2 上线后的一段时间里，评论/@ 消息仍然点不动——因为**那
 2. **目标若是回复**，它藏在「展开 N 条回复」里 → 退化为停在帖子页，
    **不自动展开**。自动展开别人没要求的回复比不滚过去更打扰
 
+### P5.5 社交关系与个人中心（已完成）
+
+`deploy/bin/verify-p55.sh` **105 条断言全绿**（L0 11 / L1 12 / L2 39 / L3 30 / L4 13，耗时 5 分 17 秒，退出码 0）。前端产物 `index-DrRWG2rr.js` 663.99 KB / `index-mPq4em6j.css` 35.52 KB 已发布上线；`deploy/bin/ops.sh` 云端运维入口已入库。
+
+#### 落地事实一览
+
+| 维度 | 实测落地状态 |
+|---|---|
+| 错误码契约 | 21 → **26 码**（新增 `40207` 原密码错误[200]、`40208` 新旧相同[200]、`40209` 用户不存在[404]、`40210` 不能关注自己[200]、`40211` 关注达上限[200]）；`UserErrorCode` 归 `kuaikan-common` |
+| OpenAPI 与白名单 | 全站 **66 个 operationId**，18 个公开端点（P5.5 放行 4 条 GET：`/user/users/{id}/{profile,following,followers}`、`/community/users/{id}/communities`）；其余写端点与私有读端点均受保护 |
+| 库表与迁移 | `user` `V4` 新建 `t_user_follow`（唯一键 + 双索引，关注/粉丝数走覆盖索引 `COUNT(*)` 不冗余存列）；`notification` `V4` 加 `t_message.idx_follow_cooldown`；`interaction` `V3` 加 `t_interaction.idx_user_kind_created`；`content` 与 `community` **零 DDL**（复用 P2 预留索引） |
+| 事件与消费 | RocketMQ 新增 `kuaikan_user_followed`（已登记 `init-topics.sh`）；`user-service` 复用 `t_outbox` 发 `UserFollowed`（载荷自带昵称头像快照）；`notification-service` 独立消费组 `kuaikan-notification-follow-consumer`，MySQL 24h 冷却去重（`kuaikan.notification.follow-cooldown`），抽屉扩为五类 Tab（`FOLLOW` 不折叠，点击跳 `/u/{actorId}`） |
+| 读路径与页面 | `/u/:userId` 全量游客可读四 Tab（帖子 / 社群 / 关注 / 粉丝），列表批量查 `useFollowStates` 无 N+1；`/following` 1200px 双栏（「全部关注」走 `POST /content/posts/by-authors` 上限 200，单人走 `GET /content/posts?authorId=`）；帖子详情与评论作者打通跳主页，帖子详情作者行附快捷关注 |
+| `/me` 与改密 | `/me` 顶部加「查看我的主页」，页内按 hairline 分 4 区保留全部 P1 `data-testid`；`POST /auth/password` BCrypt 在事务外算、`TransactionTemplate` 内同事务改哈希 + 吊销全端 refresh、提交后清 Redis 全端 access 白名单并清 cookie；「我的收藏」走 `GET /interaction/favorites` + `POST /content/posts/batch`（上限 50，只返 `status=1`），已删帖呈现灰色占位并支持取消收藏 |
+
+#### L2/L3 验收抓到的两个真产品缺陷（均已修复并上线验证）
+
+1. **已删帖无法取消收藏（`DELETE /api/interaction/favorites` → 404 / `42001`）**：
+   `InteractionService.remove()` 原先在删行前先 `requireTarget()`，但 `content` 只认 `status=1`，导致 `/me` 已删帖占位上的「取消收藏」成了死胡同。修法：`remove()` 改为先 `deleteByUnique`（删 0 行直接幂等返回，零 Feign），删到 1 行后再查目标——目标已删返回 `null` 跳过减计数事件正常提交，仅在下游不可用时仍抛 `50300` 回滚；`add()` 保持 `requireTarget()` 不变（P3 对不存在帖点赞 `42001` 零影响）。
+2. **改密成功后的 `login-notice` 被 `<RequireAuth>` 同帧重定向覆盖**：
+   Playwright 实测 history 序列为 `replaceState('/login', {notice})` 紧接着被 `<RequireAuth>` 的 `replaceState('/login?returnTo=%2Fme', null)` 覆写。修法：将 `password_changed` 纳入既有的 `useSession.logoutReason`，在 `LoginForm` 内统一渲染 `data-testid="login-notice"`（并删掉 `login.tsx` 的外层叠层，同时消掉双重 `pt-16` 留白），彻底摆脱路由状态竞态。
+
 ### P5.5 验收（已完成）
 
 `verify-p5.sh` **39 条断言全绿**（L1 9 / L2 6 / L3 9 / L5 4 / L4 5 / L6 6）。
