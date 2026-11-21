@@ -23,6 +23,7 @@ import top.katzenyasax.kuaikan.content.domain.Post;
 import top.katzenyasax.kuaikan.content.feign.CommunityMembershipClient;
 import top.katzenyasax.kuaikan.content.feign.MembershipView;
 import top.katzenyasax.kuaikan.content.mapper.PostMapper;
+import top.katzenyasax.kuaikan.content.web.dto.BatchPostsRequest;
 import top.katzenyasax.kuaikan.content.web.dto.CreatePostRequest;
 import top.katzenyasax.kuaikan.content.web.dto.PostDetail;
 import top.katzenyasax.kuaikan.content.web.dto.PostPage;
@@ -50,6 +51,14 @@ public class PostService {
 
     private static final int DEFAULT_LIMIT = 20;
     private static final int MAX_LIMIT = 50;
+
+    /**
+     * {@code POST /posts/batch} 的单次上限（p55-social.md §3.3）。
+     *
+     * 50 = 「我的收藏」一屏的翻页上限：一次请求只能补一页的帖子摘要，
+     * 放大批量就会把一次收藏列表刷成一次全量帖子拉取。
+     */
+    private static final int MAX_BATCH_IDS = 50;
 
     private final PostMapper postMapper;
     private final CommunityMembershipClient membershipClient;
@@ -184,7 +193,7 @@ public class PostService {
      * 也不该因为发了一个空 IN 而拿到 500。
      */
     public PostPage listByAuthors(PostsByAuthorsRequest req) {
-        List<Long> authorIds = parseAuthorIds(req.authorIds());
+        List<Long> authorIds = parseIds(req.authorIds(), contentProperties.getMaxAuthorIds(), "作者");
         if (authorIds.isEmpty()) {
             return new PostPage(List.of(), null);
         }
@@ -197,18 +206,34 @@ public class PostService {
     }
 
     /**
-     * 字符串雪花 id → 正 Long，去重保序。
+     * 批量查帖子摘要（{@code POST /posts/batch}，「我的收藏」用）。**需要登录**，由控制层把关。
      *
-     * 非法数字、非正整数、超过上限一律 40010：静默丢弃非法项会让前端误以为
-     * 「这些作者没发过帖子」，那是最难查的一类 bug（列表看起来只是"少了点东西"）。
-     * null / 空列表返回空集，交给调用方返回空页。
+     * <b>只返回存在且未删除（{@code status = 1}）的</b>：前端把返回结果做成
+     * {@code Map<postId, PostSummary>}，缺席的 postId 就判定为「该帖子已被删除」，
+     * 渲染灰色占位并提供取消收藏入口（p55-social.md §3.3）。
+     *
+     * 空 / null 列表直接返回空列表：收藏列表为空时前端不必先判一下再发请求。
      */
-    private List<Long> parseAuthorIds(List<String> raw) {
+    public List<PostSummary> batch(BatchPostsRequest req) {
+        List<Long> ids = parseIds(req.ids(), MAX_BATCH_IDS, "帖子");
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        return postMapper.selectByIdsNormal(ids).stream().map(PostSummary::of).toList();
+    }
+
+    /**
+     * 字符串雪花 id → 正 Long，去重保序，超过上限报 40010。
+     *
+     * 非法数字、非正整数一律 40010：静默丢弃非法项会让前端误以为
+     * 「这些帖子/作者本来就不存在」，那是最难查的一类 bug（列表看起来只是少了点东西）。
+     * null / 空列表返回空集，交给调用方返回空结果。
+     */
+    private List<Long> parseIds(List<String> raw, int max, String label) {
         Set<Long> unique = new LinkedHashSet<>();
         if (raw == null) {
             return List.of();
         }
-        int max = contentProperties.getMaxAuthorIds();
         for (String part : raw) {
             if (part == null || part.isBlank()) {
                 continue;
@@ -217,15 +242,15 @@ public class PostService {
             try {
                 id = Long.parseLong(part.trim());
             } catch (NumberFormatException e) {
-                throw new BizException(CommonErrorCode.PARAM_INVALID, "authorIds 里含非法 id");
+                throw new BizException(CommonErrorCode.PARAM_INVALID, label + " id 里含非法值");
             }
             if (id <= 0) {
-                throw new BizException(CommonErrorCode.PARAM_INVALID, "authorIds 里含非法 id");
+                throw new BizException(CommonErrorCode.PARAM_INVALID, label + " id 里含非法值");
             }
             unique.add(id);
             if (unique.size() > max) {
                 throw new BizException(CommonErrorCode.PARAM_INVALID,
-                        "单次最多查询 " + max + " 个作者");
+                        "单次最多查询 " + max + " 个" + label);
             }
         }
         return new ArrayList<>(unique);

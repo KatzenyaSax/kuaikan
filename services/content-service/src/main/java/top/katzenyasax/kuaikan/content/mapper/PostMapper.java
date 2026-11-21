@@ -112,6 +112,26 @@ public interface PostMapper extends BaseMapper<Post> {
                                   @Param("limit") int limit);
 
     /**
+     * 批量按 id 查帖子。只返回**存在且未删除**（{@code status = 1}）的。
+     *
+     * 给「我的收藏」用：前端按 {@code Map<postId, PostSummary>} 映射，
+     * 缺席的 postId 就是「这篇帖子已被删」—— 于是删帖占位不需要额外的字段。
+     * 这也是为什么这里必须过滤 status，而不能把已删帖一起返回。
+     *
+     * 主键 IN 查询，无额外过滤列，走 PRIMARY。加 ORDER BY 只是为了响应确定，
+     * 调用方不应依赖这个顺序（顺序由收藏列表给出）。
+     */
+    @Select("""
+            <script>
+            SELECT * FROM t_post
+            WHERE status = 1 AND id IN
+            <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+            ORDER BY created_at DESC, id DESC
+            </script>
+            """)
+    List<Post> selectByIdsNormal(@Param("ids") List<Long> ids);
+
+    /**
      * 全站最新帖（跨社群）。首页用。
      *
      * 走 {@code idx_community_created} 用不上（没有 community_id 前缀），

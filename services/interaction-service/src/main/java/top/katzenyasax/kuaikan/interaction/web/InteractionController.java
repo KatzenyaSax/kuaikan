@@ -7,12 +7,14 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import top.katzenyasax.kuaikan.common.api.PageResult;
 import top.katzenyasax.kuaikan.common.api.Result;
 import top.katzenyasax.kuaikan.common.error.BizException;
 import top.katzenyasax.kuaikan.common.error.CommonErrorCode;
 import top.katzenyasax.kuaikan.common.web.UserContext;
 import top.katzenyasax.kuaikan.interaction.domain.Interaction;
 import top.katzenyasax.kuaikan.interaction.service.InteractionService;
+import top.katzenyasax.kuaikan.interaction.web.dto.FavoriteItem;
 import top.katzenyasax.kuaikan.interaction.web.dto.InteractionState;
 import top.katzenyasax.kuaikan.interaction.web.dto.TargetRequest;
 
@@ -76,6 +78,25 @@ public class InteractionController {
         interactionService.remove(UserContext.requireUserId(), Interaction.KIND_FAVORITE,
                 targetTypeOf(targetType), targetId);
         return Result.ok();
+    }
+
+    /**
+     * 我的收藏列表（P5.5.3）。需要登录，**只查得到自己的**。
+     *
+     * <b>路径里没有 userId、也不收 userId 参数</b>：收藏是私密行为（CONTEXT.md），
+     * 一旦接受 userId 就是一条现成的越权读接口。
+     *
+     * 返回 {@code { items: [{ postId, createdAt }], nextCursor, hasMore }}：
+     * 帖子摘要由前端拿这批 postId 去 {@code POST /api/content/posts/batch} 补齐（ADR 0005）。
+     * 已删帖在 batch 里缺席，于是前端能区分「已删帖」与「未加载」——
+     * 若在这里就把帖子摘要嵌进来，interaction-service 就得跨库或回调 content。
+     */
+    @Operation(operationId = "listMyFavorites", summary = "我的收藏（游标分页，仅本人）")
+    @GetMapping("/favorites")
+    public Result<PageResult<FavoriteItem>> favorites(
+            @RequestParam(value = "cursor", required = false) String cursor,
+            @RequestParam(value = "limit", required = false) Integer limit) {
+        return Result.ok(interactionService.myFavorites(UserContext.requireUserId(), cursor, limit));
     }
 
     private static int targetTypeOf(String targetType) {

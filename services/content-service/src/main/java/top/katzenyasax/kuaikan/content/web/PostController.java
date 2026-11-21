@@ -13,6 +13,7 @@ import top.katzenyasax.kuaikan.common.api.Result;
 import top.katzenyasax.kuaikan.common.web.UserContext;
 import top.katzenyasax.kuaikan.common.web.annotation.PublicEndpoint;
 import top.katzenyasax.kuaikan.content.service.PostService;
+import top.katzenyasax.kuaikan.content.web.dto.BatchPostsRequest;
 import top.katzenyasax.kuaikan.content.web.dto.CreatePostRequest;
 import top.katzenyasax.kuaikan.content.web.dto.PostDetail;
 import top.katzenyasax.kuaikan.content.web.dto.PostPage;
@@ -75,6 +76,26 @@ public class PostController {
     public Result<PostPage> listByAuthors(@Valid @RequestBody PostsByAuthorsRequest body) {
         UserContext.requireUserId();
         return Result.ok(postService.listByAuthors(body));
+    }
+
+    /**
+     * 批量查帖子摘要。{@code /me} 页的「我的收藏」专用。
+     *
+     * <b>需要登录</b>：不标 {@link PublicEndpoint}（网关白名单里也刻意没有它），
+     * 入口显式拦一道 —— 它服务于登录态的个人列表，游客没有使用场景。
+     *
+     * <b>只返回 {@code status = 1} 的帖子</b>：前端拿返回值做
+     * {@code Map<postId, PostSummary>}，缺席的 id 即「已删帖」，渲染灰色占位。
+     * 于是删帖不需要额外的状态字段，也不需要把已删帖的标题泄露给收藏者。
+     *
+     * 与 {@code /by-authors} 同形（POST + body）：两者都是批量 id 读路径，
+     * 不图省一行就用 GET 拼 query（p55-social.md §3.3）。
+     */
+    @Operation(operationId = "batchPosts", summary = "批量查帖子摘要（仅返回未删除，上限 50）")
+    @PostMapping("/batch")
+    public Result<java.util.List<PostSummary>> batch(@Valid @RequestBody BatchPostsRequest body) {
+        UserContext.requireUserId();
+        return Result.ok(postService.batch(body));
     }
 
     /**

@@ -6,6 +6,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import top.katzenyasax.kuaikan.common.api.CursorCodec;
+import top.katzenyasax.kuaikan.common.api.PageResult;
 import top.katzenyasax.kuaikan.common.api.Result;
 import top.katzenyasax.kuaikan.common.error.BizException;
 import top.katzenyasax.kuaikan.common.error.CommonErrorCode;
@@ -17,10 +19,13 @@ import top.katzenyasax.kuaikan.interaction.domain.Interaction;
 import top.katzenyasax.kuaikan.interaction.feign.ContentTargetClient;
 import top.katzenyasax.kuaikan.interaction.feign.TargetView;
 import top.katzenyasax.kuaikan.interaction.mapper.InteractionMapper;
+import top.katzenyasax.kuaikan.interaction.web.dto.FavoriteItem;
 import top.katzenyasax.kuaikan.interaction.web.dto.InteractionState;
 import top.katzenyasax.kuaikan.interaction.web.dto.TargetCount;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -48,6 +53,15 @@ import java.util.UUID;
 public class InteractionService {
 
     private static final Logger log = LoggerFactory.getLogger(InteractionService.class);
+
+    /**
+     * 「我的收藏」的游标标记。**与任何其他列表都不同**：
+     * 拿别的列表的游标喂给这里会明确报 40010，而不是静默按错误含义解释出歪数据。
+     */
+    private static final String SORT_MY_FAVORITES = "my-favorites";
+
+    private static final int DEFAULT_LIMIT = 20;
+    private static final int MAX_LIMIT = 50;
 
     private final InteractionMapper interactionMapper;
     private final OutboxMapper outboxMapper;
@@ -226,6 +240,52 @@ public class InteractionService {
                     Long.parseLong(parts[1]), v[0], v[1]));
         });
         return out;
+    }
+
+    /**
+     * 我的收藏（P5.5.3）。**只查得到本人的**。
+     *
+     * userId 由调用方从 UserContext 取：本方法没有"看别人的收藏"这种重载，
+     * 也不接受外部传入的 userId —— 收藏在 CONTEXT.md 里是私密行为。
+     *
+     * 只返回 {@code (postId, createdAt)}：帖子摘要交给前端调 content 的
+     * {@code POST /posts/batch} 批量补齐，interaction-service 不跨库也不回调 content
+     * （ADR 0005）。已删帖在 batch 里自然缺席，前端据此渲染灰色占位。
+     */
+    public PageResult<FavoriteItem> myFavorites(Long userId, String cursor, Integer limit) {
+        int size = normalizeLimit(limit);
+        CursorCodec.Cursor c = CursorCodec.decode(cursor, SORT_MY_FAVORITES);
+        LocalDateTime cursorAt = c == null ? null
+                : LocalDateTime.ofInstant(Instant.ofEpochMilli(c.timestampMillis()),
+                        ZoneId.systemDefault());
+        Long cursorId = c == null ? null : c.id();
+
+        // 多取一条用来判断有没有下一页，省掉一次 count
+        List<Interaction> rows = interactionMapper.pageByUserKind(
+                userId, Interaction.KIND_FAVORITE, Interaction.TARGET_POST,
+                cursorAt, cursorId, size + 1);
+
+        List<FavoriteItem> items = new ArrayList<>(Math.min(rows.size(), size));
+        for (int i = 0; i < rows.size() && i < size; i++) {
+            Interaction row = rows.get(i);
+            items.add(new FavoriteItem(row.getTargetId(), row.getCreatedAt()));
+        }
+
+        String next = null;
+        if (rows.size() > size) {
+            Interaction last = rows.get(size - 1);
+            next = CursorCodec.encode(SORT_MY_FAVORITES,
+                    last.getCreatedAt().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+                    last.getId());
+        }
+        return PageResult.of(items, next);
+    }
+
+    private static int normalizeLimit(Integer limit) {
+        if (limit == null || limit <= 0) {
+            return DEFAULT_LIMIT;
+        }
+        return Math.min(limit, MAX_LIMIT);
     }
 
     /** 一次查出该用户对这些目标里哪些有某种互动 */

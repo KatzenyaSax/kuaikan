@@ -48,6 +48,37 @@ public interface InteractionMapper extends BaseMapper<Interaction> {
                        @Param("targetId") Long targetId);
 
     /**
+     * 「我的收藏」一页（P5.5.3）。游标是 {@code (created_at DESC, id DESC)}。
+     *
+     * <b>三个等值列必须齐全</b>：{@code user_id} / {@code kind} / {@code target_type}
+     * 正好是 {@code idx_user_kind_created} 的前缀，后面紧跟排序键
+     * {@code (created_at, id)}，所以是「索引顺序直取 LIMIT 条」，无 filesort。
+     *
+     * <b>行值比较 {@code (created_at, id) < (?, ?)}</b> 而不是
+     * {@code created_at < ? OR (created_at = ? AND id < ?)}：后者在优化器眼里是不等值组合，
+     * 索引的有序尾巴用不上，容易退化成额外排序（同 PostMapper 的理由）。
+     *
+     * 多取一条判下一页由调用方做（limit 传 size + 1）。
+     */
+    @Select("""
+            <script>
+            SELECT * FROM t_interaction
+            WHERE user_id = #{userId} AND kind = #{kind} AND target_type = #{targetType}
+            <if test="cursorAt != null">
+              AND (created_at, id) &lt; (#{cursorAt}, #{cursorId})
+            </if>
+            ORDER BY created_at DESC, id DESC
+            LIMIT #{limit}
+            </script>
+            """)
+    List<Interaction> pageByUserKind(@Param("userId") Long userId,
+                                     @Param("kind") Integer kind,
+                                     @Param("targetType") Integer targetType,
+                                     @Param("cursorAt") LocalDateTime cursorAt,
+                                     @Param("cursorId") Long cursorId,
+                                     @Param("limit") int limit);
+
+    /**
      * 窗口内新增的某种互动数，按目标分组。
      *
      * <b>必须在 WHERE 里带上 kind 和 target_type</b>：这样正好命中

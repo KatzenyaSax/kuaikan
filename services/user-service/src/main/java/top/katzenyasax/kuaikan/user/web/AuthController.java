@@ -1,5 +1,6 @@
 package top.katzenyasax.kuaikan.user.web;
 
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
@@ -20,12 +21,14 @@ import top.katzenyasax.kuaikan.common.error.CommonErrorCode;
 import top.katzenyasax.kuaikan.common.web.UserContext;
 import top.katzenyasax.kuaikan.common.web.annotation.PublicEndpoint;
 import top.katzenyasax.kuaikan.user.auth.LoginService;
+import top.katzenyasax.kuaikan.user.auth.PasswordService;
 import top.katzenyasax.kuaikan.user.auth.ProfileService;
 import top.katzenyasax.kuaikan.user.auth.RegistrationService;
 import top.katzenyasax.kuaikan.user.auth.SessionService;
 import top.katzenyasax.kuaikan.user.auth.TokenService;
 import top.katzenyasax.kuaikan.user.domain.RefreshToken;
 import top.katzenyasax.kuaikan.user.domain.User;
+import top.katzenyasax.kuaikan.user.web.dto.ChangePasswordRequest;
 import top.katzenyasax.kuaikan.user.web.dto.LoginRequest;
 import top.katzenyasax.kuaikan.user.web.dto.LoginResponse;
 import top.katzenyasax.kuaikan.user.web.dto.RegisterRequest;
@@ -46,15 +49,18 @@ public class AuthController {
     private final LoginService loginService;
     private final SessionService sessionService;
     private final ProfileService profileService;
+    private final PasswordService passwordService;
 
     public AuthController(RegistrationService registrationService,
                           LoginService loginService,
                           SessionService sessionService,
-                          ProfileService profileService) {
+                          ProfileService profileService,
+                          PasswordService passwordService) {
         this.registrationService = registrationService;
         this.loginService = loginService;
         this.sessionService = sessionService;
         this.profileService = profileService;
+        this.passwordService = passwordService;
     }
 
     /** 发送注册验证码 */
@@ -126,6 +132,29 @@ public class AuthController {
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization) {
         String accessToken = BearerTokens.extract(authorization);
         loginService.logout(refreshToken, accessToken == null ? null : loginService.accessJtiOf(accessToken));
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, AuthCookies.clear().toString())
+                .body(Result.ok());
+    }
+
+    /**
+     * 修改密码（需登录）。成功 = 全端强制下线。
+     *
+     * <b>没有 {@code @PublicEndpoint}</b>：身份只取网关注入的 UserContext，
+     * 请求体里没有 userId，所以改的永远只能是自己的密码。
+     *
+     * 两个业务拒绝都是 HTTP 200：
+     *   {@code 40207} 原密码错（**绝不能 401**，否则前端拦截器去 refresh，变成莫名掉线）
+     *   {@code 40208} 新密码与原密码相同（避免一次无意义的全端踢下线）
+     *
+     * 成功响应带 {@code Max-Age=0} 的清除 cookie 头：refresh cookie 的 Path 是
+     * {@code /api/user/auth}，本端点正好在这个前缀下，浏览器认这条指令。
+     * 服务端该吊销的都已吊销，这条 cookie 只是让浏览器不再带着一具尸体到处走。
+     */
+    @Operation(operationId = "changePassword", summary = "修改密码（成功后全端下线）")
+    @PostMapping("/password")
+    public ResponseEntity<Result<Void>> changePassword(@Valid @RequestBody ChangePasswordRequest body) {
+        passwordService.change(UserContext.requireUserId(), body);
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, AuthCookies.clear().toString())
                 .body(Result.ok());
