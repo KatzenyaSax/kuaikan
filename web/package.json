@@ -15,7 +15,8 @@
     "gen:types": "node scripts/gen-types.mjs",
     "smoke:api": "tsx scripts/smoke-api.mts",
     "gen:contract": "node scripts/gen-contract.mjs",
-    "e2e:auth": "node scripts/e2e-auth.mjs"
+    "e2e:auth": "node scripts/e2e-auth.mjs",
+    "e2e:p55": "node scripts/e2e-p55.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.107.1",
