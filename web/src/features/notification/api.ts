@@ -8,7 +8,45 @@ import { useSession } from '@/features/auth/session'
 export type MessagePage = OkData<'listMessages'>
 export type MessageView = NonNullable<MessagePage['items']>[number]
 export type Unread = OkData<'getUnread'>
-export type MessageType = 'LIKE' | 'COMMENT' | 'MENTION' | 'SYSTEM'
+
+/**
+ * 五类消息（P5.5.1 追加 FOLLOW，后端 append-only）。
+ *
+ * Tab 顺序另有一个常量 {@link MESSAGE_TABS}：类型联合负责"能有哪些值"，
+ * 那个数组负责"展示顺序"。两件事不要混在一起写，否则夹插顺序会重复一遍。
+ */
+export type MessageType = 'LIKE' | 'COMMENT' | 'MENTION' | 'FOLLOW' | 'SYSTEM'
+
+/** 抽屉 Tab 顺序：点赞 / 评论 / @ / 关注 / 系统（p55-social.md §4.2） */
+export const MESSAGE_TABS: ReadonlyArray<{ key: MessageType; label: string }> = [
+  { key: 'LIKE', label: '赞' },
+  { key: 'COMMENT', label: '评论' },
+  { key: 'MENTION', label: '@' },
+  { key: 'FOLLOW', label: '关注' },
+  { key: 'SYSTEM', label: '系统' },
+]
+
+/**
+ * 每类未读数。
+ *
+ * **按字段名读，不按位置解构**：`follow` 是追加在 `system` 之后的，
+ * 若哪天后端再改顺序，按位置取会把"系统"的数目显示到"关注"上。
+ */
+export function unreadCountOf(unread: Unread | undefined, type: MessageType): number {
+  if (!unread) return 0
+  switch (type) {
+    case 'LIKE':
+      return unread.like ?? 0
+    case 'COMMENT':
+      return unread.comment ?? 0
+    case 'MENTION':
+      return unread.mention ?? 0
+    case 'FOLLOW':
+      return unread.follow ?? 0
+    case 'SYSTEM':
+      return unread.system ?? 0
+  }
+}
 
 const BASE = '/api/notification'
 

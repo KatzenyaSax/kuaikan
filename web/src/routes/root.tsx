@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { Link, NavLink, Outlet, ScrollRestoration, useMatch, useNavigate } from 'react-router'
 import { useSession } from '@/features/auth/session'
 import {
+  MESSAGE_TABS,
+  unreadCountOf,
   useMarkRead,
   useMessages,
   useMessageStream,
@@ -249,10 +251,13 @@ function SearchLayer({ open, onClose }: { open: boolean; onClose: () => void }) 
 /**
  * 消息抽屉。
  *
- * 四分类来自 architecture §7。P4.2 只接通了「赞」——评论与 @ 的消费者在 P4.3，
- * 所以那两个 tab 现在是**诚实的空态**，不是"假装没有消息"。
+ * 五分类来自 p55-social.md §4.2：点赞 / 评论 / @ / 关注 / 系统。
+ * 每类是**诚实的空态**，不是"假装没有消息"。
  *
  * 文案在前端拼（后端只给结构化字段）：改措辞不该动后端、不该发版。
+ *
+ * **FOLLOW 不参与折叠**：每一条关注都是一次可以「回关」的具体关系，
+ * 合并成「X 等 N 人关注了你」会把入口弄丢（p55-social.md §1）。
  */
 function MessageDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [tab, setTab] = useState<MessageType>('LIKE')
@@ -262,12 +267,11 @@ function MessageDrawer({ open, onClose }: { open: boolean; onClose: () => void }
   const raw = (messages.data?.pages ?? []).flatMap((p) => p.items ?? [])
   const items = foldMessages(raw)
 
-  const tabs: Array<{ key: MessageType; label: string; count: number }> = [
-    { key: 'LIKE', label: '赞', count: unread.data?.like ?? 0 },
-    { key: 'COMMENT', label: '评论', count: unread.data?.comment ?? 0 },
-    { key: 'MENTION', label: '@', count: unread.data?.mention ?? 0 },
-    { key: 'SYSTEM', label: '系统', count: unread.data?.system ?? 0 },
-  ]
+  // 未读数按**字段名**取，不按位置解构：follow 是追加在 system 之后的字段
+  const tabs = MESSAGE_TABS.map((t) => ({
+    ...t,
+    count: unreadCountOf(unread.data, t.key),
+  }))
 
   const total = unread.data?.total ?? 0
 
@@ -376,6 +380,7 @@ function EmptyTab({ tab }: { tab: MessageType }) {
     LIKE: '还没有人赞过你的内容',
     COMMENT: '还没有评论消息',
     MENTION: '还没有人 @ 你',
+    FOLLOW: '还没有人关注你',
     SYSTEM: '还没有系统通知',
   }
   return (
@@ -464,6 +469,9 @@ function MessageRow({
         return '评论了你的'
       case 'MENTION':
         return '在评论里提到了你'
+      case 'FOLLOW':
+        // 关注消息**不折叠**，所以永远只有单个 actor 的措辞
+        return '关注了你'
       case 'SYSTEM':
         return '系统通知'
       default:
@@ -471,16 +479,22 @@ function MessageRow({
     }
   })()
   const unread = !message.readAt
-  // 跳转要社群名 + 帖子 id。V2 之前写的消息没有这两项（当初没存），
-  // 那种消息保持不可点——比点了跳到 404 好
+  // 跳转目标：
+  //   FOLLOW → 对方的个人主页（/u/{actorId}），方便直接回关
+  //   其余 → 帖子页（V2 之前写的消息没有社群名/帖子 id，当初没存），
+  //          那种消息保持不可点——比点了跳到 404 好
   const href =
-    message.communityName && message.postId
-      ? `/c/${encodeURIComponent(message.communityName)}/p/${message.postId}` +
-        (message.commentId
-          ? `?comment=${encodeURIComponent(message.commentId)}` +
-            (message.rootCommentId ? `&root=${encodeURIComponent(message.rootCommentId)}` : '')
-          : '')
-      : null
+    message.type === 'FOLLOW'
+      ? message.actorId
+        ? `/u/${encodeURIComponent(message.actorId)}`
+        : null
+      : message.communityName && message.postId
+        ? `/c/${encodeURIComponent(message.communityName)}/p/${message.postId}` +
+          (message.commentId
+            ? `?comment=${encodeURIComponent(message.commentId)}` +
+              (message.rootCommentId ? `&root=${encodeURIComponent(message.rootCommentId)}` : '')
+            : '')
+        : null
 
   const body = (
     <div className="flex gap-3">

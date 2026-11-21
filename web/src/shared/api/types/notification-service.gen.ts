@@ -51,7 +51,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** 四类未读计数 */
+        /** 五类未读计数 */
         get: operations["getUnread"];
         put?: never;
         post?: never;
@@ -137,6 +137,11 @@ export interface components {
             mention?: number;
             /** Format: int64 */
             system?: number;
+            /**
+             * Format: int64
+             * @description P5.5.1 追加：关注未读数
+             */
+            follow?: number;
             /** Format: int64 */
             total?: number;
         };
@@ -159,14 +164,14 @@ export interface components {
         };
         MessageView: {
             id?: string;
-            /** @description LIKE / COMMENT / MENTION / SYSTEM */
+            /** @description LIKE / COMMENT / MENTION / FOLLOW / SYSTEM */
             type?: string;
             /** @description 动作发起人；SYSTEM 为 null */
             actorId?: string;
             /** @description 写入时的昵称快照，不会是当前昵称 */
             actorNickname?: string;
             actorAvatar?: string;
-            /** @description POST / COMMENT；SYSTEM 为 null */
+            /** @description POST / COMMENT / USER（关注消息）；SYSTEM 为 null */
             targetType?: string;
             targetId?: string;
             /** @description 帖子标题快照；目标已删除时可能为 null */
