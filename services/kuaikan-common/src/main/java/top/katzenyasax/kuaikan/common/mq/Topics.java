@@ -51,6 +51,15 @@ public final class Topics {
      */
     public static final String USER_BANNED = "kuaikan_user_banned";
 
+    /**
+     * 关注（P5.5）。载荷见 {@link UserFollowed}。
+     *
+     * <b>只有关注，没有取关</b>：取关是「撤回关系」，用户在消息列表里
+     * 看到"某人关注了你"后点进去发现已取关，也不需要被解释。
+     * 为取消再开一个 topic 只会让消费者多写一份几乎必然被丢弃的逻辑。
+     */
+    public static final String USER_FOLLOWED = "kuaikan_user_followed";
+
     private Topics() {
     }
 }

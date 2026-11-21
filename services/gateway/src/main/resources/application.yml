@@ -114,6 +114,22 @@ kuaikan:
       - POST ^/api/content/posts/[0-9]+/share$
       # P5.2：热榜游客可读。字面量路径，不会被其他规则误伤
       - GET /api/rank/hot
+      # P5.5：用户主页只读三件套（profile / following / followers）。
+      # 用户主页全量对游客公开（docs/design/p55-social.md §3.6）。
+      # 三条都用 [^/]+ 把路径形状钉死：只能匹配「/users/{id}/<字面量尾巴>」，
+      # 不会顺带放行 /users/{id}/follow（写路径）或 /me/following/ids。
+      # 只放行 GET：关注/取关是 POST/DELETE，不在这三条的覆盖范围内。
+      - GET ^/api/user/users/[^/]+/profile$
+      - GET ^/api/user/users/[^/]+/following$
+      - GET ^/api/user/users/[^/]+/followers$
+      # P5.5：用户已加入的社群列表，随用户主页对游客公开。
+      # 路径首段是字面量 users，与 /communities/... 系列完全错开。
+      - GET ^/api/community/users/[^/]+/communities$
+      # 以下 P5.5 端点**一律需要登录，绝不进白名单**：
+      #   POST/DELETE /api/user/users/{id}/follow、POST /api/user/auth/password、
+      #   GET /api/user/follows/states、GET /api/user/me/following/ids、
+      #   POST /api/content/posts/by-authors、POST /api/content/posts/batch、
+      #   GET /api/interaction/favorites
 
 management:
   endpoints:

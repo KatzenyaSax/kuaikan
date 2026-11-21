@@ -11,6 +11,9 @@ package top.katzenyasax.kuaikan.common.error;
  *     因为前端 401 拦截器会去调 refresh，登录失败返回 401 会形成
  *     "输错密码 → 跳登录页" 的死循环。
  *   - 邮箱不存在与密码错误必须返回完全相同的响应，防止用户枚举。
+ *   - P5.5 的 PASSWORD_INCORRECT / PASSWORD_UNCHANGED 同样走 HTTP 200 + 业务码：
+ *     改密场景用户本来就是已登录的，返回 401 只会让前端 401 拦截器去 refresh，
+ *     把"原密码输错"变成"莫名掉线"。
  */
 public enum AuthErrorCode implements ErrorCode {
 
@@ -19,7 +22,13 @@ public enum AuthErrorCode implements ErrorCode {
     REGISTER_DISABLED(40203, "注册功能暂未开放"),
     EMAIL_TAKEN(40204, "该邮箱已被注册"),
     ACCOUNT_BANNED(40205, "账号已被封禁"),
-    CREDENTIALS_INVALID(40206, "邮箱或密码错误");
+    CREDENTIALS_INVALID(40206, "邮箱或密码错误"),
+
+    /** 改密时原密码不匹配。**必须是 200**，理由见类注释 */
+    PASSWORD_INCORRECT(40207, "原密码错误"),
+
+    /** 新密码与原密码相同：命中时拒绝，避免一次无意义的全端踢下线 */
+    PASSWORD_UNCHANGED(40208, "新密码不能与原密码相同");
 
     private final int code;
     private final String message;

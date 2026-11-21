@@ -24,6 +24,7 @@ public final class ErrorHttpStatus {
             Map.entry(40202, 429),  // 验证码发送过于频繁
             Map.entry(40203, 403),  // 注册功能未开放
             Map.entry(40205, 403),  // 账号已被封禁
+            Map.entry(40209, 404),  // 用户不存在（P5.5）
             Map.entry(40300, 403),  // 无权限
             Map.entry(40400, 404),  // 资源不存在
             Map.entry(40900, 409),  // 状态冲突

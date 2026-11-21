@@ -15,6 +15,11 @@ export const ERROR_MESSAGES: Readonly<Record<number, string>> = {
   40204: '该邮箱已被注册', // EMAIL_TAKEN
   40205: '账号已被封禁', // ACCOUNT_BANNED
   40206: '邮箱或密码错误', // CREDENTIALS_INVALID
+  40207: '原密码错误', // PASSWORD_INCORRECT
+  40208: '新密码不能与原密码相同', // PASSWORD_UNCHANGED
+  40209: '用户不存在', // USER_NOT_FOUND
+  40210: '不能关注自己', // CANNOT_FOLLOW_SELF
+  40211: '关注人数已达上限', // FOLLOW_LIMIT_EXCEEDED
   40300: '没有权限', // FORBIDDEN
   40400: '资源不存在', // NOT_FOUND
   40900: '状态冲突', // CONFLICT
@@ -40,6 +45,11 @@ export const ERROR_HTTP_STATUS: Readonly<Record<number, number>> = {
   40204: 200,
   40205: 403,
   40206: 200,
+  40207: 200,
+  40208: 200,
+  40209: 404,
+  40210: 200,
+  40211: 200,
   40300: 403,
   40400: 404,
   40900: 409,
