@@ -38,10 +38,10 @@ export function CreateCommunityDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.42)] p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.32)] p-4"
       onClick={onClose}
       data-testid="create-community-dialog"
-      style={{ animation: 'fade-in 150ms cubic-bezier(0.2,0.8,0.2,1) both' }}
+      style={{ animation: 'fade-in var(--duration-fast) var(--ease-out-soft) both' }}
     >
       <div
         onClick={(e) => e.stopPropagation()}

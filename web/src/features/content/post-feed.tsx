@@ -28,7 +28,7 @@ export function PostFeedRow({
 }) {
   const body = (
     <>
-      <p className="m-0 line-clamp-2 text-body font-medium leading-[1.5] text-foreground group-hover:text-primary">
+      <p className="m-0 line-clamp-2 text-read font-medium leading-[1.45] tracking-[-0.01em] text-foreground transition-colors duration-[var(--duration-fast)] group-hover:text-primary">
         {post.title ?? '（无标题）'}
       </p>
       <div className="mt-1.5 flex flex-wrap items-center gap-2 text-caption text-faint">
@@ -77,7 +77,7 @@ export function FeedLoadMore({
       type="button"
       onClick={onLoadMore}
       disabled={isFetchingNextPage}
-      className="w-full py-3 text-aux text-muted-foreground hover:underline disabled:opacity-50"
+      className="w-full py-3.5 text-aux text-muted-foreground transition-colors duration-[var(--duration-fast)] hover:text-foreground disabled:opacity-50"
       data-testid={testId}
     >
       {isFetchingNextPage ? '加载中…' : '加载更多'}

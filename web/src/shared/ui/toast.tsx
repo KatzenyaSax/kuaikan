@@ -26,7 +26,12 @@ export function toast(text: string, ms = 1800) {
   }, ms)
 }
 
-/** 挂在应用根部一次即可 */
+/**
+ * 挂在应用根部一次即可。
+ *
+ * 形态是**深色胶囊 + 毛玻璃**：它要能压在白底、浅灰底、深色带上都看得清，
+ * 而中性深色是唯一同时满足三者的选择（白色 toast 在白底上会消失）。
+ */
 export function Toaster() {
   const [list, setList] = useState<ToastItem[]>(items)
 
@@ -45,10 +50,10 @@ export function Toaster() {
       {list.map((t) => (
         <div
           key={t.id}
-          className="rounded-full bg-[rgba(10,10,10,0.88)] px-4.5 py-2.5 text-aux text-white backdrop-blur-[10px]"
+          className="rounded-full bg-[rgba(29,29,31,0.90)] px-4.5 py-2.5 text-aux text-white backdrop-blur-[12px]"
           style={{
             boxShadow: 'var(--shadow-float)',
-            animation: 'rise 250ms cubic-bezier(0.2,0.8,0.2,1) both',
+            animation: 'rise var(--duration-base) var(--ease-out-soft) both',
           }}
           data-testid="toast"
         >

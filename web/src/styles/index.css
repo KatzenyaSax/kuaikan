@@ -21,60 +21,87 @@
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   /* ---------- 字号阶梯（7 档） ----------
-   * 中文行高比拉丁更需要：正文 1.75~1.8，标题 1.3。 */
-  --text-caption: 11px;
+   * 中文行高比拉丁更需要：正文 1.75~1.8，标题 1.3。
+   * 标题的字距随字号一起收紧（Apple 的标题是负字距的，正文不动）。*/
+  --text-caption: 12px;
   --text-caption--line-height: 1.5;
-  --text-aux: 13px;
+  --text-aux: 14px;
   --text-aux--line-height: 1.6;
   --text-body: 15px;
   --text-body--line-height: 1.75;
   --text-read: 17px;
   --text-read--line-height: 1.8;
-  --text-sub: 20px;
-  --text-sub--line-height: 1.4;
-  --text-title: 28px;
-  --text-title--line-height: 1.32;
-  --text-display: 40px;
-  --text-display--line-height: 1.2;
+  --text-sub: 21px;
+  --text-sub--line-height: 1.35;
+  --text-sub--letter-spacing: -0.01em;
+  --text-title: 32px;
+  --text-title--line-height: 1.25;
+  --text-title--letter-spacing: -0.015em;
+  --text-title--font-weight: 600;
+  /* 展示字：营销 hero 专用。clamp 让 390px 窄屏不让字挤成一团，
+   * 宽屏能到 64px。行高/字距按展示字收紧，正文的 1.75 在这里是灾难。*/
+  --text-display: clamp(40px, 6vw, 64px);
+  --text-display--line-height: 1.08;
+  --text-display--letter-spacing: -0.025em;
+  --text-display--font-weight: 700;
 
   /* ---------- 颜色 ---------- */
   --color-background: #ffffff;
-  --color-foreground: #0a0a0a;
+  /* 正文色：Apple 的 #1d1d1f，比纯黑柔一档，长文更耐看 */
+  --color-foreground: #1d1d1f;
   /* 次要 / 更弱：Apple 的灰阶。不要用纯灰，带一点冷调更耐看 */
   --color-muted-foreground: #6e6e73;
   --color-faint: #86868b;
-  /* 极浅底：输入框、代码块、hover */
+  /* 页面浅底（inset grouped 的底色）/ 输入框 / hover */
   --color-surface: #f5f5f7;
   --color-surface-strong: #ececee;
+  /* 分组卡片、弹窗、抽屉的白色面 */
   --color-card: #ffffff;
   --color-border: rgba(0, 0, 0, 0.08);
   --color-border-strong: rgba(0, 0, 0, 0.14);
   --color-muted: #f5f5f7;
+  /* 轻填充：次级按钮、segmented 轨道、小标签、hover 底。
+   * 对应 Apple 的 systemFill —— 比 surface 更淡，白底上也能看见。*/
+  --color-fill: rgba(0, 0, 0, 0.05);
+  --color-fill-strong: rgba(0, 0, 0, 0.09);
 
-  /* 强调色：沉稳蓝。只用于交互态 */
-  --color-primary: #0a72d6;
+  /* 深色带：营销页的深浅交替。只在这些色带上用，产品页不用 */
+  --color-ink: #000000;
+  --color-ink-2: #1d1d1f;
+  /* 深带之上的文字（不用 text-background —— 那与字号命名空间撞车）*/
+  --color-on-ink: #f5f5f7;
+  --color-on-ink-faint: #a1a1a6;
+
+  /* 强调色：沉稳蓝。只用于交互态（链接、主按钮、已赞、focus）*/
+  --color-primary: #0071e3;
+  --color-primary-hover: #0077ed;
   --color-primary-foreground: #ffffff;
-  --color-primary-soft: rgba(10, 114, 214, 0.08);
+  --color-primary-soft: rgba(0, 113, 227, 0.08);
 
   --color-success: #16a34a;
   --color-danger: #c81e1e;
   --color-warning: #b45309;
 
   /* ---------- 圆角（4 档 + pill） ---------- */
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --radius-xl: 20px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 28px;
   --radius-pill: 980px;
 
   /* ---------- 阴影（3 档，都很淡） ----------
-   * 分层主要靠 1px hairline 和留白，不靠阴影。 */
-  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-card: 0 2px 10px rgba(0, 0, 0, 0.06);
-  --shadow-float: 0 12px 32px rgba(0, 0, 0, 0.12);
+   * 分层主要靠 1px hairline 和留白，不靠阴影。分组卡片干脆不用阴影。*/
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-card: 0 4px 14px rgba(0, 0, 0, 0.07);
+  --shadow-float: 0 18px 48px rgba(0, 0, 0, 0.18);
 
-  /* ---------- 动效 ---------- */
-  --ease-out-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* ---------- 动效 ----------
+   * 一条缓动解决全站：Apple 常用的 cubic-bezier(0.28, 0.11, 0.32, 1)。
+   * --default-* 让不带 ease-* 的 transition 也吃到这条曲线，
+   * 组件里就不用到处写 ease-[...]。*/
+  --ease-out-soft: cubic-bezier(0.28, 0.11, 0.32, 1);
+  --default-transition-duration: 150ms;
+  --default-transition-timing-function: var(--ease-out-soft);
   --duration-fast: 150ms;
   --duration-base: 250ms;
   --duration-slow: 400ms;
@@ -82,7 +109,7 @@
 
 :root {
   color-scheme: light;
-  --topbar-h: 57px;
+  --topbar-h: 48px;
   --tabbar-h: 56px;
 }
 
@@ -114,11 +141,19 @@ body {
   min-height: 100vh;
 }
 
-/* 键盘可达性：所有焦点都看得见。不用粗 ring，用一点点 offset 的描边 */
-:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
-  border-radius: var(--radius-sm);
+/*
+ * 键盘可达性：所有焦点都看得见。不用粗 ring，用一点点 offset 的描边。
+ *
+ * **必须放在 @layer base 里**：不用 layer 的 CSS 永远胜于 utilities，
+ * 于是组件里的 `focus:outline-none` 会被这条静默压掉，想“把指示器画在外层胶囊/
+ * 输入框光晕上”的写法全部失效（搜索层就是这么被套了一个方框）。
+ */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
 }
 
 /*
@@ -145,6 +180,38 @@ body {
   to {
     opacity: 1;
     transform: none;
+  }
+}
+
+/*
+ * 营销 hero 的进入渐显：只动 opacity + translateY，不缩放、不位移很远。
+ *
+ * 用它代替「逐元素写一段 animation」—— 一处定义，S2/S3 直接挂类。
+ * 变量 --hero-delay 让多行内容能错开（80ms 一档，不要更多）。
+ */
+@keyframes hero-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@utility hero-in {
+  animation: hero-rise 600ms var(--ease-out-soft) both;
+  animation-delay: var(--hero-delay, 0ms);
+}
+
+/*
+ * 前庭功能敏感的用户必须能关掉它：resize/移动带来的位移是真正会让人不适的那类动效。
+ * 只写在那条全局 reduce 规则里不够明确（那条是"压到 0.01ms"），这里直接置空。
+ */
+@media (prefers-reduced-motion: reduce) {
+  .hero-in {
+    animation: none !important;
   }
 }
 

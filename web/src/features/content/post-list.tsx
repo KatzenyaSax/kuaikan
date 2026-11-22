@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router'
 import { usePostList, useUserSummaries, pickAuthor } from '@/features/content/api'
 import { authErrorMessage } from '@/features/auth/auth-error'
 import { Avatar } from '@/shared/ui/avatar'
+import { Group, groupRowClass } from '@/shared/ui/group'
 import { Skeleton } from '@/shared/ui/skeleton'
 import { relativeTime } from '@/shared/lib/time'
 import { cn } from '@/shared/lib/cn'
@@ -16,6 +17,9 @@ import { cn } from '@/shared/lib/cn'
  *
  * 列表项是真实路由（`<Link>`），所以要支持 cmd+click 开新标签；
  * 用它而不是 onClick 也顺手拿到了键盘可达性。
+ *
+ * 形态是 inset grouped：白色分组里的内缩 hairline 行。左栏是“导航”，
+ * 不是“清单”——所以当前帖子用淡底标出来，而不是加一条左边线。
  */
 export function PostList({ communityId }: { communityId: string | undefined }) {
   const { name, postId: activePostId } = useParams<{ name: string; postId?: string }>()
@@ -47,17 +51,20 @@ export function PostList({ communityId }: { communityId: string | undefined }) {
 
   if (query.isPending) {
     return (
-      <div className="space-y-2 p-2">
-        <Skeleton className="h-12 w-full" />
-        <Skeleton className="h-12 w-full" />
-        <Skeleton className="h-12 w-full" />
-      </div>
+      <Group>
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="px-4 py-4">
+            <Skeleton className="mb-2 h-[15px] w-[78%]" />
+            <Skeleton className="h-3 w-[42%]" />
+          </div>
+        ))}
+      </Group>
     )
   }
 
   if (query.isError) {
     return (
-      <p className="p-3 text-aux text-danger" data-testid="post-list-error">
+      <p className="px-4 py-3 text-aux text-danger" data-testid="post-list-error">
         {authErrorMessage(query.error)}
       </p>
     )
@@ -65,7 +72,7 @@ export function PostList({ communityId }: { communityId: string | undefined }) {
 
   if (items.length === 0) {
     return (
-      <p className="p-3 text-aux text-faint" data-testid="post-list-empty">
+      <p className="px-4 py-8 text-center text-aux text-faint" data-testid="post-list-empty">
         还没有帖子
       </p>
     )
@@ -73,44 +80,53 @@ export function PostList({ communityId }: { communityId: string | undefined }) {
 
   return (
     <div data-testid="post-list">
-      <ul className="m-0 list-none p-0">
-        {items.map((post) => {
-          const author = pickAuthor(authors.data, post.authorId)
-          return (
-            <li key={post.id} style={{ animation: 'fade-in 250ms cubic-bezier(0.2,0.8,0.2,1) both' }}>
-              <Link
-                to={`/c/${encodeURIComponent(name ?? '')}/p/${post.id ?? ''}`}
-                // 当前正在读的帖子要高亮：左栏是"导航"，不是"清单"，
-                // 不标出当前位置，用户会不知道自己在看哪一篇。
-                aria-current={activePostId === post.id ? 'true' : undefined}
-                className={cn(
-                  'block rounded-[var(--radius-md)] px-2.5 py-2.5',
-                  'transition-colors duration-[150ms] hover:bg-surface',
-                  'aria-[current=true]:bg-surface',
-                )}
-                data-testid="post-list-item"
+      <Group>
+        <ul className="m-0 list-none p-0">
+          {items.map((post) => {
+            const author = pickAuthor(authors.data, post.authorId)
+            return (
+              <li
+                key={post.id}
+                className={groupRowClass({ interactive: true, className: 'block p-0' })}
+                style={{ animation: 'fade-in var(--duration-base) var(--ease-out-soft) both' }}
               >
-                <div className="line-clamp-2 text-body font-medium leading-[1.45]" data-testid="post-list-title">
-                  {post.title}
-                </div>
-                {/* 作者 · 时间：扫视列表时人关心的是"谁写的、新不新" */}
-                <div className="mt-1 flex items-center gap-1.5 text-caption text-faint">
-                  {author ? (
-                    <>
-                      <Avatar url={author.avatarUrl ?? null} name={author.nickname ?? ''} size={14} />
-                      <span className="truncate">{author.nickname}</span>
-                    </>
-                  ) : (
-                    <span>…</span>
+                <Link
+                  to={`/c/${encodeURIComponent(name ?? '')}/p/${post.id ?? ''}`}
+                  // 当前正在读的帖子要高亮：左栏是"导航"，不是"清单"，
+                  // 不标出当前位置，用户会不知道自己在看哪一篇。
+                  aria-current={activePostId === post.id ? 'true' : undefined}
+                  className={cn(
+                    'block px-4 py-3',
+                    'transition-colors duration-[var(--duration-fast)]',
+                    'aria-[current=true]:bg-fill',
                   )}
-                  <span>·</span>
-                  <span>{relativeTime(post.createdAt)}</span>
-                </div>
-              </Link>
-            </li>
-          )
-        })}
-      </ul>
+                  data-testid="post-list-item"
+                >
+                  <div
+                    className="line-clamp-2 text-body font-medium leading-[1.45]"
+                    data-testid="post-list-title"
+                  >
+                    {post.title}
+                  </div>
+                  {/* 作者 · 时间：扇视列表时人关心的是"谁写的、新不新" */}
+                  <div className="mt-1 flex items-center gap-1.5 text-caption text-faint">
+                    {author ? (
+                      <>
+                        <Avatar url={author.avatarUrl ?? null} name={author.nickname ?? ''} size={14} />
+                        <span className="truncate">{author.nickname}</span>
+                      </>
+                    ) : (
+                      <span>…</span>
+                    )}
+                    <span>·</span>
+                    <span>{relativeTime(post.createdAt)}</span>
+                  </div>
+                </Link>
+              </li>
+            )
+          })}
+        </ul>
+      </Group>
 
       <div ref={sentinel} className="h-1" />
 
@@ -119,13 +135,13 @@ export function PostList({ communityId }: { communityId: string | undefined }) {
           type="button"
           onClick={() => void query.fetchNextPage()}
           disabled={query.isFetchingNextPage}
-          className="w-full py-2 text-aux text-muted-foreground hover:underline"
+          className="w-full py-3 text-aux text-muted-foreground transition-colors duration-[var(--duration-fast)] hover:text-foreground disabled:opacity-50"
           data-testid="btn-load-more"
         >
           {query.isFetchingNextPage ? '加载中…' : '加载更多'}
         </button>
       ) : (
-        <p className="py-2 text-center text-caption text-faint">没有更多了</p>
+        <p className="py-3 text-center text-caption text-faint">没有更多了</p>
       )}
     </div>
   )

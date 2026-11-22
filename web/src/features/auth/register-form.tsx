@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { ApiError } from '@/shared/api/api-error'
 import { useRegister, useSendRegisterCode } from '@/features/auth/api'
 import { Button } from '@/shared/ui/button'
-import { Card, CardDescription, CardTitle } from '@/shared/ui/card'
-import { cn } from '@/shared/lib/cn'
+import { Input } from '@/shared/ui/field'
 
 const RESEND_SECONDS = 60
 const PASSWORD_MIN = 8
@@ -124,93 +123,112 @@ export function RegisterForm() {
   }
 
   return (
-    <Card className="mx-auto max-w-md">
-      <CardTitle>注册</CardTitle>
-      <CardDescription className="mt-1">
-        注册功能是否开放由服务端配置控制；若提示"暂未开放"，请联系管理员。
-      </CardDescription>
+    <div className="mx-auto w-full max-w-[400px] px-6 pb-24 pt-16 md:pt-24">
+      <h1 className="m-0 text-title">注册</h1>
+      <p className="m-0 mt-2 text-aux leading-[1.7] text-muted-foreground">
+        注册后可以发帖、评论与关注。注册功能是否开放由服务端配置控制；若提示“暂未开放”，请联系管理员。
+      </p>
 
-      <form className="mt-5 space-y-4" onSubmit={onSubmit} data-testid="register-form" noValidate>
-        <Field label="邮箱" error={errors.email}>
-          <div className="flex gap-2">
-            <input
-              data-testid="field-email"
-              type="email"
-              value={values.email}
-              onChange={setField('email')}
-              placeholder="you@example.com"
-              className={inputClass(!!errors.email)}
-              autoComplete="email"
+      <form className="mt-8" onSubmit={onSubmit} data-testid="register-form" noValidate>
+        <div className="space-y-5">
+          <Field label="邮箱" error={errors.email}>
+            <div className="flex gap-2">
+              <Input
+                data-testid="field-email"
+                className="h-11"
+                type="email"
+                value={values.email}
+                onChange={setField('email')}
+                placeholder="you@example.com"
+                aria-invalid={Boolean(errors.email)}
+                autoComplete="email"
+              />
+              <Button
+                variant="outline"
+                className="h-11 shrink-0 px-4 text-aux"
+                onClick={onSendCode}
+                disabled={countdown > 0 || sendCode.isPending}
+                data-testid="btn-send-code"
+              >
+                {countdown > 0 ? `${countdown}s` : sendCode.isPending ? '发送中' : '获取验证码'}
+              </Button>
+            </div>
+          </Field>
+
+          <Field label="验证码" error={errors.code}>
+            <Input
+              data-testid="field-code"
+              className="h-11"
+              inputMode="numeric"
+              value={values.code}
+              onChange={setField('code')}
+              placeholder="6 位数字"
+              aria-invalid={Boolean(errors.code)}
             />
-            <Button
-              variant="outline"
-              size="sm"
-              className="shrink-0"
-              onClick={onSendCode}
-              disabled={countdown > 0 || sendCode.isPending}
-              data-testid="btn-send-code"
-            >
-              {countdown > 0 ? `${countdown}s` : sendCode.isPending ? '发送中' : '获取验证码'}
-            </Button>
-          </div>
-        </Field>
+          </Field>
 
-        <Field label="验证码" error={errors.code}>
-          <input
-            data-testid="field-code"
-            inputMode="numeric"
-            value={values.code}
-            onChange={setField('code')}
-            placeholder="6 位数字"
-            className={inputClass(!!errors.code)}
-          />
-        </Field>
+          <Field label="昵称" error={errors.nickname}>
+            <Input
+              data-testid="field-nickname"
+              className="h-11"
+              value={values.nickname}
+              onChange={setField('nickname')}
+              placeholder="2~32 个字符"
+              aria-invalid={Boolean(errors.nickname)}
+            />
+          </Field>
 
-        <Field label="昵称" error={errors.nickname}>
-          <input
-            data-testid="field-nickname"
-            value={values.nickname}
-            onChange={setField('nickname')}
-            placeholder="2~32 个字符"
-            className={inputClass(!!errors.nickname)}
-          />
-        </Field>
+          <Field label="密码" error={errors.password}>
+            <Input
+              data-testid="field-password"
+              className="h-11"
+              type="password"
+              value={values.password}
+              onChange={setField('password')}
+              placeholder={`${PASSWORD_MIN}~${PASSWORD_MAX} 位`}
+              aria-invalid={Boolean(errors.password)}
+              autoComplete="new-password"
+            />
+          </Field>
 
-        <Field label="密码" error={errors.password}>
-          <input
-            data-testid="field-password"
-            type="password"
-            value={values.password}
-            onChange={setField('password')}
-            placeholder={`${PASSWORD_MIN}~${PASSWORD_MAX} 位`}
-            className={inputClass(!!errors.password)}
-            autoComplete="new-password"
-          />
-        </Field>
+          <Field label="确认密码" error={errors.confirm}>
+            <Input
+              data-testid="field-confirm"
+              className="h-11"
+              type="password"
+              value={values.confirm}
+              onChange={setField('confirm')}
+              aria-invalid={Boolean(errors.confirm)}
+              autoComplete="new-password"
+            />
+          </Field>
+        </div>
 
-        <Field label="确认密码" error={errors.confirm}>
-          <input
-            data-testid="field-confirm"
-            type="password"
-            value={values.confirm}
-            onChange={setField('confirm')}
-            className={inputClass(!!errors.confirm)}
-            autoComplete="new-password"
-          />
-        </Field>
-
-        {info ? <p className="text-caption text-success">{info}</p> : null}
+        {info ? <p className="m-0 mt-4 text-caption text-success">{info}</p> : null}
         {formError ? (
-          <p className="text-caption text-danger" data-testid="toast-error">
+          <p className="m-0 mt-4 text-aux text-danger" data-testid="toast-error">
             {formError}
           </p>
         ) : null}
 
-        <Button type="submit" className="w-full" disabled={registerMutation.isPending} data-testid="btn-submit">
+        <Button
+          type="submit"
+          size="lg"
+          className="mt-7 w-full"
+          disabled={registerMutation.isPending}
+          data-testid="btn-submit"
+        >
           {registerMutation.isPending ? '提交中…' : '注册'}
         </Button>
+
+        <p className="m-0 mt-6 border-t border-border pt-6 text-center text-aux text-muted-foreground">
+          已经有账号？
+          <Link to="/login" className="ml-1 text-primary underline-offset-[3px] hover:underline">
+            去登录
+          </Link>
+        </p>
       </form>
-    </Card>
+    </div>
   )
 }
 
@@ -225,18 +243,10 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-caption text-muted-foreground">{label}</span>
+      <span className="mb-2 block text-caption text-muted-foreground">{label}</span>
       {children}
-      {error ? <span className="mt-1 block text-caption text-danger">{error}</span> : null}
+      {error ? <span className="mt-1.5 block text-caption text-danger">{error}</span> : null}
     </label>
-  )
-}
-
-function inputClass(hasError: boolean): string {
-  return cn(
-    'h-9 w-full rounded-md border bg-background px-3 text-sm outline-none',
-    'focus-visible:ring-2 focus-visible:ring-primary',
-    hasError ? 'border-danger' : 'border-border',
   )
 }
 

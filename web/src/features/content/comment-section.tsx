@@ -33,11 +33,21 @@ import { cn } from '@/shared/lib/cn'
  */
 const PostAuthorContext = createContext<string | undefined>(undefined)
 
-/** 「楼主」小标。刻意用浅灰而不是蓝色——蓝色在本项目里只表示"可点" */
+/**
+ * 评论行的次级动作（回复 / 删除 / 展开）的胶囊形态。
+ *
+ * 用小胶囊而不是纯文字：它们是**可点的**，而 12px 纯灰字看起来像标签。
+ * 胶囊在 hover 时才亮底，所以不点的时候仍然安静。
+ */
+const ACTION_CLASS =
+  'inline-flex h-7 items-center rounded-full px-2 text-caption text-faint ' +
+  'transition-colors duration-[var(--duration-fast)] hover:bg-fill hover:text-foreground'
+
+/** 「楼主」小标。刻意用浅灰而不是蓝色——蓝色在本项目里只表示“可点” */
 function AuthorBadge() {
   return (
     <span
-      className="inline-flex h-[17px] items-center rounded-[4px] bg-surface-strong px-1.5 align-middle text-caption font-medium leading-none text-muted-foreground"
+      className="inline-flex h-[18px] items-center rounded-full bg-fill px-2 align-middle text-caption font-medium leading-none text-muted-foreground"
       data-testid="author-badge"
     >
       楼主
@@ -74,8 +84,8 @@ export function CommentSection({
 
   return (
     <PostAuthorContext.Provider value={postAuthorId}>
-      <section className="mt-14" data-testid="comment-section">
-      <div className="mb-5 flex items-baseline gap-2">
+      <section className="mt-16" data-testid="comment-section">
+      <div className="mb-6 flex items-center gap-2.5">
         <h2 className="m-0 text-sub font-semibold">评论</h2>
         {/* 计数为 0 不显示 */}
         {commentCount > 0 ? (
@@ -100,23 +110,23 @@ export function CommentSection({
       {authed ? (
         <CommentComposer postId={postId} replyTo={undefined} onDone={undefined} autoFocus={undefined} />
       ) : (
-        <p className="text-aux text-muted-foreground" data-testid="comment-login-hint">
+        <p className="m-0 text-aux text-muted-foreground" data-testid="comment-login-hint">
           登录后可以发表评论
         </p>
       )}
 
       {list.isPending ? (
-        <p className="mt-6 text-aux text-faint">加载中…</p>
+        <p className="mt-8 text-aux text-faint">加载中…</p>
       ) : list.isError ? (
-        <p className="mt-6 text-aux text-danger">{authErrorMessage(list.error)}</p>
+        <p className="mt-8 text-aux text-danger">{authErrorMessage(list.error)}</p>
       ) : items.length === 0 ? (
-        <p className="mt-6 text-aux text-faint" data-testid="comment-empty">
+        <p className="mt-8 text-aux text-faint" data-testid="comment-empty">
           还没有评论，来说两句
         </p>
       ) : (
-        <ul className="m-0 mt-6 list-none p-0" data-testid="comment-list">
+        <ul className="m-0 mt-7 list-none p-0" data-testid="comment-list">
           {items.map((c) => (
-            <li key={c.id} className="py-4.5 [&+&]:border-t [&+&]:border-border">
+            <li key={c.id} className="py-5 [&+&]:border-t [&+&]:border-border">
               <TopLevelComment comment={c} postId={postId} />
             </li>
           ))}
@@ -128,7 +138,7 @@ export function CommentSection({
           type="button"
           onClick={() => void list.fetchNextPage()}
           disabled={list.isFetchingNextPage}
-          className="mt-2 w-full py-2 text-aux text-muted-foreground hover:underline"
+          className="mt-1 w-full rounded-full py-2.5 text-aux text-muted-foreground transition-colors duration-[var(--duration-fast)] hover:bg-fill hover:text-foreground"
           data-testid="btn-more-comments"
         >
           {list.isFetchingNextPage ? '加载中…' : '加载更多评论'}
@@ -180,10 +190,9 @@ function CommentComposer({
         autoFocus={autoFocus}
         placeholder={replyTo ? '写下你的回复…' : '写下你的评论…'}
       />
-      <div className="mt-2.5 flex items-center gap-3">
+      <div className="mt-3 flex items-center gap-3">
         <Button
           type="submit"
-          size="sm"
           disabled={create.isPending}
           data-testid={replyTo ? 'btn-submit-reply' : 'btn-submit-comment'}
         >
@@ -224,11 +233,14 @@ function TopLevelComment({ comment, postId }: { comment: CommentView; postId: st
             {/* 头像 + 昵称整体是一个链接：点击热区够大，也支持 cmd+click */}
             <Link
               to={`/u/${encodeURIComponent(comment.authorId ?? '')}`}
-              className="inline-flex min-w-0 items-center gap-2 hover:opacity-80"
+              className="inline-flex min-w-0 items-center gap-2 transition-opacity duration-[var(--duration-fast)] hover:opacity-80"
               data-testid="comment-author-link"
             >
               <Avatar url={author?.avatarUrl ?? null} name={author?.nickname ?? ''} size={24} />
-              <span className="truncate font-medium text-foreground" data-testid="comment-author">
+              <span
+                className="truncate text-body font-medium text-foreground"
+                data-testid="comment-author"
+              >
                 {author?.nickname ?? '…'}
               </span>
             </Link>
@@ -241,16 +253,17 @@ function TopLevelComment({ comment, postId }: { comment: CommentView; postId: st
 
       {!comment.deleted ? (
         <p
-          className="m-0 mt-2 whitespace-pre-wrap break-words text-body leading-[1.78] text-[#1a1a1a]"
+          className="m-0 mt-2.5 whitespace-pre-wrap break-words text-body leading-[1.75] text-foreground"
           data-testid="comment-body"
         >
           <MentionText body={comment.body} mentions={comment.mentions} />
         </p>
       ) : null}
 
-      <div className="mt-2 flex items-center gap-4 text-caption text-faint">
+      <div className="mt-1.5 -ml-2 flex items-center gap-1 text-caption text-faint">
         {!comment.deleted ? (
           <LikeButton
+            compact
             targetType="comment"
             targetId={comment.id ?? ''}
             count={comment.likeCount ?? 0}
@@ -261,7 +274,7 @@ function TopLevelComment({ comment, postId }: { comment: CommentView; postId: st
           <button
             type="button"
             onClick={() => setReplying((v) => !v)}
-            className="hover:text-foreground"
+            className={ACTION_CLASS}
             data-testid="btn-reply"
           >
             回复
@@ -272,7 +285,7 @@ function TopLevelComment({ comment, postId }: { comment: CommentView; postId: st
             type="button"
             onClick={() => del.mutate(comment.id ?? '')}
             disabled={del.isPending}
-            className="hover:text-foreground"
+            className={ACTION_CLASS}
             data-testid="btn-delete-comment"
           >
             删除
@@ -283,9 +296,9 @@ function TopLevelComment({ comment, postId }: { comment: CommentView; postId: st
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
-            className="hover:text-foreground"
+            className={ACTION_CLASS}
             data-testid="btn-expand-replies"
-            // 从消息跳进来时，滚动逻辑靠这个属性找到"要展开哪一个 root"
+            // 从消息跳进来时，滚动逻辑靠这个属性找到“要展开哪一个 root”
             data-expand-root={comment.id}
           >
             {expanded ? '收起回复' : `展开 ${String(comment.replyCount ?? 0)} 条回复`}
@@ -325,11 +338,11 @@ function ReplyList({ rootCommentId, postId }: { rootCommentId: string | null; po
 
   return (
     <ul
-      className="m-0 mt-3 list-none border-l border-border-strong p-0 pl-3.5"
+      className="m-0 mt-4 list-none border-l border-border p-0 pl-4"
       data-testid="reply-list"
     >
       {items.map((r) => (
-        <li key={r.id} className="py-2 [&+&]:border-t [&+&]:border-border">
+        <li key={r.id} className="py-3 [&+&]:border-t [&+&]:border-border">
           <ReplyItem comment={r} postId={postId} />
         </li>
       ))}
@@ -338,7 +351,7 @@ function ReplyList({ rootCommentId, postId }: { rootCommentId: string | null; po
           <button
             type="button"
             onClick={() => void replies.fetchNextPage()}
-            className="text-aux text-muted-foreground hover:underline"
+            className="rounded-full px-2 text-caption text-muted-foreground transition-colors duration-[var(--duration-fast)] hover:bg-fill hover:text-foreground"
           >
             加载更多回复
           </button>
@@ -377,7 +390,7 @@ function ReplyItem({ comment, postId }: { comment: CommentView; postId: string }
           <>
             <Link
               to={`/u/${encodeURIComponent(comment.authorId ?? '')}`}
-              className="inline-flex min-w-0 items-center gap-1.5 hover:opacity-80"
+              className="inline-flex min-w-0 items-center gap-1.5 transition-opacity duration-[var(--duration-fast)] hover:opacity-80"
               data-testid="reply-author-link"
             >
               <Avatar url={author?.avatarUrl ?? null} name={author?.nickname ?? ''} size={18} />
@@ -390,7 +403,7 @@ function ReplyItem({ comment, postId }: { comment: CommentView; postId: string }
             {comment.replyToUserId ? (
               <Link
                 to={`/u/${encodeURIComponent(comment.replyToUserId)}`}
-                className="hover:text-foreground hover:underline"
+                className="rounded-[3px] text-muted-foreground underline-offset-[3px] hover:text-foreground hover:underline"
                 data-testid="reply-to"
               >
                 回复 @{replyTo?.nickname ?? '某人'}
@@ -404,7 +417,7 @@ function ReplyItem({ comment, postId }: { comment: CommentView; postId: string }
 
       {!comment.deleted ? (
         <p
-          className="m-0 mt-1 whitespace-pre-wrap break-words text-body leading-[1.78] text-[#1a1a1a]"
+          className="m-0 mt-1.5 whitespace-pre-wrap break-words text-body leading-[1.75] text-foreground"
           data-testid="reply-body"
         >
           <MentionText body={comment.body} mentions={comment.mentions} />
@@ -412,8 +425,9 @@ function ReplyItem({ comment, postId }: { comment: CommentView; postId: string }
       ) : null}
 
       {!comment.deleted ? (
-        <div className="mt-1.5 flex items-center gap-4 text-caption text-faint">
+        <div className="mt-1 -ml-2 flex items-center gap-1 text-caption text-faint">
           <LikeButton
+            compact
             targetType="comment"
             targetId={comment.id ?? ''}
             count={comment.likeCount ?? 0}
@@ -423,7 +437,7 @@ function ReplyItem({ comment, postId }: { comment: CommentView; postId: string }
             <button
               type="button"
               onClick={() => setReplying((v) => !v)}
-              className="hover:text-foreground"
+              className={ACTION_CLASS}
               data-testid="btn-reply-to-reply"
             >
               回复
@@ -434,7 +448,7 @@ function ReplyItem({ comment, postId }: { comment: CommentView; postId: string }
               type="button"
               onClick={() => del.mutate(comment.id ?? '')}
               disabled={del.isPending}
-              className="hover:text-foreground"
+              className={ACTION_CLASS}
               data-testid="btn-delete-reply"
             >
               删除

@@ -35,7 +35,7 @@ export function CommunitySwitcher({ activeName }: { activeName: string | undefin
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex h-9 w-full items-center justify-between gap-2 rounded-[var(--radius-md)] border border-border-strong bg-background px-3 text-aux transition-colors duration-[150ms] hover:bg-surface"
+        className="flex h-10 w-full items-center justify-between gap-2 rounded-[var(--radius-md)] bg-card px-3.5 text-aux transition-colors duration-[var(--duration-fast)] hover:bg-fill"
         data-testid="btn-community-switcher"
       >
         <span className="truncate">{activeName ?? '选择社群'}</span>
@@ -76,10 +76,10 @@ export function CommunitySwitcher({ activeName }: { activeName: string | undefin
                     navigate(`/c/${encodeURIComponent(c.name ?? '')}`)
                   }}
                   className={cn(
-                    'flex items-center gap-3 rounded-[var(--radius-lg)] border p-3.5 text-left transition-colors duration-[150ms]',
+                    'flex items-center gap-3 rounded-[var(--radius-lg)] p-3.5 text-left transition-colors duration-[var(--duration-fast)]',
                     active
-                      ? 'border-primary shadow-[inset_0_0_0_1px_var(--color-primary)]'
-                      : 'border-border hover:bg-surface',
+                      ? 'bg-background shadow-[var(--shadow-soft)] ring-1 ring-border'
+                      : 'bg-fill hover:bg-fill-strong',
                   )}
                   data-testid="community-sheet-item"
                 >
@@ -88,7 +88,11 @@ export function CommunitySwitcher({ activeName }: { activeName: string | undefin
                     <span className="block truncate text-body font-medium">{c.name}</span>
                     <span className="block text-caption text-faint">{c.memberCount} 成员</span>
                   </span>
-                  {active ? <span className="ml-auto shrink-0 text-aux text-primary">✓</span> : null}
+                  {active ? (
+                    <span className="ml-auto shrink-0 text-aux text-foreground" aria-hidden>
+                      ✓
+                    </span>
+                  ) : null}
                 </button>
               )
             })}

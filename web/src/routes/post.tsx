@@ -16,10 +16,13 @@ import { toast } from '@/shared/ui/toast'
 /**
  * 帖子详情（右栏）。
  *
- * 排版结构固定为：面包屑 → 标题 → 作者行（上下 hairline 夹住）→ 正文 →
+ * 排版结构固定为：面包屑 → 标题 → 作者元信息行（hairline 收口）→ 正文 →
  * 互动条（hairline 上方分隔）→ 评论区。
  *
  * **全页没有卡片**：分区靠 1px hairline 和留白。卡片多了立刻显廉价。
+ *
+ * 栏宽 680：S2 把社群双栏收窄到 980（左栏 272），右栏实际可用约 708——
+ * 这里不再用 40rem，用 680 留出两侧呼吸空间。
  */
 export function PostPage() {
   const { name, postId } = useParams<{ name: string; postId: string }>()
@@ -36,25 +39,30 @@ export function PostPage() {
 
   if (post.isPending) {
     return (
-      <div className="px-11 pt-10">
-        <Skeleton className="mb-4 h-7 w-2/3" />
-        <Skeleton className="h-40 w-full" />
+      <div className="px-6 pb-24 pt-8 md:px-9">
+        <div className="mx-auto max-w-[680px]">
+          <Skeleton className="mb-4 h-4 w-32" />
+          <Skeleton className="mb-3 h-9 w-2/3" />
+          <Skeleton className="h-40 w-full" />
+        </div>
       </div>
     )
   }
 
   if (post.isError) {
     return (
-      <div className="px-11 pt-10">
-        <p className="text-body text-danger" data-testid="post-error">
-          {authErrorMessage(post.error)}
-        </p>
-        <Link
-          to={`/c/${encodeURIComponent(name ?? '')}`}
-          className="mt-3 inline-block text-aux text-muted-foreground underline"
-        >
-          返回社群
-        </Link>
+      <div className="px-6 pb-24 pt-8 md:px-9">
+        <div className="mx-auto max-w-[680px]">
+          <p className="m-0 text-body text-danger" data-testid="post-error">
+            {authErrorMessage(post.error)}
+          </p>
+          <Link
+            to={`/c/${encodeURIComponent(name ?? '')}`}
+            className="mt-4 inline-block text-aux text-muted-foreground hover:text-foreground hover:underline"
+          >
+            ← 返回 {community.data?.name ?? name}
+          </Link>
+        </div>
       </div>
     )
   }
@@ -62,24 +70,32 @@ export function PostPage() {
   const data = post.data
 
   return (
-    <div className="px-6 pb-24 pt-10 md:px-11" data-testid="post-page">
-      <div className="mx-auto max-w-[40rem]">
-      <div className="mb-4 flex items-center gap-2 text-aux text-faint">
-        <Link to={`/c/${encodeURIComponent(name ?? '')}`} className="text-primary hover:underline">
+    <div className="px-6 pb-24 pt-8 md:px-9" data-testid="post-page">
+      {/*
+        阅读栏宽 680（右栏 708 − 两侧内缩）。S2 把社群双栏收窄到 980、左栏 272，
+        所以右栏实际可用约 708px：这里不再用 40rem，改用 680 —— 一行约 38 个汉字，
+        超过 45 字眼睛就要回头找行首。
+      */}
+      <div className="mx-auto max-w-[680px]">
+      <div className="mb-5 flex items-center gap-2 text-aux text-faint">
+        <Link
+          to={`/c/${encodeURIComponent(name ?? '')}`}
+          className="truncate text-muted-foreground transition-colors duration-[var(--duration-fast)] hover:text-foreground"
+        >
           {community.data?.name ?? name}
         </Link>
-        <span>·</span>
+        <span aria-hidden>·</span>
         <span data-testid="post-time">{relativeTime(data.createdAt)}</span>
       </div>
 
       <PostContent post={data} />
 
       {/*
-        这里**不能**再画一条 border-t：PostContent 末尾的作者行已经用 border-y 收口了，
-        两条 hairline 之间只隔 24px，看起来像"多出一条线"（确实被这么报过）。
-        左右负边距抵掉 ghost 按钮的内边距，让文字和上面的作者名左对齐。
+        互动条：一条 hairline 收口，下面是评论区。
+        正文末尾已经不再有作者行（作者行搬到了标题下面），所以这里可以放心画 border-t。
+        左右负边距抵掉 ghost 按钮的内边距，让文字和上面的正文左对齐。
       */}
-      <div className="-ml-2.5 mt-3 flex items-center gap-0.5">
+      <div className="-ml-3 mt-7 flex items-center gap-1.5 border-t border-border pt-4">
         <LikeButton
           targetType="post"
           targetId={data.id ?? ''}
@@ -99,7 +115,7 @@ export function PostPage() {
               .then(() => toast('链接已复制'))
               .catch(() => toast('复制失败，可手动复制地址栏'))
           }}
-          className={buttonClass({ variant: 'ghost', size: 'sm', className: 'px-2.5' })}
+          className={buttonClass({ variant: 'ghost', size: 'sm' })}
           data-testid="btn-share"
         >
           分享

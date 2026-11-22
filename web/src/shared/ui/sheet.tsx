@@ -8,10 +8,13 @@ import { cn } from '@/shared/lib/cn'
  * （头像、名字、成员数），下拉菜单只能放一行文字。社群多的时候下拉要滑很久、
  * 还容易误触；大卡片一眼就能扫完。
  *
- * 三个必须做到的点：
+ * 四个必须做到的点：
  *   1. 遮罩点击关闭、ESC 关闭（否则键盘用户被困住）
  *   2. 打开时锁住 body 滚动（否则背景会跟着滚，移动端尤其明显）
  *   3. 顶部大圆角 + 抓手条，让"可以下拉关闭"这件事有视觉钩子
+ *   4. 面板是**半透明白 + 毛玻璃**：底下的内容隐约可见，弹层与页面才像是叠在一起的
+ *
+ * 桌面端限宽居中：铺满 1280px 会变成一条"横幅"，看起来像横幅而不是卡片。
  */
 export function Sheet({
   open,
@@ -48,7 +51,7 @@ export function Sheet({
         onClick={onClose}
         aria-hidden
         className={cn(
-          'fixed inset-0 z-50 bg-[rgba(0,0,0,0.42)] transition-opacity duration-[250ms]',
+          'fixed inset-0 z-50 bg-[rgba(0,0,0,0.32)] transition-opacity duration-[var(--duration-base)]',
           open ? 'opacity-100' : 'pointer-events-none opacity-0',
         )}
       />
@@ -58,19 +61,20 @@ export function Sheet({
         aria-label={title}
         data-testid={testId}
         className={cn(
-          // 桌面端限宽居中：铺满 1280px 会变成一条"横幅"，底部留白也会显得空。
-          // 窄屏仍然贴满两侧（那是移动端 bottom sheet 的正确形态）。
-          'fixed bottom-0 left-1/2 z-[55] flex max-h-[72vh] w-full max-w-[40rem] -translate-x-1/2 flex-col rounded-t-[var(--radius-xl)] bg-background pb-[calc(20px+env(safe-area-inset-bottom,0px))] transition-transform duration-[250ms] ease-[cubic-bezier(0.2,0.8,0.2,1)]',
+          'fixed bottom-0 left-1/2 z-[55] flex max-h-[72vh] w-full max-w-[40rem] -translate-x-1/2 flex-col',
+          'rounded-t-[var(--radius-xl)] bg-[rgba(255,255,255,0.86)] backdrop-blur-[30px] backdrop-saturate-[180%]',
+          'pb-[calc(20px+env(safe-area-inset-bottom,0px))]',
+          'transition-transform duration-[var(--duration-base)]',
           open ? 'translate-y-0' : 'translate-y-full',
         )}
         style={{ boxShadow: 'var(--shadow-float)' }}
       >
-        <div className="mx-auto mb-2.5 mt-1.5 h-1 w-9 shrink-0 rounded-full bg-border-strong" />
-        <div className="flex shrink-0 items-baseline justify-between border-b border-border px-6 pb-3.5">
-          <h2 className="text-sub font-semibold">{title}</h2>
+        <div className="mx-auto mb-2 mt-2 h-1 w-9 shrink-0 rounded-full bg-fill-strong" />
+        <div className="flex shrink-0 items-baseline justify-between border-b border-border px-6 pb-3">
+          <h2 className="m-0 text-sub font-semibold">{title}</h2>
           {meta ? <span className="text-aux text-faint">{meta}</span> : null}
         </div>
-        <div className="overflow-y-auto px-6 pb-2 pt-4.5">{children}</div>
+        <div className="overflow-y-auto px-6 pb-2 pt-4">{children}</div>
       </div>
     </>
   )

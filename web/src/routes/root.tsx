@@ -13,6 +13,7 @@ import {
   type MessageView,
 } from '@/features/notification/api'
 import { Avatar } from '@/shared/ui/avatar'
+import { Group, groupRowClass } from '@/shared/ui/group'
 import { Toaster } from '@/shared/ui/toast'
 import { relativeTime } from '@/shared/lib/time'
 import { cn } from '@/shared/lib/cn'
@@ -23,6 +24,16 @@ const NAV = [
   { to: '/following', label: '关注', end: false },
   { to: '/hot', label: '热榜', end: false },
 ] as const
+
+/**
+ * 顶栏/底栏文字的基准样式（Apple 导航栏的做法）：aux 档，正文色 80% 透明，
+ * hover 回到 100%。当前项靠**字重 + 100% 透明**表达，不额外加颜色块。
+ */
+const NAV_TEXT =
+  'text-aux text-foreground/80 transition-colors duration-[var(--duration-fast)] hover:text-foreground'
+
+/** 毛玻璃：Apple 的导航栏都不是半透明纯色，而是 saturate + blur 的“材质” */
+const GLASS = 'bg-[rgba(255,255,255,0.72)] backdrop-blur-[20px] backdrop-saturate-[180%]'
 
 /**
  * 应用外壳：顶栏 + 内容 + 底部 tab（窄屏）。
@@ -54,26 +65,23 @@ export function RootLayout() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="sticky top-0 z-40 h-[var(--topbar-h)] border-b border-border bg-[rgba(255,255,255,0.72)] backdrop-blur-[20px] backdrop-saturate-[180%]">
-        <div className="mx-auto flex h-full w-full max-w-[1200px] items-center gap-7 px-6">
-          <Link to="/" className="shrink-0 text-body font-semibold tracking-[0.08em]">
+      <header
+        className={cn('sticky top-0 z-40 h-[var(--topbar-h)] border-b border-border', GLASS)}
+      >
+        <div className="mx-auto flex h-full w-full max-w-[980px] items-center gap-7 px-6">
+          <Link to="/" className="shrink-0 text-body font-semibold tracking-[0.06em]">
             kuaikan
           </Link>
 
           {/* 主导航：不用图标，靠字重与颜色表达当前项 */}
-          <nav className="hidden items-center gap-5.5 md:flex" aria-label="主导航">
+          <nav className="hidden items-center gap-6 md:flex" aria-label="主导航">
             {NAV.map((n) => (
               <NavLink
                 key={n.to}
                 to={n.to}
                 end={n.end}
                 className={({ isActive }) =>
-                  cn(
-                    'text-aux transition-colors duration-[150ms]',
-                    isActive
-                      ? 'font-semibold text-foreground'
-                      : 'text-muted-foreground hover:text-foreground',
-                  )
+                  cn(NAV_TEXT, isActive && 'font-semibold text-foreground')
                 }
               >
                 {n.label}
@@ -82,18 +90,18 @@ export function RootLayout() {
             <button
               type="button"
               onClick={() => setSearchOpen(true)}
-              className="text-aux text-muted-foreground transition-colors duration-[150ms] hover:text-foreground"
+              className={NAV_TEXT}
               data-testid="nav-search"
             >
               搜索
             </button>
           </nav>
 
-          <div className="ml-auto flex items-center gap-4.5">
+          <div className="ml-auto flex items-center gap-5">
             <button
               type="button"
               onClick={() => setMsgOpen(true)}
-              className="inline-flex items-center text-aux text-muted-foreground transition-colors duration-[150ms] hover:text-foreground"
+              className={cn('inline-flex items-center', NAV_TEXT)}
               data-testid="nav-messages"
             >
               消息
@@ -105,7 +113,7 @@ export function RootLayout() {
               {/* 未读为 0 时不渲染徽标本身：一个"0"比没有更吵 */}
               {(unread.data?.total ?? 0) > 0 ? (
                 <span
-                  className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-semibold leading-none text-white tabular-nums"
+                  className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-caption font-semibold leading-none text-white tabular-nums"
                   data-testid="nav-unread"
                 >
                   {(unread.data?.total ?? 0) > 99 ? '99+' : unread.data?.total}
@@ -117,7 +125,7 @@ export function RootLayout() {
               <button
                 type="button"
                 onClick={() => navigate('/me')}
-                className="flex items-center gap-2 text-aux text-muted-foreground transition-colors duration-[150ms] hover:text-foreground"
+                className={cn('flex items-center gap-2', NAV_TEXT)}
                 data-testid="nav-user"
                 title="我的"
               >
@@ -130,7 +138,7 @@ export function RootLayout() {
               <button
                 type="button"
                 onClick={() => navigate('/login')}
-                className="text-aux text-muted-foreground transition-colors duration-[150ms] hover:text-foreground"
+                className={NAV_TEXT}
                 data-testid="nav-login"
               >
                 登录
@@ -150,14 +158,17 @@ export function RootLayout() {
           inTwoPane && 'hidden md:block',
         )}
       >
-        <div className="mx-auto w-full max-w-[1200px] px-6 py-5 text-caption text-faint">
+        <div className="mx-auto w-full max-w-[980px] px-6 py-5 text-caption text-faint">
           kuaikan · 一个以社群为单位的讨论社区
         </div>
       </footer>
 
-      {/* 窄屏：主导航进底部 tab bar */}
+      {/* 窄屏：主导航进底部 tab bar。同样是毛玻璃材质，五个主导航一个不少 */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-45 border-t border-border bg-[rgba(255,255,255,0.86)] pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-[20px] backdrop-saturate-[180%] md:hidden"
+        className={cn(
+          'fixed inset-x-0 bottom-0 z-45 border-t border-border pb-[env(safe-area-inset-bottom,0px)] md:hidden',
+          GLASS,
+        )}
         aria-label="底部导航"
         data-testid="tabbar"
       >
@@ -169,8 +180,8 @@ export function RootLayout() {
               end={n.end}
               className={({ isActive }) =>
                 cn(
-                  'flex flex-col items-center justify-center gap-1 text-caption',
-                  isActive ? 'font-semibold text-foreground' : 'text-faint',
+                  'flex flex-col items-center justify-center gap-1 text-caption text-faint transition-colors duration-[var(--duration-fast)]',
+                  isActive && 'font-semibold text-foreground',
                 )
               }
             >
@@ -211,34 +222,37 @@ function SearchLayer({ open, onClose }: { open: boolean; onClose: () => void }) 
 
   return (
     <div
-      className="fixed inset-0 z-[60] bg-background"
-      style={{ animation: 'fade-in 250ms cubic-bezier(0.2,0.8,0.2,1) both' }}
+      className="fixed inset-0 z-[60] bg-[rgba(255,255,255,0.86)] backdrop-blur-[30px] backdrop-saturate-[180%]"
+      style={{ animation: 'fade-in var(--duration-base) var(--ease-out-soft) both' }}
       role="dialog"
       aria-modal="true"
       aria-label="搜索"
       data-testid="search-layer"
     >
       <div className="mx-auto max-w-[40rem] px-6 py-10">
-        <div className="flex h-[52px] items-center gap-2.5 rounded-[var(--radius-lg)] bg-surface px-4.5">
+        {/* 胶囊搜索框：与按钮同一种形状，一眼就知道这是"输入一条命令"的地方。
+            focus 的指示器画在整条胶囊上（与外层一致），不用 input 自带的描边矩形 ——
+            那会在胶囊里再套一个方框，形状打架。 */}
+        <div className="flex h-12 items-center gap-3 rounded-full bg-fill px-5 transition-[background-color,box-shadow] duration-[var(--duration-fast)] focus-within:bg-background focus-within:shadow-[0_0_0_3px_var(--color-primary-soft)]">
           <input
             autoFocus
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="搜索帖子、社群、用户"
             aria-label="搜索"
-            className="min-w-0 flex-1 bg-transparent text-read text-foreground outline-none placeholder:text-faint"
+            className="min-w-0 flex-1 bg-transparent text-read text-foreground outline-none placeholder:text-faint focus-visible:outline-none"
             data-testid="search-input"
           />
           <button
             type="button"
             onClick={onClose}
-            className="text-aux text-faint hover:text-foreground"
+            className="shrink-0 text-aux text-primary transition-colors duration-[var(--duration-fast)] hover:text-primary-hover"
             data-testid="search-close"
           >
             取消
           </button>
         </div>
-        <p className="mt-3.5 text-aux text-faint">
+        <p className="mt-4 text-aux text-muted-foreground">
           {q.trim()
             ? `「${q.trim()}」—— 搜索功能在后续版本开放`
             : '搜索功能在后续版本开放。这里先定下它的位置与形态。'}
@@ -281,7 +295,7 @@ function MessageDrawer({ open, onClose }: { open: boolean; onClose: () => void }
         onClick={onClose}
         aria-hidden
         className={cn(
-          'fixed inset-0 z-50 bg-[rgba(0,0,0,0.42)] transition-opacity duration-[250ms]',
+          'fixed inset-0 z-50 bg-[rgba(0,0,0,0.32)] transition-opacity duration-[var(--duration-base)]',
           open ? 'opacity-100' : 'pointer-events-none opacity-0',
         )}
       />
@@ -291,32 +305,38 @@ function MessageDrawer({ open, onClose }: { open: boolean; onClose: () => void }
         aria-label="消息"
         data-testid="message-drawer"
         className={cn(
-          'fixed bottom-0 right-0 top-0 z-[55] flex w-[min(400px,100vw)] flex-col bg-background transition-transform duration-[250ms] ease-[cubic-bezier(0.2,0.8,0.2,1)]',
+          // 抽屉本体是浅底（#f5f5f7），消息按 inset grouped 分组放在白面上，
+          // 头部和 tab 保持白色 —— 与顶栏同一种材质，视觉上像从右边抽出来的一层。
+          'fixed inset-y-0 right-0 z-[55] flex w-[min(420px,100vw)] flex-col bg-surface transition-transform duration-[var(--duration-base)]',
           open ? 'translate-x-0' : 'translate-x-full',
         )}
         style={{ boxShadow: 'var(--shadow-float)' }}
       >
-        <div className="flex h-[var(--topbar-h)] shrink-0 items-center justify-between border-b border-border px-5">
-          <div className="flex items-baseline gap-2">
-            <h2 className="m-0 text-sub font-semibold">消息</h2>
+        <div className="flex h-[var(--topbar-h)] shrink-0 items-center justify-between border-b border-border bg-background px-5">
+          <div className="flex items-baseline gap-2.5">
+            <h2 className="m-0 text-read font-semibold">消息</h2>
             {total > 0 ? (
               <button
                 type="button"
                 onClick={() => readAll.mutate()}
                 disabled={readAll.isPending}
-                className="text-aux text-primary hover:underline disabled:opacity-50"
+                className="text-aux text-primary transition-colors duration-[var(--duration-fast)] hover:text-primary-hover hover:underline disabled:opacity-50"
                 data-testid="btn-read-all"
               >
                 全部已读
               </button>
             ) : null}
           </div>
-          <button type="button" onClick={onClose} className="text-aux text-muted-foreground">
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-aux text-muted-foreground transition-colors duration-[var(--duration-fast)] hover:text-foreground"
+          >
             关闭
           </button>
         </div>
 
-        <div className="flex shrink-0 gap-5 border-b border-border px-5" role="tablist">
+        <div className="flex shrink-0 gap-5 border-b border-border bg-background px-5" role="tablist">
           {tabs.map((t) => (
             <button
               key={t.key}
@@ -325,7 +345,7 @@ function MessageDrawer({ open, onClose }: { open: boolean; onClose: () => void }
               aria-selected={tab === t.key}
               onClick={() => setTab(t.key)}
               className={cn(
-                'relative h-11 text-aux transition-colors duration-[150ms]',
+                'relative h-11 text-aux transition-colors duration-[var(--duration-fast)]',
                 tab === t.key ? 'font-semibold text-foreground' : 'text-muted-foreground',
               )}
             >
@@ -334,7 +354,7 @@ function MessageDrawer({ open, onClose }: { open: boolean; onClose: () => void }
                 <span className="ml-1 text-caption tabular-nums text-danger">{t.count}</span>
               ) : null}
               {tab === t.key ? (
-                <span className="absolute inset-x-0 -bottom-px h-0.5 rounded bg-foreground" />
+                <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-foreground" />
               ) : null}
             </button>
           ))}
@@ -346,24 +366,35 @@ function MessageDrawer({ open, onClose }: { open: boolean; onClose: () => void }
           ) : items.length === 0 ? (
             <EmptyTab tab={tab} />
           ) : (
-            <ul className="m-0 list-none p-0">
-              {items.map((f) => (
-                <li
-                  key={f.head.id}
-                  className="border-b border-border px-5 py-4 last:border-b-0"
-                  data-testid="message-item"
-                >
-                  <MessageRow message={f.head} sameTargetCount={f.sameTargetCount} onClose={onClose} />
-                </li>
-              ))}
-            </ul>
+            <div className="p-4">
+              <Group>
+                <ul className="m-0 list-none p-0">
+                  {items.map((f) => (
+                    <li
+                      key={f.head.id}
+                      className={groupRowClass({
+                        interactive: true,
+                        className: 'items-start px-4 py-3.5',
+                      })}
+                      data-testid="message-item"
+                    >
+                      <MessageRow
+                        message={f.head}
+                        sameTargetCount={f.sameTargetCount}
+                        onClose={onClose}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </Group>
+            </div>
           )}
           {messages.hasNextPage ? (
             <button
               type="button"
               onClick={() => void messages.fetchNextPage()}
               disabled={messages.isFetchingNextPage}
-              className="w-full py-3 text-aux text-muted-foreground hover:underline"
+              className="block w-full py-3 text-center text-aux text-primary disabled:opacity-50"
             >
               {messages.isFetchingNextPage ? '加载中…' : '加载更多'}
             </button>
@@ -531,7 +562,7 @@ function MessageRow({
         if (unread) markRead.mutate(message.id ?? '')
         onClose()
       }}
-      className="-mx-2 block rounded-md px-2 py-1 transition-colors duration-[150ms] hover:bg-surface"
+      className="block"
       data-testid="message-link"
     >
       {body}

@@ -16,9 +16,10 @@ import { ApiError } from '@/shared/api/api-error'
 import { Avatar } from '@/shared/ui/avatar'
 import { buttonClass } from '@/shared/ui/button'
 import { Empty } from '@/shared/ui/empty'
+import { Group, groupRowClass } from '@/shared/ui/group'
+import { Segmented } from '@/shared/ui/segmented'
 import { Skeleton } from '@/shared/ui/skeleton'
 import { relativeTime } from '@/shared/lib/time'
-import { cn } from '@/shared/lib/cn'
 
 /**
  * 用户主页（P5.5.2）。
@@ -38,6 +39,12 @@ import { cn } from '@/shared/lib/cn'
  *
  * 「关注 N / 粉丝 M」不是纯展示：点一下就切到对应的 Tab。
  * 这是页面上最自然的"我还能看什么"的入口，比在 Tab 栏里再强调一遍更省。
+ *
+ * ## 版式
+ *
+ * 浅底 + 大头像 + title 大标题的产品页头部；四个 Tab 用 Segmented
+ * （少数互斥选项的控件，不用四根竖线排一排）；每个 Tab 的内容是一个 inset grouped。
+ * 页面级容器 980（与顶栏对齐），内容列 680（与阅读栏宽一致）。
  */
 type TabKey = 'posts' | 'communities' | 'following' | 'followers'
 
@@ -51,6 +58,20 @@ const TABS: ReadonlyArray<{ key: TabKey; label: string }> = [
 /** 40209 = 用户不存在；404 是它映射到的 HTTP 状态（contract/error-codes.json） */
 function isUserMissing(err: unknown): boolean {
   return err instanceof ApiError && (err.code === 40209 || err.status === 404)
+}
+
+/** 页面壳：浅底、980 栅宽、内容 680 */
+function Page({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="min-h-[calc(100vh-var(--topbar-h))] bg-surface"
+      data-testid="user-profile-page"
+    >
+      <div className="mx-auto w-full max-w-[980px] px-6 pb-24 pt-12">
+        <div className="mx-auto max-w-[680px]">{children}</div>
+      </div>
+    </div>
+  )
 }
 
 export function UserProfilePage() {
@@ -69,40 +90,42 @@ function UserProfileBody({ userId }: { userId: string | undefined }) {
 
   if (profile.isPending) {
     return (
-      <div className="mx-auto max-w-[1000px] px-6 pb-24 pt-12" data-testid="user-profile-page">
-        <div className="flex items-center gap-4">
-          <Skeleton className="h-14 w-14 rounded-full" />
-          <div className="flex-1">
-            <Skeleton className="mb-2 h-6 w-40" />
-            <Skeleton className="h-3.5 w-28" />
+      <Page>
+        <div className="flex items-center gap-5">
+          <Skeleton className="h-[88px] w-[88px] rounded-full" />
+          <div className="min-w-0 flex-1">
+            <Skeleton className="mb-3 h-8 w-40" />
+            <Skeleton className="h-4 w-28" />
           </div>
         </div>
-        <Skeleton className="mt-10 h-40 w-full" />
-      </div>
+        <Skeleton className="mt-10 h-40 w-full rounded-[var(--radius-lg)]" />
+      </Page>
     )
   }
 
   // 用户不存在 / 已注销：不区分两者（与帖子详情的纪律一致，见 p2 §"对外一律不存在"）
   if (profile.isError) {
     return (
-      <div className="mx-auto max-w-[40rem] px-6 py-16 md:px-11" data-testid="user-profile-page">
+      <Page>
         {isUserMissing(profile.error) ? (
-          <Empty
-            title="用户不存在或已注销"
-            description="这个主页可能已经被删除，或者链接里的 id 有误。"
-            testId="user-profile-missing"
-            action={
-              <Link to="/" className="text-aux text-primary hover:underline">
-                回到首页
-              </Link>
-            }
-          />
+          <Group>
+            <Empty
+              title="用户不存在或已注销"
+              description="这个主页可能已经被删除，或者链接里的 id 有误。"
+              testId="user-profile-missing"
+              action={
+                <Link to="/" className="text-aux text-primary hover:underline">
+                  回到首页
+                </Link>
+              }
+            />
+          </Group>
         ) : (
           <p className="m-0 text-body text-danger" data-testid="user-profile-error">
             {authErrorMessage(profile.error)}
           </p>
         )}
-      </div>
+      </Page>
     )
   }
 
@@ -112,22 +135,38 @@ function UserProfileBody({ userId }: { userId: string | undefined }) {
   const followerCount = user.followerCount ?? 0
 
   return (
-    <div className="mx-auto max-w-[1000px] px-6 pb-24 pt-12" data-testid="user-profile-page">
-      {/* 头部：头像 / 昵称 / 计数 / 动作。分区只有留白，没有卡片 */}
-      <div className="flex items-start gap-4">
-        <Avatar url={user.avatarUrl ?? null} name={user.nickname ?? ''} size={56} />
+    <Page>
+      {/* 头部：大头像 + nickname（title 档）+ 计数 + 动作。
+          不画卡片、不画背景色块——白分组留给下面的列表，头部靠留白和字号分层。 */}
+      <header className="flex items-start gap-4 sm:gap-6">
+        <Avatar url={user.avatarUrl ?? null} name={user.nickname ?? ''} size={80} />
         <div className="min-w-0 flex-1">
-          <h1
-            className="m-0 truncate text-title font-[640] leading-[1.32]"
-            data-testid="user-profile-nickname"
-          >
-            {user.nickname ?? '已注销用户'}
-          </h1>
-          <div className="mt-2 flex items-center gap-3 text-aux text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+            <h1
+              className="m-0 min-w-0 truncate text-title"
+              data-testid="user-profile-nickname"
+            >
+              {user.nickname ?? '已注销用户'}
+            </h1>
+            <div className="ml-auto shrink-0">
+              {isSelf ? (
+                <Link
+                  to="/me"
+                  className={buttonClass({ variant: 'outline', size: 'sm' })}
+                  data-testid="btn-user-edit-profile"
+                >
+                  编辑资料
+                </Link>
+              ) : (
+                <FollowButton userId={user.userId} testId="btn-follow-profile" />
+              )}
+            </div>
+          </div>
+          <div className="mt-3 flex items-center gap-3 text-aux text-muted-foreground">
             <button
               type="button"
               onClick={() => setTab('following')}
-              className="hover:text-foreground"
+              className="rounded-full transition-colors duration-[var(--duration-fast)] hover:text-foreground"
               data-testid="user-profile-following-count"
             >
               <span className="font-semibold tabular-nums text-foreground">{followingCount}</span>{' '}
@@ -137,7 +176,7 @@ function UserProfileBody({ userId }: { userId: string | undefined }) {
             <button
               type="button"
               onClick={() => setTab('followers')}
-              className="hover:text-foreground"
+              className="rounded-full transition-colors duration-[var(--duration-fast)] hover:text-foreground"
               data-testid="user-profile-follower-count"
             >
               <span className="font-semibold tabular-nums text-foreground">{followerCount}</span>{' '}
@@ -145,63 +184,28 @@ function UserProfileBody({ userId }: { userId: string | undefined }) {
             </button>
           </div>
         </div>
-        <div className="shrink-0">
-          {isSelf ? (
-            <Link
-              to="/me"
-              className={buttonClass({ variant: 'outline', size: 'sm' })}
-              data-testid="btn-user-edit-profile"
-            >
-              编辑资料
-            </Link>
-          ) : (
-            <FollowButton userId={user.userId} testId="btn-follow-profile" />
-          )}
-        </div>
+      </header>
+
+      {/* 四个 Tab 用 Segmented：互斥的少量选项，一个控件就说清了「这里在切换视图」。
+          小屏会挤，所以外面允许横向滚动，绝不撑破页面（横向滚动条一律不要）。 */}
+      <div className="mt-8 flex items-center justify-between gap-3 overflow-x-auto pb-1">
+        <Segmented
+          value={tab}
+          onChange={setTab}
+          options={TABS.map((t) => ({ value: t.key, label: t.label, testId: `user-tab-${t.key}` }))}
+        />
       </div>
 
-      {/* Tab 栏：hairline 收口，当前项靠字重 + 底部短横线，不用色块 */}
-      <div className="mt-9 flex gap-6 border-b border-border" role="tablist" aria-label="主页内容">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            role="tab"
-            aria-selected={tab === t.key}
-            onClick={() => setTab(t.key)}
-            className={cn(
-              'relative -mb-px h-10 text-aux transition-colors duration-[150ms]',
-              tab === t.key
-                ? 'font-semibold text-foreground'
-                : 'text-muted-foreground hover:text-foreground',
-            )}
-            data-testid={`user-tab-${t.key}`}
-          >
-            {t.label}
-            {tab === t.key ? (
-              <span className="absolute inset-x-0 -bottom-px h-0.5 rounded bg-foreground" />
-            ) : null}
-          </button>
-        ))}
-      </div>
-
-      <div className="pt-2" role="tabpanel">
+      <div className="mt-5" role="tabpanel">
         {tab === 'posts' ? <PostsTab userId={user.userId ?? ''} /> : null}
         {tab === 'communities' ? <CommunitiesTab userId={user.userId ?? ''} /> : null}
         {tab === 'following' ? <FollowingTab userId={user.userId ?? ''} /> : null}
         {tab === 'followers' ? <FollowersTab userId={user.userId ?? ''} /> : null}
       </div>
-    </div>
+    </Page>
   )
 }
 
-/**
- * ta 发的帖子。
- *
- * 社群名从社群列表（首页同一份缓存）映射 —— 帖子 DTO 里只有 `communityId`。
- * 社群很多时这里只看得到第一页社群的名字，映射不到的行会退化成不可点的纯文本，
- * 不编造一个假名字。
- */
 function PostsTab({ userId }: { userId: string }) {
   const query = useAuthorPosts(userId)
   const communities = useCommunityList(null)
@@ -215,24 +219,30 @@ function PostsTab({ userId }: { userId: string }) {
   }
   if (query.isError) {
     return (
-      <p className="py-8 text-aux text-danger" data-testid="user-posts-error">
+      <p className="m-0 text-aux text-danger" data-testid="user-posts-error">
         {authErrorMessage(query.error)}
       </p>
     )
   }
   if (items.length === 0) {
-    return <Empty title="ta 还没有发过帖子" testId="user-posts-empty" />
+    return (
+      <Group>
+        <Empty title="ta 还没有发过帖子" testId="user-posts-empty" />
+      </Group>
+    )
   }
 
   return (
     <div data-testid="user-posts">
-      <ul className="m-0 list-none p-0">
-        {items.map((p) => (
-          <li key={p.id} className="py-4 [&+&]:border-t [&+&]:border-border">
-            <PostFeedRow post={p} communityName={nameById.get(p.communityId ?? '')} />
-          </li>
-        ))}
-      </ul>
+      <Group>
+        <ul className="m-0 list-none p-0">
+          {items.map((p) => (
+            <li key={p.id} className={groupRowClass({ className: 'py-4' })}>
+              <PostFeedRow post={p} communityName={nameById.get(p.communityId ?? '')} />
+            </li>
+          ))}
+        </ul>
+      </Group>
       <FeedLoadMore
         hasNextPage={query.hasNextPage}
         isFetchingNextPage={query.isFetchingNextPage}
@@ -252,39 +262,50 @@ function CommunitiesTab({ userId }: { userId: string }) {
   }
   if (query.isError) {
     return (
-      <p className="py-8 text-aux text-danger" data-testid="user-communities-error">
+      <p className="m-0 text-aux text-danger" data-testid="user-communities-error">
         {authErrorMessage(query.error)}
       </p>
     )
   }
   if (items.length === 0) {
-    return <Empty title="ta 还没有加入任何社群" testId="user-communities-empty" />
+    return (
+      <Group>
+        <Empty
+          title="ta 还没有加入任何社群"
+          testId="user-communities-empty"
+        />
+      </Group>
+    )
   }
 
   return (
     <div data-testid="user-communities">
-      <ul className="m-0 list-none p-0">
-        {items.map((c) => (
-          <li key={c.id} className="py-3.5 [&+&]:border-t [&+&]:border-border">
-            <Link
-              to={`/c/${encodeURIComponent(c.name ?? '')}`}
-              className="flex items-center gap-3 rounded-md py-1 hover:opacity-80"
-              data-testid="user-community-item"
-            >
-              <Avatar url={null} name={c.name ?? ''} size={32} />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-body font-medium">{c.name}</span>
-                {c.description ? (
-                  <span className="mt-0.5 block truncate text-caption text-faint">
-                    {c.description}
-                  </span>
-                ) : null}
-              </span>
-              <span className="shrink-0 text-caption text-faint">{c.memberCount ?? 0} 成员</span>
-            </Link>
-          </li>
-        ))}
-      </ul>
+      <Group>
+        <ul className="m-0 list-none p-0">
+          {items.map((c) => (
+            <li key={c.id} className={groupRowClass({ className: 'p-0' })}>
+              <Link
+                to={`/c/${encodeURIComponent(c.name ?? '')}`}
+                className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 transition-opacity duration-[var(--duration-fast)] hover:opacity-80"
+                data-testid="user-community-item"
+              >
+                <Avatar url={null} name={c.name ?? ''} size={32} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-body font-medium">{c.name}</span>
+                  {c.description ? (
+                    <span className="mt-0.5 block truncate text-caption text-faint">
+                      {c.description}
+                    </span>
+                  ) : null}
+                </span>
+                <span className="shrink-0 text-caption text-faint">
+                  {c.memberCount ?? 0} 成员
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </Group>
       <FeedLoadMore
         hasNextPage={query.hasNextPage}
         isFetchingNextPage={query.isFetchingNextPage}
@@ -329,18 +350,23 @@ function FollowList({
   }
   if (query.isError) {
     return (
-      <p className="py-8 text-aux text-danger" data-testid="user-follow-list-error">
+      <p className="m-0 text-aux text-danger" data-testid="user-follow-list-error">
         {authErrorMessage(query.error)}
       </p>
     )
   }
   if (items.length === 0) {
-    return <Empty title={emptyText} testId="user-follow-list-empty" />
+    return (
+      <Group>
+        <Empty title={emptyText} testId="user-follow-list-empty" />
+      </Group>
+    )
   }
 
   return (
     <div data-testid="user-follow-list">
-      <ul className="m-0 list-none p-0">
+      <Group>
+        <ul className="m-0 list-none p-0">
         {items.map((u) => {
           const state = u.userId ? states.data?.[u.userId] : undefined
           // 已登录但批量状态还没回来时不渲染按钮：
@@ -359,13 +385,10 @@ function FollowList({
             />
           )
           return (
-            <li
-              key={u.userId}
-              className="flex items-center gap-3 py-3.5 [&+&]:border-t [&+&]:border-border"
-            >
+            <li key={u.userId} className={groupRowClass({ className: 'p-0' })}>
               <Link
                 to={`/u/${encodeURIComponent(u.userId ?? '')}`}
-                className="flex min-w-0 flex-1 items-center gap-3 hover:opacity-80"
+                className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 transition-opacity duration-[var(--duration-fast)] hover:opacity-80"
                 data-testid="follow-user-link"
               >
                 <Avatar url={u.avatarUrl ?? null} name={u.nickname ?? ''} size={32} />
@@ -376,12 +399,15 @@ function FollowList({
                   <span className="block text-caption text-faint">{relativeTime(u.followedAt)}</span>
                 </span>
               </Link>
-              {/* 状态必须**显式传入**（游客传默认值）：不传会退化成 N+1 个单查 */}
-              {button}
+              <span className="pr-4">
+                {/* 状态必须**显式传入**（游客传默认值）：不传会退化成 N+1 个单查 */}
+                {button}
+              </span>
             </li>
           )
         })}
-      </ul>
+        </ul>
+      </Group>
       <FeedLoadMore
         hasNextPage={query.hasNextPage}
         isFetchingNextPage={query.isFetchingNextPage}
@@ -393,10 +419,10 @@ function FollowList({
 
 function FeedSkeleton() {
   return (
-    <div className="space-y-3 pt-4">
-      <Skeleton className="h-12 w-full" />
-      <Skeleton className="h-12 w-full" />
-      <Skeleton className="h-12 w-full" />
+    <div className="space-y-3">
+      <Skeleton className="h-[52px] w-full rounded-[var(--radius-lg)]" />
+      <Skeleton className="h-[52px] w-full rounded-[var(--radius-lg)]" />
+      <Skeleton className="h-[52px] w-full rounded-[var(--radius-lg)]" />
     </div>
   )
 }

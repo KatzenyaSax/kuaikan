@@ -2,7 +2,7 @@ import { Outlet, useMatch, useParams } from 'react-router'
 import { CommunitySwitcher } from '@/features/community/community-switcher'
 import { useCommunityDetail } from '@/features/community/api'
 import { PostList } from '@/features/content/post-list'
-import { Divider } from '@/shared/ui/divider'
+import { GroupHeader } from '@/shared/ui/group'
 import { cn } from '@/shared/lib/cn'
 
 /**
@@ -10,8 +10,9 @@ import { cn } from '@/shared/lib/cn'
  *
  * 四条关键决定：
  *
- * 1. **容器 1200px 居中**。不居中的话，1280 视口下左栏贴左、右栏内容被推到很右，
- *    两栏之间空一大块，看起来像两个不相干的页面。
+ * 1. **容器跟顶栏同一个 980px、同一份 px-6**。左栏的左边就是顶栏 logo 的左边，
+ *    右栏的右边就是顶栏右端的右边——页面和内壳是一个宽度，不是两个。
+ *    （顶栏是 980，这里如果还用 1200，两栏之间的留白会被拉成一条空带。）
  *
  * 2. **URL 才是状态**。右栏内容由路由决定（index = 社群概览，p/:postId = 帖子正文），
  *    不用 useState。否则失去分享链接、后退键、刷新保持、cmd+click 开新标签。
@@ -21,6 +22,8 @@ import { cn } from '@/shared/lib/cn'
  *    （这条路由不显示页脚——双栏阅读页不需要页脚，见 RootLayout。）
  *
  * 4. **窄屏只显示一栏**：路由不变，按"当前是 index 还是详情"切换显示哪一栏。
+ *
+ * 左栏是浅底（#f5f5f7）+ 白色分组：inset grouped 需要底色衬托，否则白分组看不见。
  */
 export function CommunityLayout() {
   const { name } = useParams<{ name: string }>()
@@ -28,29 +31,19 @@ export function CommunityLayout() {
   const inDetail = Boolean(useMatch('/c/:name/p/:postId'))
 
   return (
-    <div className="mx-auto flex h-[calc(100vh-var(--topbar-h))] w-full max-w-[1200px] overflow-hidden">
+    <div className="mx-auto flex h-[calc(100vh-var(--topbar-h))] w-full max-w-[980px] px-0 md:px-6">
       <aside
         className={cn(
-          'w-full shrink-0 overflow-y-auto border-border md:w-[300px] md:border-r',
+          'w-full shrink-0 overflow-y-auto bg-surface md:w-[272px]',
           inDetail ? 'hidden md:block' : 'block',
         )}
         data-testid="left-pane"
       >
-        {/* 分组小标题不是装饰：它把"我在哪一层"说清楚。没有它，左栏就是
-            "一个下拉框 + 一堆文字"，结构感全无。 */}
-        <div className="px-4 pb-3 pt-4">
-          <p className="m-0 mb-2 text-caption font-semibold uppercase tracking-[0.06em] text-faint">
-            选择社群
-          </p>
+        <div className="px-3 pb-10 pt-5">
+          <GroupHeader className="px-1 pb-2.5">选择社群</GroupHeader>
           <CommunitySwitcher activeName={detail.data?.name} />
-        </div>
 
-        <Divider className="mx-4" />
-
-        <div className="px-2 pb-8 pt-3">
-          <p className="m-0 mb-1 px-2 text-caption font-semibold uppercase tracking-[0.06em] text-faint">
-            帖子
-          </p>
+          <GroupHeader className="px-1 pb-2.5 pt-7">帖子</GroupHeader>
           {/* key 用社群 id：切社群时整个列表重新挂载，分页状态自然归零 */}
           <PostList key={detail.data?.id ?? 'pending'} communityId={detail.data?.id} />
         </div>

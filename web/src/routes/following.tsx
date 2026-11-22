@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { useCommunityList } from '@/features/community/api'
 import { useAuthorPosts, usePostsByAuthors, type PostSummary } from '@/features/content/api'
@@ -9,8 +9,36 @@ import { useMyFollowing } from '@/features/social/api'
 import { Avatar } from '@/shared/ui/avatar'
 import { Button } from '@/shared/ui/button'
 import { Empty } from '@/shared/ui/empty'
+import { Group, GroupHeader, groupRowClass } from '@/shared/ui/group'
 import { Skeleton } from '@/shared/ui/skeleton'
 import { cn } from '@/shared/lib/cn'
+
+/**
+ * 页面外壳。底色是 #f5f5f7（inset grouped 的前提），栏宽与顶栏一致。
+ *
+ * 三个分支（正在续期 / 游客 / 已登录）共用同一个外壳：状态落地时只换内容，
+ * 不换底色，否则会闪一下白→灰。
+ */
+function Page({ children }: { children: ReactNode }) {
+  return (
+    <div
+      className="min-h-[calc(100vh-var(--topbar-h))] bg-surface"
+      data-testid="following-page"
+    >
+      <div className="mx-auto w-full max-w-[980px] px-6 pb-24 pt-12">{children}</div>
+    </div>
+  )
+}
+
+/** 产品页标题：大标题 + 一行副标题，左对齐。三个分支（正在续期 / 游客 / 已登录）共用 */
+function PageHeader({ subtitle = '你关注的人发的帖子，按时间排序。' }: { subtitle?: string }) {
+  return (
+    <header className="mb-10">
+      <h1 className="m-0 text-title">关注</h1>
+      <p className="m-0 mt-2 max-w-[38rem] text-read text-muted-foreground">{subtitle}</p>
+    </header>
+  )
+}
 
 /**
  * 关注流（P5.5.2）。
@@ -29,8 +57,8 @@ import { cn } from '@/shared/lib/cn'
  *
  * ## 双栏
  *
- * 1200px 居中：左栏 300px（「全部关注」+ 已关注的人），右栏时间线。
- * 窄屏不隐藏任何一栏，而是上下堆叠（左栏列表变成"选择作者"的横向入口），
+ * 980px（与顶栏同宽）：左栏 272px（inset grouped 的「全部关注」+ 已关注的人），
+ * 右栏时间线靠 hairline 分隔。窄屏不隐藏任何一栏，而是上下堆叠，
  * 因为窄屏用户更需要"我还关注了谁"这个信息。
  */
 export function FollowingPage() {
@@ -56,13 +84,10 @@ export function FollowingPage() {
     // 这里如果落进下面的 !authed 分支，已登录用户直接刷新 /following 会先闪一下
     // “登录后查看…”，而那个提示对他是错的。所以只渲染骨架，等状态落地。
     return (
-      <div className="mx-auto max-w-[1200px] px-6 pb-24 pt-12" data-testid="following-page">
-        <div className="mb-8 flex items-baseline gap-3">
-          <h1 className="m-0 text-title font-[640]">关注</h1>
-          <p className="m-0 text-aux text-muted-foreground">你关注的人发的帖子，按时间排序</p>
-        </div>
-        <div className="flex flex-col gap-6 md:flex-row">
-          <div className="w-full shrink-0 md:w-[300px]">
+      <Page>
+        <PageHeader />
+        <div className="flex flex-col gap-6 md:flex-row md:gap-7">
+          <div className="w-full shrink-0 md:w-[272px]">
             <Skeleton className="mb-2 h-4 w-24" />
             <Skeleton className="mb-2 h-11 w-full" />
             <Skeleton className="h-11 w-full" />
@@ -73,17 +98,14 @@ export function FollowingPage() {
             <Skeleton className="h-14 w-full" />
           </div>
         </div>
-      </div>
+      </Page>
     )
   }
 
   if (status === 'anonymous') {
     return (
-      <div className="mx-auto max-w-[1000px] px-6 pb-24 pt-12" data-testid="following-page">
-        <h1 className="m-0 mb-3.5 text-title font-[640]">关注</h1>
-        <p className="m-0 mb-10 max-w-[40rem] text-read text-muted-foreground">
-          你关注的人发的帖子会出现在这里，按时间排序。
-        </p>
+      <Page>
+        <PageHeader subtitle="登录后，这里按时间倒序显示你关注的人发的帖子。" />
         <Empty
           title="登录后查看你关注的人的动态"
           description={
@@ -100,20 +122,17 @@ export function FollowingPage() {
             </Link>
           }
         />
-      </div>
+      </Page>
     )
   }
 
   return (
-    <div className="mx-auto max-w-[1200px] px-6 pb-24 pt-12" data-testid="following-page">
-      <div className="mb-8 flex items-baseline gap-3">
-        <h1 className="m-0 text-title font-[640]">关注</h1>
-        <p className="m-0 text-aux text-muted-foreground">你关注的人发的帖子，按时间排序</p>
-      </div>
+    <Page>
+      <PageHeader />
 
       {myFollowing.isPending ? (
-        <div className="flex flex-col gap-6 md:flex-row">
-          <div className="w-full shrink-0 md:w-[300px]">
+        <div className="flex flex-col gap-6 md:flex-row md:gap-7">
+          <div className="w-full shrink-0 md:w-[272px]">
             <Skeleton className="mb-2 h-4 w-24" />
             <Skeleton className="mb-2 h-11 w-full" />
             <Skeleton className="h-11 w-full" />
@@ -146,56 +165,62 @@ export function FollowingPage() {
           }
         />
       ) : (
-        <div className="flex flex-col gap-8 md:flex-row md:gap-0">
-          {/* 左栏：300px + hairline 右边框 */}
-          <aside
-            className="w-full shrink-0 md:w-[300px] md:border-r md:border-border md:pr-6"
-            data-testid="following-left"
-          >
-            <p className="m-0 mb-2 text-caption font-semibold uppercase tracking-[0.06em] text-faint">
-              我关注的人
-            </p>
-            <ul className="m-0 list-none p-0">
-              <li>
-                <SelectRow
-                  active={selectedId === null}
-                  onClick={() => setSelected(null)}
-                  testId="following-all"
+        <div className="flex flex-col gap-8 md:flex-row md:gap-7">
+          {/* 左栏：272px，inset grouped（白面 + 内缩 hairline），不用边框围成表格 */}
+          <aside className="w-full shrink-0 md:w-[272px]" data-testid="following-left">
+            <GroupHeader className="px-0 pb-2.5">我关注的人</GroupHeader>
+            <Group>
+              <ul className="m-0 list-none p-0">
+                <li
+                  className={groupRowClass({
+                    className: cn('p-0', selectedId === null && 'bg-fill'),
+                  })}
                 >
-                  <span className="truncate font-medium">全部关注（{users.length}）</span>
-                </SelectRow>
-              </li>
-              {users.map((u) => {
-                const id = u.userId ?? ''
-                return (
-                  <li key={id} className="flex items-center gap-1">
-                    <SelectRow
-                      active={selectedId === id}
-                      onClick={() => setSelected(id)}
-                      testId="following-user-item"
-                      className="min-w-0 flex-1"
+                  <SelectRow
+                    active={selectedId === null}
+                    onClick={() => setSelected(null)}
+                    testId="following-all"
+                  >
+                    <span className="truncate font-medium">全部关注（{users.length}）</span>
+                  </SelectRow>
+                </li>
+                {users.map((u) => {
+                  const id = u.userId ?? ''
+                  return (
+                    <li
+                      key={id}
+                      className={groupRowClass({
+                        className: cn('gap-1 p-0', selectedId === id && 'bg-fill'),
+                      })}
                     >
-                      <Avatar url={u.avatarUrl ?? null} name={u.nickname ?? ''} size={24} />
-                      <span className="truncate">{u.nickname ?? '已注销用户'}</span>
-                    </SelectRow>
-                    {/* 单独的主页入口：点名字是"筛选右栏"，点这里才是"进他主页" */}
-                    <Link
-                      to={`/u/${encodeURIComponent(id)}`}
-                      className="shrink-0 rounded px-1.5 py-1 text-caption text-faint hover:text-foreground"
-                      title="进入 ta 的主页"
-                      data-testid="following-user-profile"
-                    >
-                      主页
-                    </Link>
-                  </li>
-                )
-              })}
-            </ul>
+                      <SelectRow
+                        active={selectedId === id}
+                        onClick={() => setSelected(id)}
+                        testId="following-user-item"
+                        className="min-w-0 flex-1"
+                      >
+                        <Avatar url={u.avatarUrl ?? null} name={u.nickname ?? ''} size={24} />
+                        <span className="truncate">{u.nickname ?? '已注销用户'}</span>
+                      </SelectRow>
+                      {/* 单独的主页入口：点名字是"筛选右栏"，点这里才是"进他主页" */}
+                      <Link
+                        to={`/u/${encodeURIComponent(id)}`}
+                        className="shrink-0 pr-4 text-caption text-faint transition-colors duration-[var(--duration-fast)] hover:text-foreground"
+                        title="进入 ta 的主页"
+                        data-testid="following-user-profile"
+                      >
+                        主页
+                      </Link>
+                    </li>
+                  )
+                })}
+              </ul>
+            </Group>
           </aside>
 
           {/* 右栏：时间线 */}
-          <section className="min-w-0 flex-1 md:pl-8" data-testid="following-right">
-            <div className="mb-2 flex items-baseline gap-3 border-b border-border pb-2.5">
+          <section className="min-w-0 flex-1" data-testid="following-right">
+            <div className="mb-4 flex items-baseline gap-3 border-b border-border pb-3">
               <h2 className="m-0 text-sub font-semibold">
                 {selectedUser ? (selectedUser.nickname ?? 'ta') : '全部关注'}
               </h2>
@@ -212,24 +237,26 @@ export function FollowingPage() {
               )}
             </div>
 
-            {selectedUser ? (
-              <AuthorFeed
-                // key：换人时重新挂载，分页状态与缓存游标自然归零
-                key={selectedUser.userId ?? ''}
-                userId={selectedUser.userId ?? ''}
-                communityNameById={nameById}
-              />
-            ) : (
-              <AllFollowingFeed
-                authorIds={users.map((u) => u.userId ?? '').filter(Boolean)}
-                authorNameById={new Map(users.map((u) => [u.userId ?? '', u.nickname ?? '']))}
-                communityNameById={nameById}
-              />
-            )}
+            <Group>
+              {selectedUser ? (
+                <AuthorFeed
+                  // key：换人时重新挂载，分页状态与缓存游标自然归零
+                  key={selectedUser.userId ?? ''}
+                  userId={selectedUser.userId ?? ''}
+                  communityNameById={nameById}
+                />
+              ) : (
+                <AllFollowingFeed
+                  authorIds={users.map((u) => u.userId ?? '').filter(Boolean)}
+                  authorNameById={new Map(users.map((u) => [u.userId ?? '', u.nickname ?? '']))}
+                  communityNameById={nameById}
+                />
+              )}
+            </Group>
           </section>
         </div>
       )}
-    </div>
+    </Page>
   )
 }
 
@@ -254,8 +281,8 @@ function SelectRow({
       aria-current={active ? 'true' : undefined}
       data-testid={testId}
       className={cn(
-        'flex w-full items-center gap-2 rounded-[var(--radius-md)] px-2 py-2 text-left text-aux transition-colors duration-[150ms]',
-        active ? 'bg-surface font-semibold text-foreground' : 'text-muted-foreground hover:bg-surface',
+        'flex w-full items-center gap-2 px-4 py-3 text-left text-aux transition-colors duration-[var(--duration-fast)] hover:bg-fill',
+        active ? 'font-semibold text-foreground' : 'text-muted-foreground',
         className,
       )}
     >
@@ -353,7 +380,7 @@ function PostFeed({
     <div data-testid={testId}>
       <ul className="m-0 list-none p-0">
         {items.map((p) => (
-          <li key={p.id} className="py-4 [&+&]:border-t [&+&]:border-border">
+          <li key={p.id} className={groupRowClass({ interactive: true })}>
             <PostFeedRow
               post={p}
               communityName={communityNameById.get(p.communityId ?? '')}

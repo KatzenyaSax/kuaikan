@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type CSSProperties } from 'react'
 import { Link, useParams } from 'react-router'
 import { useCommunityDetail, useMembership, useMyCommunities } from '@/features/community/api'
 import { authErrorMessage } from '@/features/auth/auth-error'
@@ -8,6 +8,9 @@ import { Button, buttonClass } from '@/shared/ui/button'
 import { Skeleton } from '@/shared/ui/skeleton'
 import { toast } from '@/shared/ui/toast'
 
+/** hero 渐显的错开。80ms 一档，再多就会让人等 */
+const heroDelay = (ms: number): CSSProperties => ({ '--hero-delay': `${ms}ms` }) as CSSProperties
+
 /**
  * 社群概览 = 双栏布局的右栏**空态**（`/c/:name` 还没选帖子时）。
  *
@@ -16,7 +19,9 @@ import { toast } from '@/shared/ui/toast'
  *
  * "我加没加入"从 /mine 推导 —— 公开详情里没有 viewer 字段（放行 = 匿名）。
  *
- * 排版：标题 → 成员数 → 简介 → 操作。**不用卡片**，靠留白和 hairline 分区。
+ * 排版是**营销页风**（与首页 hero 同一套语言）：大号社群名（display 档）、
+ * 一行成员数、一段简介、两个胶囊按钮。**不用卡片**，靠留白分区。
+ * 右栏是白底，左栏是浅底 —— 两栏靠底色分开，不需要一条竖线再强调一次。
  */
 export function CommunityOverview() {
   const { name } = useParams<{ name: string }>()
@@ -32,21 +37,24 @@ export function CommunityOverview() {
 
   if (detail.isPending) {
     return (
-      <div className="px-6 pt-10 md:px-11">
-        <Skeleton className="mb-3 h-6 w-40" />
-        <Skeleton className="h-4 w-24" />
-        <Skeleton className="mt-6 h-20 w-full" />
+      <div className="px-8 pb-24 pt-12 md:px-10">
+        <div className="mx-auto max-w-[34rem]">
+          <Skeleton className="h-14 w-14 rounded-full" />
+          <Skeleton className="mt-6 h-9 w-52" />
+          <Skeleton className="mt-4 h-4 w-24" />
+          <Skeleton className="mt-8 h-20 w-full" />
+        </div>
       </div>
     )
   }
 
   if (detail.isError) {
     return (
-      <div className="px-6 pt-10 md:px-11">
-        <p className="text-body text-danger" data-testid="community-error">
+      <div className="px-8 pb-24 pt-12 md:px-10">
+        <p className="m-0 text-body text-danger" data-testid="community-error">
           {authErrorMessage(detail.error)}
         </p>
-        <Link to="/" className="mt-3 inline-block text-aux underline">
+        <Link to="/" className="mt-3 inline-block text-aux text-primary hover:underline">
           返回首页
         </Link>
       </div>
@@ -56,94 +64,102 @@ export function CommunityOverview() {
   const community = detail.data
 
   return (
-    <div className="px-6 pb-24 pt-10 md:px-11" data-testid="community-page">
-      <div className="mx-auto max-w-[40rem]">
-      <div className="flex items-center gap-3">
-        <Avatar name={community.name ?? ''} url={null} size={44} />
-        <div className="min-w-0">
-          <h1 className="m-0 text-title font-[640] leading-tight" data-testid="community-name">
-            {community.name}
-          </h1>
-          <p className="m-0 mt-1 text-aux text-faint">{community.memberCount} 成员</p>
+    <div className="px-8 pb-24 pt-12 md:px-10" data-testid="community-page">
+      <div className="mx-auto max-w-[34rem]">
+        <div className="hero-in" style={heroDelay(0)}>
+          <Avatar name={community.name ?? ''} url={null} size={60} />
         </div>
-      </div>
 
-      <div className="mt-6 border-t border-border pt-6">
-        {community.description ? (
-          <p
-            className="m-0 whitespace-pre-wrap text-read leading-[1.8] text-[#1a1a1a]"
-            data-testid="community-desc"
-          >
-            {community.description}
-          </p>
-        ) : (
-          <p className="m-0 text-body text-faint">这个社群还没有简介</p>
-        )}
-      </div>
+        <h1
+          className="hero-in m-0 mt-6 text-display [overflow-wrap:anywhere]"
+          style={heroDelay(40)}
+          data-testid="community-name"
+        >
+          {community.name}
+        </h1>
 
-      <div className="mt-8 flex flex-wrap items-center gap-3">
-        {!authed ? (
-          <a
-            href={`/login?returnTo=${encodeURIComponent(`/c/${name ?? ''}`)}`}
-            className={buttonClass({ variant: 'ghost', size: 'sm' })}
-            data-testid="link-login-to-join"
-          >
-            登录后可以加入社群
-          </a>
-        ) : joined ? (
-          <>
-            {/* 发帖是这个页面唯一的主操作 —— 每屏最多一个 primary */}
-            <Link
-              to={`/c/${encodeURIComponent(name ?? '')}/new`}
-              className={buttonClass({ size: 'sm' })}
-              data-testid="link-new-post"
+        <p className="hero-in m-0 mt-3 text-aux text-faint" style={heroDelay(80)}>
+          {community.memberCount} 成员
+        </p>
+
+        <div className="hero-in mt-7" style={heroDelay(120)}>
+          {community.description ? (
+            <p
+              className="m-0 whitespace-pre-wrap text-read leading-[1.8]"
+              data-testid="community-desc"
             >
-              发帖
-            </Link>
-            {/* 退出是第三级操作：不被强调，但也不藏起来 */}
+              {community.description}
+            </p>
+          ) : (
+            <p className="m-0 text-body text-faint">这个社群还没有简介</p>
+          )}
+        </div>
+
+        <div
+          className="hero-in mt-9 flex flex-wrap items-center gap-x-7 gap-y-3"
+          style={heroDelay(160)}
+        >
+          {!authed ? (
+            <a
+              href={`/login?returnTo=${encodeURIComponent(`/c/${name ?? ''}`)}`}
+              className={buttonClass({ size: 'lg' })}
+              data-testid="link-login-to-join"
+            >
+              登录后可以加入社群
+            </a>
+          ) : joined ? (
+            <>
+              {/* 发帖是这个页面唯一的主操作 —— 每屏最多一个 primary */}
+              <Link
+                to={`/c/${encodeURIComponent(name ?? '')}/new`}
+                className={buttonClass({ size: 'lg' })}
+                data-testid="link-new-post"
+              >
+                发帖
+              </Link>
+              {/* 退出是第三级操作：不被强调，但也不藏起来 */}
+              <Button
+                variant="link"
+                disabled={busy}
+                onClick={() => {
+                  setActionError(null)
+                  leave.mutate(community.name ?? '', {
+                    onSuccess: () => toast('已退出社群'),
+                    onError: (err) => setActionError(authErrorMessage(err)),
+                  })
+                }}
+                data-testid="btn-leave-community"
+              >
+                {busy ? '处理中…' : '退出社群'}
+              </Button>
+            </>
+          ) : (
             <Button
-              variant="ghost"
-              size="sm"
+              size="lg"
               disabled={busy}
               onClick={() => {
                 setActionError(null)
-                leave.mutate(community.name ?? '', {
-                  onSuccess: () => toast('已退出社群'),
+                join.mutate(community.name ?? '', {
+                  onSuccess: () => toast('已加入社群'),
                   onError: (err) => setActionError(authErrorMessage(err)),
                 })
               }}
-              data-testid="btn-leave-community"
+              data-testid="btn-join-community"
             >
-              {busy ? '处理中…' : '退出社群'}
+              {busy ? '处理中…' : '加入社群'}
             </Button>
-          </>
-        ) : (
-          <Button
-            size="sm"
-            disabled={busy}
-            onClick={() => {
-              setActionError(null)
-              join.mutate(community.name ?? '', {
-                onSuccess: () => toast('已加入社群'),
-                onError: (err) => setActionError(authErrorMessage(err)),
-              })
-            }}
-            data-testid="btn-join-community"
-          >
-            {busy ? '处理中…' : '加入社群'}
-          </Button>
-        )}
-      </div>
+          )}
+        </div>
 
-      {actionError ? (
-        <p className="mt-3 text-aux text-danger" data-testid="membership-error">
-          {actionError}
+        {actionError ? (
+          <p className="mt-4 text-aux text-danger" data-testid="membership-error">
+            {actionError}
+          </p>
+        ) : null}
+
+        <p className="mt-14 border-t border-border pt-6 text-aux text-muted-foreground">
+          从左边选一篇帖子开始读。
         </p>
-      ) : null}
-
-      <p className="mt-8 border-t border-border pt-6 text-aux text-muted-foreground">
-        从左边选一篇帖子开始读。
-      </p>
       </div>
     </div>
   )

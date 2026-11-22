@@ -1,27 +1,33 @@
 import type { ComponentProps } from 'react'
 import { cn } from '@/shared/lib/cn'
 
-type Variant = 'primary' | 'outline' | 'ghost'
-type Size = 'sm' | 'md'
+type Variant = 'primary' | 'outline' | 'ghost' | 'link' | 'inverse'
+type Size = 'sm' | 'md' | 'lg'
 
 /*
- * 三级按钮。规则：
- *   primary  近黑药丸 —— 全站每屏最多一个（"发表""创建"这类主操作）
- *   outline  hairline 描边 —— 次要操作
- *   ghost    纯文字 —— 第三级，hover 才出现底色
+ * 全部按钮都是**胶囊**（Apple 的按钮形态），四级 + 一条深色带上的白色胶囊：
+ *   primary  实心蓝 —— 全站唯一"值得蓝"的主操作（发表、创建、注册）
+ *   outline  次级灰底 —— 与 primary 并排的第二个动作（取消、次要入口）
+ *   ghost    纯文字 —— 第三级，hover 才出现淡底
+ *   link     文字链 —— 营销页的"先逛逛 ›"这类，纯蓝字不带底
+ *   inverse  白色胶囊 —— 只用在深色带上（#000 / #1d1d1f）
  *
- * 不用蓝色做主按钮：蓝色只用于交互态（链接、已赞），
- * 否则满屏蓝色会和"克制"背道而驰。
+ * 蓝色仍然只用于交互态：它现在是主按钮的颜色，因为主按钮本身就是交互态。
+ * 其余地方（标题、图标、装饰）一律中性色。
  */
 const VARIANTS: Record<Variant, string> = {
-  primary: 'bg-foreground text-white hover:opacity-85 active:scale-[0.98]',
-  outline: 'border border-border-strong text-foreground hover:bg-surface',
-  ghost: 'text-muted-foreground hover:text-foreground hover:bg-surface',
+  primary: 'bg-primary text-white hover:bg-primary-hover active:scale-[0.98]',
+  outline: 'bg-fill text-foreground hover:bg-fill-strong active:scale-[0.98]',
+  ghost: 'text-muted-foreground hover:bg-fill hover:text-foreground',
+  link: 'text-primary hover:text-primary-hover hover:underline underline-offset-[3px]',
+  inverse: 'bg-background text-foreground hover:opacity-90 active:scale-[0.98]',
 }
 
+/* 高度按 Apple 的 32/40/44 三档：窄屏点得着，桌面不臃肿 */
 const SIZES: Record<Size, string> = {
   sm: 'h-8 px-3.5 text-aux',
-  md: 'h-9 px-4 text-aux',
+  md: 'h-10 px-4.5 text-aux',
+  lg: 'h-11 px-6 text-body',
 }
 
 export type ButtonProps = ComponentProps<'button'> & {
@@ -43,8 +49,8 @@ export function buttonClass({
   className?: string
 } = {}): string {
   return cn(
-    'inline-flex select-none items-center justify-center gap-1.5 rounded-full font-medium',
-    'transition-[opacity,transform,background-color,color] duration-[150ms] ease-[cubic-bezier(0.2,0.8,0.2,1)]',
+    'inline-flex shrink-0 select-none items-center justify-center gap-1.5 rounded-full font-medium',
+    'transition-[background-color,color,opacity,transform] duration-[var(--duration-fast)]',
     'disabled:pointer-events-none disabled:opacity-45',
     VARIANTS[variant],
     SIZES[size],

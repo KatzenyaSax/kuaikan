@@ -18,9 +18,9 @@ import { cn } from '@/shared/lib/cn'
  * ## 三态
  *
  * ```
- *   未关注              → 「关注」（近黑药丸，一屏一个主操作）
- *   已关注              → 「已关注」（hairline 描边），hover 变成「取消关注」
- *   互相关注            → 「互相关注」（hairline 描边），hover 同上
+ *   未关注              → 「关注」（实心蓝胶囊，一屏一个主操作）
+ *   已关注              → 「已关注」（淡灰胶囊），hover 变成「取消关注」
+ *   互相关注            → 「互相关注」（淡灰胶囊），hover 同上
  * ```
  *
  * hover 文案用 `onMouseEnter` + 本地 state 切换（而不是 CSS `group-hover`）：
@@ -137,8 +137,9 @@ export function FollowButton({
         setHovered(false)
       }}
       className={cn(
-        // 已关注态在 hover 时收紧成"取消关注"的危险色，给出明确的降级预期
-        state.following && hovered && 'border-danger/40 text-danger hover:bg-danger/5',
+        // 已关注态在 hover 时收紧成"取消关注"的危险色，给出明确的降级预期。
+        // 用淡红底而不是深色/描边：取消关注是「降级」动作，不该看起来和主操作一样重。
+        state.following && hovered && 'text-danger hover:bg-danger/10',
         className,
       )}
       data-testid={testId}

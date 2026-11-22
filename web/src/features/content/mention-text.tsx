@@ -31,7 +31,8 @@ import { Link } from 'react-router'
  */
 export type Mention = { userId?: string | undefined; nickname?: string | undefined }
 
-const LINK_CLASS = 'text-primary hover:underline rounded-[2px]'
+const LINK_CLASS =
+  'rounded-[3px] text-primary underline-offset-[3px] hover:underline'
 
 export function MentionText({ body, mentions }: {
   /** 生成类型里 body 是可选的（tombstone 时为空串），这里跟着放宽 */
