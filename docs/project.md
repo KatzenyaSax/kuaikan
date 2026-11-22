@@ -1068,6 +1068,37 @@ community-service 被留在停止状态——**一个能把环境停掉的验收
 我们没有插画和产品图，所以视觉重量由**排版、留白、以及内容本身**承担。
 头像没有图时用柔和渐变 + 首字（而不是灰圆点）——列表里的色块节奏是唯一的"装饰"。
 
+#### P6 视觉翻新：两套语言（营销页 / 产品页）
+
+打样与方案见 [`design/p6-ui-refresh.md`](./design/p6-ui-refresh.md)。落地后有五条事实：
+
+| 项 | 事实 |
+|---|---|
+| 栏宽 | 产品页一律 `mx-auto w-full max-w-[980px] px-6`，与顶栏内壳**同一份**类；社群双栏也是 980（左栏 272），不再用 1200 |
+| inset grouped 需要底色 | `Group` 是白面，所以用它的页面底色必须是 `bg-surface`（#f5f5f7）。白底页面用 Group = 分组看不见，只剩一排内缩 hairline |
+| 浅底页要撑满视口 | 带 `bg-surface` 的页容器必须带 `min-h-[calc(100vh-var(--topbar-h))]`，否则内容短时页脚上方会露出一条白 |
+| 营销色带 | 浅底 hero（未登录首页）+ 全宽 `bg-ink` 深色带；深色带上的数字**只来自已加载的接口**（现在只有社群数），数据没到就整块不渲染 |
+| 渐显 | 统一用 `@utility hero-in` + 内联 `--hero-delay` 错开（80ms 一档），`prefers-reduced-motion` 下置空 |
+
+**列表行的 hairline 挂在 `<li>` 上，不挂在 `<a>` 上。** `last:after:hidden` 判断的是
+"同一父元素下的最后一个子元素"——挂在 `<a>` 上时每个 `<a>` 都是 `<li>` 的唯一子元素，
+于是**每一行都被当成最后一行**，线全消失。所以 `groupRowClass()` 用在 `<li>` 上，
+`<a>`/`<button>` 放在里面当内容（`hover:bg-fill` 由 `<li>` 承担，整行可点区域一致）。
+
+#### S3 沉淀：帖子详情 / 评论 / 我的 / 用户主页 / 登录注册 / 空态
+
+| 项 | 事实 |
+|---|---|
+| 阅读栏宽 | 帖子详情在社群右栏（980 − 272 = 708），内容列写 `max-w-[680px]` + `md:px-9`，实际正文约 636px（≈32 汉字/行） |
+| 作者元信息行 | 从正文**下方**移到标题下方（读完标题就想知道是谁写的），一条 `border-b` 收口；互动条改用 `border-t`，不再出现两条相邻 hairline |
+| 我的 | inset grouped 设置页：资料（`<dl>` + `groupRowClass()` 行，`profile` testid 在 `dl` 上）/ 退出登录 / 安全 / 我的收藏 / 登录设备各成一组，`GroupHeader` + `GroupFooter` 给说明文字 |
+| 用户主页 | 大头像 80 + `text-title` 昵称 + 计数；四个 Tab 用 `Segmented`，**option 带可选 `testId`**（`user-tab-*` 是 e2e 依赖的，不能丢） |
+| 表单 | 登录 / 注册不再用 `Card`：居中 400px 窄栏 + 共享 `Input`（`h-11`）+ `Button size="lg"` 实心胶囊。注册页原来的本地 `inputClass()` 已删除，错误态靠 `aria-invalid` + 校验文案 |
+| 评论次动作 | `LikeButton` / `FavoriteButton` 加 `compact`（28px 高、`text-caption`），与「回复 / 删除 / 展开 N 条」的 28px 胶囊对齐；楼中楼引导线用 `border-border`（不是 strong），克制到几乎只是暗示 |
+| 空态 | 404 / 错误边界用营销页语言（display 大标题 + 一句说明 + `size="lg"` 胶囊），根错误边界在 `RootLayout` 之外，自己 `min-h-screen` |
+| 截图自检的两个坑 | ① `fullPage: true` 会把**关闭态**的底部弹窗一起截进页面底部，也会把运行中的 `hero-in` 定格在中间帧（按钮看起来半透明）——自检时注入 `visibility:hidden` / 动效时长 0；② 社群右栏是独立的 `overflow-y-auto` 容器，`fullPage` 截图里左栏内容会发虚，**这看着像缺陷但实际是截图行为**，要拿视口截图复核 |
+| data 观察（2026-11） | demo 账号 `demo+linjian@` 名下累积了 **289 条登录设备记录**（历次 e2e 登录留下的），所以 `/me` 的 fullPage 高度约 2 万像素。这是真实数据，不清理、也不在页面上截断（截断会变成行为变更） |
+
 ### P3.2 点赞 + 收藏（已完成）
 
 interaction-service 从零建起数据层，`t_interaction` + `t_outbox`；
