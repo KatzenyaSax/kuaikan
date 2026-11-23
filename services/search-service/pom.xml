@@ -46,6 +46,25 @@
             <artifactId>spring-cloud-starter-loadbalancer</artifactId>
         </dependency>
 
+        <!-- ES 客户端刻意用 Spring 自带的 RestClient（spring-web 内），**不引**
+             elasticsearch-java / spring-data-elasticsearch：
+             本服务只需要 _bulk / _aliases / _update_by_query / _refresh 这几个 REST 端点，
+             官方客户端会额外带一堆 transport/Jackson 版本约束，收益为零。 -->
+
+        <!-- 社群名不可变 → 本地永久缓存，上限 2000 条（p6-search.md §3.2）。
+             版本由 Spring Boot BOM 管理 -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+
+        <!-- 版本由 SCA BOM 管理：rocketmq-client 5.3.1（Remoting，不用 Proxy）。
+             search 只是纯消费方，只引 client，不引 common-outbox -->
+        <dependency>
+            <groupId>org.apache.rocketmq</groupId>
+            <artifactId>rocketmq-client</artifactId>
+        </dependency>
+
         <!-- 只引 api 版，不引 swagger-ui 版：契约端点放在 /internal/api-docs，且不暴露 UI -->
         <dependency>
             <groupId>org.springdoc</groupId>

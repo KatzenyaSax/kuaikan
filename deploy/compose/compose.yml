@@ -478,7 +478,19 @@ services:
     logging: *default-logging
     environment:
       <<: *default-app-env
-    depends_on: *default-app-depends
+      # 事件消费（Remoting）+ 索引写入
+      ROCKETMQ_NAMESRV: rmq-namesrv:9876
+      # ES 只是**派生存储**：search-service 无 datasource，也不把 ES 放进
+      # readiness 的判定里。ES 停机时本服务照常启动与存活，只有检索/索引写降级。
+      ELASTICSEARCH_URI: http://elasticsearch:9200
+    depends_on:
+      <<: *default-app-depends
+      rmq-broker:
+        condition: service_healthy
+      # 刻意**不**依赖 elasticsearch：
+      # 依赖它 healthy 会让 ES 重启把 search-service 一起拦住（甚至起不来），
+      # 而“ES 挂了主站不受影响”正是 P6 的核心不变量。索引自检是异步的，
+      # ES 晚于本服务就绪时由首次写入 / rebuild 补救。
     networks:
       - kuaikan
     healthcheck:

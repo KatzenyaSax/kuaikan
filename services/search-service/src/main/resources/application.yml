@@ -13,6 +13,15 @@ spring:
         group: ${NACOS_GROUP:DEFAULT_GROUP}
         metadata:
           version: ${APP_VERSION:dev}
+    openfeign:
+      client:
+        config:
+          default:
+            # 消费事件/重建时要向 content、user、community 补齐反范式字段。
+            # 这是后台路径，不是用户请求——超时短一点：失败就重投或整次重建重来，
+            # 比让 MQ 消费线程挂在半分钟好。
+            connectTimeout: 800
+            readTimeout: 1500
 
 management:
   endpoints:
@@ -40,6 +49,26 @@ info:
 logging:
   level:
     root: INFO
+
+kuaikan:
+  mq:
+    # 只用 Remoting 接入，不走 Proxy（与 notification / content 一致）
+    namesrv-addr: ${ROCKETMQ_NAMESRV:127.0.0.1:9876}
+  search:
+    # ES 纯内网、无认证。它只是派生存储：**没有 datasource**，也不依赖 ES
+    # 才能通过 readiness（ES 挂了本服务必须仍存活并返回受控降级）
+    elasticsearch-uri: ${ELASTICSEARCH_URI:http://127.0.0.1:9200}
+    connect-timeout: 3s
+    # 重建的 _bulk 一次 500 条，读超时不能给 1s
+    read-timeout: 10s
+    # 重建时每页拉 200（content 侧上限 500，默认也是 200）
+    rebuild-page-size: 200
+    bulk-size: 500
+    # 三个消费组**必须互不相同**：RocketMQ 里 group 才代表“我是谁”，
+    # 同一个 group 订阅同一个 topic 是负载均衡（各拿一半），不是广播。
+    post-created-consumer-group: kuaikan-search-post-created-consumer
+    post-deleted-consumer-group: kuaikan-search-post-deleted-consumer
+    user-updated-consumer-group: kuaikan-search-user-updated-consumer
 
 springdoc:
   api-docs:
