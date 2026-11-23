@@ -442,6 +442,26 @@ V2 上线后的一段时间里，评论/@ 消息仍然点不动——因为**那
 2. **目标若是回复**，它藏在「展开 N 条回复」里 → 退化为停在帖子页，
    **不自动展开**。自动展开别人没要求的回复比不滚过去更打扰
 
+### P6 全文搜索（已完成）
+
+`deploy/bin/verify-p6.sh` **100 条断言全绿**（L0 14 / L1 13 / L2 35 / L3 14 / L4 24，0 产品缺陷）。前端产物 `index-Dwu52Y5r.js` 680.51 KB / `index-*.css` 41.38 KB 已发布上线；全站 **14 个容器**（core 6 + app 8）全部 healthy，线上首页与 ES（19 条 == MySQL `status=1` 19 条）零测试残留。
+
+#### 落地事实一览
+
+| 维度 | 实测落地状态 |
+|---|---|
+| ES + IK 镜像与容器 | `kuaikan/elasticsearch:8.17.4-ik8.17.4`（`deploy/docker/elasticsearch/Dockerfile` 构建期预装 `analysis-ik 8.17.4`）；归入 `core` profile，固定内网 IP `172.30.10.15`，**无宿主机端口**，`ES_JAVA_OPTS=-Xms512m -Xmx512m`，`mem_limit: 1536m`（原 1024m 闲置即占 98.7%，调至 1536m 后稳态 `1.06GiB / 1.5GiB`），数据目录 `/opt/kuaikan/data/elasticsearch`（属主 `1000:0`） |
+| OpenAPI 与白名单 | 全站 **68 个 operationId**（新增 `searchPosts` 与 `deletePost`），精确白名单 **7 条**（含 `GET /api/search/posts`），公开端点 **19 个**；`/internal/search/posts` 仅内网可达，网关 `/api/search/internal/**` 404 拦截 |
+| 事件与同步链路 | RocketMQ 新增 3 个 topic（共 8 个）：`kuaikan_post_created` / `kuaikan_post_deleted` / `kuaikan_user_profile_updated`；`content-service` 发帖与作者软删（`DELETE /api/content/posts/{postId}`）同事务写 `t_outbox`；`user-service` 改昵称（仅实际变化时）同事务写 `t_outbox`；`search-service` 三个独立消费组消费（`post_write` 幂等覆盖写 / 404 幂等删 / `_update_by_query?conflicts=proceed` 同步历史帖昵称），社区名走 Caffeine 本地缓存（上限 2000） |
+| 索引与零停机重建 | `search-service` 无 datasource，使用 Spring `RestClient` + UTF-8 `byte[]` 直调 ES REST API；索引名 `post_v{yyyyMMddHHmmss}`，读/写别名 `post_read` / `post_write`；`POST /internal/admin/rebuild` 游标拉取 `content-service` 有效帖 + 批量补齐昵称/社群名 + `_bulk` + 原子 `_aliases` 切换（19 条耗时 ~1.1s） |
+| 双面检索与前端 | 对外 `GET /api/search/posts`（`title^3 / authorNickname^2 / communityName^2 / body^1`、`\uE000/\uE001` 安全占位符高亮、社群筛选、`relevance`/`latest` + `search_after` 游标、ES 宕机受控 503/50300 且主站发帖/浏览不受影响）；对内 `POST /internal/search/posts`（面向未来 AI 助手，支持 `keyword`/`authorId`/`authorNickname`/`communityId`/`communityName`/时间范围组合过滤 + `includeBody=true` 返回完整正文）；前端新增顶栏搜索框与 `/search` 页（纯 React 节点切片渲染 `<mark>`，严禁 `dangerouslySetInnerHTML`） |
+
+#### P6 实测踩坑与修复
+
+1. **ES `mem_limit: 1024m` 闲置即顶到 98.7%**：512m 堆全量 commit + non-heap/mmap 导致闲置占 1010MiB，调高 `mem_limit` 至 `1536m` 后稳态降至 70.9%。
+2. **Spring `RestClient` 发 String 请求体中文变 `?`**：未带 charset 时 `StringHttpMessageConverter` 默认 ISO-8859-1 静默损坏中文且不报错；改为请求体与响应体统一走 UTF-8 `byte[]` 后彻底解决。
+3. **ES `_refresh` 不允许带 `{}` 请求体**：空体 POST 才合法，带 `{}` 返回 400。
+
 ### P5.5 社交关系与个人中心（已完成）
 
 `deploy/bin/verify-p55.sh` **105 条断言全绿**（L0 11 / L1 12 / L2 39 / L3 30 / L4 13，耗时 5 分 17 秒，退出码 0）。前端产物 `index-DrRWG2rr.js` 663.99 KB / `index-mPq4em6j.css` 35.52 KB 已发布上线；`deploy/bin/ops.sh` 云端运维入口已入库。

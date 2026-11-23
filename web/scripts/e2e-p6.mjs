@@ -57,10 +57,17 @@ const CLOSE = '\uE001'
 /**
  * 依次尝试：内置 chromium → 系统 msedge → 系统 chrome。
  * 内置浏览器没下载成功时不该让整套验收卡死，系统浏览器足够验证这些行为。
+ *
+ * 钉 IP 时**必须同时关掉代理**：Chromium 系浏览器会继承 macOS 的系统代理设置，
+ * 一旦存在代理，`--host-resolver-rules` 就失效了（域名交给代理去解析，
+ * 本地改写不生效）。代理连不上站点时表现为 `ERR_CONNECTION_CLOSED`，
+ * 看起来像站点挂了，实际是流量被导到了本地代理。
  */
 async function launchBrowser() {
   const host = new URL(SITE).hostname
-  const args = SITE_IP ? [`--host-resolver-rules=MAP ${host} ${SITE_IP}`] : []
+  const args = SITE_IP
+    ? [`--host-resolver-rules=MAP ${host} ${SITE_IP}`, '--no-proxy-server']
+    : []
   const attempts = [
     { label: 'bundled chromium', options: {} },
     { label: 'Microsoft Edge', options: { channel: 'msedge' } },
@@ -70,7 +77,9 @@ async function launchBrowser() {
   for (const attempt of attempts) {
     try {
       const browser = await chromium.launch({ ...attempt.options, args })
-      console.log(`  (浏览器：${attempt.label}${SITE_IP ? `，解析 ${host} → ${SITE_IP}` : ''})`)
+      console.log(
+        `  (浏览器：${attempt.label}${SITE_IP ? `，直连 ${host} → ${SITE_IP}（已关闭代理）` : ''})`,
+      )
       return browser
     } catch (e) {
       errors.push(`${attempt.label}: ${String(e.message).split('\n')[0]}`)

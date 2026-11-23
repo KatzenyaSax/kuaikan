@@ -28,7 +28,7 @@
   - 服务名：`elasticsearch`，归入 `core` profile（与 MySQL / Redis / Nacos / RocketMQ 统一管理，避免跨 profile 缺失）。
   - 固定内网 IP：`172.30.10.15`（`kuaikan` 网络）。
   - 端口：**严禁映射宿主机端口**（遵守不变量 7）。
-  - 内存：`ES_JAVA_OPTS=-Xms512m -Xmx512m`，容器上限 `1024m`。
+  - 内存：`ES_JAVA_OPTS=-Xms512m -Xmx512m`，容器上限 `1536m`（实测 1024m 闲置即占 98.7%，调至 1536m 后稳态约 71%）。
   - 模式：`discovery.type=single-node`，`xpack.security.enabled=false`（纯内网）。
   - 卷挂载：`/opt/kuaikan/data/elasticsearch:/usr/share/elasticsearch/data`（属主 uid `1000:0`）。
   - 健康检查：`curl -fsS http://127.0.0.1:9200/_cluster/health?wait_for_status=yellow&timeout=5s`。

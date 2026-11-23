@@ -248,6 +248,43 @@ rebuild_index() { svc_call "$SEARCH_CT" "-X POST http://127.0.0.1:${SEARCH_PORT}
 
 es_reachable() { es_get '/_cluster/health' | grep -q '"status"'; }
 
+# 公网能不能拿到「站点根下的 /internal/**」？
+#
+# nginx 里根本没有这条路由：
+#   - GET 落到 SPA 回退 → 200 + text/html（就是 index.html，393 字节，不是接口）
+#   - 其他方法 → 405（静态文件不接受该方法）
+# 两种都说明公网拿不到内部接口。但**必须排除**"真的是 search-service 的 JSON"，
+# 所以不能只看状态码：200 还要验 content-type 与 doctype。
+# （P6.5a 只写了 404|405，第一次全量就在这里假红：SPA 回退是 200。）
+internal_probe() {  # $1=GET|POST → ok | ok-spa | leak:<status>
+  local method="$1" tmp out status ctype body
+  tmp=$(mktemp)
+  if [ "$method" = "POST" ]; then
+    out=$(site_curl -s -o "$tmp" -w '%{http_code} %{content_type}' --max-time 20 -X POST \
+      "$SITE/internal/search/posts" -H 'Content-Type: application/json' -d '{"keyword":"x"}')
+  else
+    out=$(site_curl -s -o "$tmp" -w '%{http_code} %{content_type}' --max-time 20 \
+      "$SITE/internal/search/posts")
+  fi
+  status=${out%% *}
+  ctype=${out#* }
+  body=$(head -c 32 "$tmp" 2>/dev/null | tr '[:upper:]' '[:lower:]')
+  rm -f "$tmp"
+  case "$status" in
+    404|405) printf 'ok' ;;
+    200)
+      case "$ctype$body" in
+        *html*'<!doctype html>'*) printf 'ok-spa' ;;
+        *) printf 'leak:%s' "$status" ;;
+      esac ;;
+    *) printf 'leak:%s' "${status:-000}" ;;
+  esac
+}
+
+probe_ok() {  # internal_probe 的结果是不是「拿不到接口」
+  case "$1" in ok|ok-spa) return 0 ;; *) return 1 ;; esac
+}
+
 es_doc_found() {  # $1=postId → yes / no
   es_get "/post_read/_doc/$1" | python3 -c "
 import json,sys
@@ -1002,22 +1039,27 @@ except Exception: print(-1)" 2>/dev/null)
     [ "$(printf '%s' "$reversed_range" | json_field 'code')" = "40010" ] \
       && ok "createdFrom 晚于 createdTo → 40010" || ng "时间范围倒置没有被拒绝"
 
-    # ---------------- 公网不可达：/internal/** 只能在内网
-    # 站点根下的 /internal/** 由 nginx 处理：GET 是 404，其他方法 405 —— 都不是"能用"。
-    # 网关侧的 /api/{svc}/internal/** 由 InternalPathBlockFilter 直接 404。
-    leak=""
-    c=$(http_code "$SITE/internal/search/posts")
-    case "$c" in 404|405) ;; *) leak="$leak GET /internal/search/posts($c)" ;; esac
-    c=$(http_code_post "$SITE/internal/search/posts" '{"keyword":"x"}')
-    case "$c" in 404|405) ;; *) leak="$leak POST /internal/search/posts($c)" ;; esac
-    c=$(http_code_post "$SITE/api/search/internal/search/posts" '{"keyword":"x"}')
-    case "$c" in 404) ;; *) leak="$leak POST /api/search/internal/search/posts($c)" ;; esac
+    # ---------------- 公网拿不到内部检索
+    # 真正的保护在网关上：InternalPathBlockFilter 把 /api/{svc}/internal/** 直接 404。
+    gw_bad=""
     c=$(http_code "$SITE/api/search/internal/search/posts")
-    case "$c" in 404) ;; *) leak="$leak GET /api/search/internal/search/posts($c)" ;; esac
-    [ -z "$leak" ] && ok "公网访问 /internal/search/posts 与 /api/search/internal/** 都不可达（404/405）" \
-      || ng "内部检索端点在公网可达" "$leak"
+    [ "$c" = "404" ] || gw_bad="$gw_bad GET($c)"
+    c=$(http_code_post "$SITE/api/search/internal/search/posts" '{"keyword":"x"}')
+    [ "$c" = "404" ] || gw_bad="$gw_bad POST($c)"
+    [ -z "$gw_bad" ] && ok "公网 /api/search/internal/search/posts 被网关拦成 404（GET 与 POST）" \
+      || ng "内部检索端点经由网关可达" "$gw_bad"
 
-    # 内网可达是上面那条断言的前提：证明"不可达"不是因为服务根本没这个端点
+    # 站点根的 /internal/**：nginx 没有这条路由，GET 只是 SPA 回退（200 text/html）
+    r_get=$(internal_probe GET)
+    r_post=$(internal_probe POST)
+    if probe_ok "$r_get" && probe_ok "$r_post"; then
+      ok "站点根 /internal/search/posts 拿不到接口（GET=SPA 回退 HTML，POST=405）" \
+        "GET=${r_get} POST=${r_post}"
+    else
+      ng "站点根的 /internal/search/posts 拿到了接口响应" "GET=${r_get} POST=${r_post}"
+    fi
+
+    # 内网可达是上面两条的前提：证明"不可达"不是因为服务根本没这个端点
     inner=$(internal_search '{"limit":1}')
     [ "$(printf '%s' "$inner" | json_field 'code')" = "0" ] \
       && ok "同一端点在容器网络内可用（证明上面的 404 是拦截而不是端点不存在）" \
