@@ -50,4 +50,35 @@ public interface CommunityMapper extends BaseMapper<Community> {
             WHERE id = #{id} AND member_count > 0
             """)
     int decrementMemberCount(@Param("id") Long id);
+
+    /**
+     * 覆盖写入管理员可编辑的三样信息。
+     *
+     * **不用 {@code updateById}**：MyBatis-Plus 默认跳过 null 字段，
+     * 于是「管理员清空公告」会变成「什么都没发生」——那种失败没有任何报错。
+     * 这里三条 SET 一律写出，null 就是真的写 NULL。
+     *
+     * {@code jdbcType} 同上：avatar_url / announcement 允许写回 NULL。
+     */
+    @Update("""
+            UPDATE t_community
+            SET description = #{description,jdbcType=VARCHAR},
+                avatar_url = #{avatarUrl,jdbcType=VARCHAR},
+                announcement = #{announcement,jdbcType=VARCHAR}
+            WHERE id = #{id} AND status = 1
+            """)
+    int updateInfo(@Param("id") Long id,
+                   @Param("description") String description,
+                   @Param("avatarUrl") String avatarUrl,
+                   @Param("announcement") String announcement);
+
+    /**
+     * 转移管理员：只改 owner_id。
+     *
+     * 成员行**不动**：原管理员降为普通成员（他那行本来就是 role=0 的在社成员），
+     * 新管理员那行也是。单管理员制下 role 列没有写入者，P7 也不启用它
+     * （p7-community-admin.md §1.2：多管理员不在本期）。
+     */
+    @Update("UPDATE t_community SET owner_id = #{ownerId} WHERE id = #{id} AND status = 1")
+    int updateOwner(@Param("id") Long id, @Param("ownerId") Long ownerId);
 }

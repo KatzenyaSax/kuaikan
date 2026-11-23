@@ -130,10 +130,12 @@ public class PostController {
     }
 
     /**
-     * 删帖。只有作者本人可以删；幂等（重复删返回成功）。
+     * 删帖。作者本人可以删；P7 起本社群管理员可以删本社群内的任意帖子。幂等（重复删返回成功）。
      *
      * <b>删除与 {@code PostDeleted} 事件同事务</b>：搜索索引依赖它清除文档，
      * 否则会留下「搜得到但点进去 404」的脏数据。
+     * <b>管理员的权限查询在那个事务之外</b>（远程调用不进事务），
+     * 详见 {@link top.katzenyasax.kuaikan.content.service.PostService#delete}。
      *
      * 需要登录（不标 {@link PublicEndpoint}）：网关默认拦截写请求，
      * 作者身份只来自 UserContext。

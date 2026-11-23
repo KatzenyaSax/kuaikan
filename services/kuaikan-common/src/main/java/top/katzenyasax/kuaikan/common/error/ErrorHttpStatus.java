@@ -30,6 +30,9 @@ public final class ErrorHttpStatus {
             Map.entry(40900, 409),  // 状态冲突
             Map.entry(41001, 404),  // 社群不存在
             Map.entry(41002, 409),  // 社群标识已被占用
+            Map.entry(41006, 403),  // 已被该社群封禁（P7）
+            Map.entry(41007, 403),  // 非社群管理员（P7）
+            // 41008 / 41009 是业务规则，HTTP 200，不登记
             Map.entry(42001, 404),  // 帖子不存在
             Map.entry(42900, 429),  // 请求过于频繁
             Map.entry(50000, 500),  // 服务内部错误

@@ -63,6 +63,13 @@ public class CommentController {
         return Result.ok(commentService.listReplies(commentId, cursor, limit));
     }
 
+    /**
+     * 删评论。作者本人可以删；P7 起本社群管理员可以删本社群内的任意评论。幂等。
+     *
+     * 管理员路径的权限查询（经由评论所属帖子拿到 communityId 后问
+     * community-service）在数据库事务之外，详见
+     * {@link top.katzenyasax.kuaikan.content.service.CommentService#delete}。
+     */
     @Operation(operationId = "deleteComment")
     @DeleteMapping("/comments/{commentId}")
     public Result<Void> delete(@PathVariable("commentId") Long commentId) {

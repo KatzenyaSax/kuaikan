@@ -130,6 +130,20 @@ kuaikan:
       # P5.5：用户已加入的社群列表，随用户主页对游客公开。
       # 路径首段是字面量 users，与 /communities/... 系列完全错开。
       - GET ^/api/community/users/[^/]+/communities$
+      # P7.0：社群历史（编年史）与历代管理员脉络对游客公开。
+      # 两条都只放行 GET，且用 [^/]+ 把路径形状钉死：
+      # 只能匹配「/communities/{name}/history」与「/communities/{name}/admins/history」，
+      # 不会顺带放行这些 P7 写/管理端点：
+      #   GET  /api/community/communities/{name}/my-status
+      #   PUT  /api/community/communities/{name}
+      #   POST /api/community/communities/{name}/transfer
+      #   GET  /api/community/communities/{name}/members
+      #   GET  /api/community/communities/{name}/bans
+      #   POST /api/community/communities/{name}/bans
+      #   DELETE /api/community/communities/{name}/bans/{userId}
+      # 以上一律需要登录。
+      - GET ^/api/community/communities/[^/]+/history$
+      - GET ^/api/community/communities/[^/]+/admins/history$
       # 以下 P5.5 端点**一律需要登录，绝不进白名单**：
       #   POST/DELETE /api/user/users/{id}/follow、POST /api/user/auth/password、
       #   GET /api/user/follows/states、GET /api/user/me/following/ids、

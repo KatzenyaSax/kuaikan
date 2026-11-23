@@ -11,7 +11,11 @@ import top.katzenyasax.kuaikan.common.error.BizException;
 import top.katzenyasax.kuaikan.common.error.CommonErrorCode;
 import top.katzenyasax.kuaikan.common.error.CommunityErrorCode;
 import top.katzenyasax.kuaikan.community.domain.Community;
+import top.katzenyasax.kuaikan.community.domain.CommunityBan;
+import top.katzenyasax.kuaikan.community.domain.CommunityHistory;
 import top.katzenyasax.kuaikan.community.domain.CommunityMember;
+import top.katzenyasax.kuaikan.community.mapper.CommunityBanMapper;
+import top.katzenyasax.kuaikan.community.mapper.CommunityHistoryMapper;
 import top.katzenyasax.kuaikan.community.mapper.CommunityMapper;
 import top.katzenyasax.kuaikan.community.mapper.CommunityMemberMapper;
 import top.katzenyasax.kuaikan.community.web.dto.CommunityDetail;
@@ -20,9 +24,8 @@ import top.katzenyasax.kuaikan.community.web.dto.CommunitySummary;
 import top.katzenyasax.kuaikan.community.web.dto.CreateCommunityRequest;
 import top.katzenyasax.kuaikan.community.web.dto.MembershipResponse;
 
-import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -30,10 +33,15 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 社群的建与读。
+ * 社群的建、读与加入/退出。
  *
  * 没有 slug：社群名本身就是标识，name_key 是它的规范化形式（见 {@link NameKeys}）。
  * 名称创建后不可改——它成了 URL，改名等于让所有旧链接失效。
+ *
+ * 管理员（{@code owner_id}）的治理能力不在这里：编辑信息、转让、封禁、成员名单
+ * 全部在 {@link CommunityGovernanceService}，因为那边每个方法都要先过一道
+ * "调用者是不是当前管理员"的校验，混进来会让人分不清哪些是公开路径。
+ * 这里只有两处与治理相交：创建社群写首条历史，加入社群查有效封禁。
  */
 @Service
 public class CommunityService {
@@ -59,25 +67,33 @@ public class CommunityService {
      */
     private static final String SORT_USER_JOINED = "user-joined";
 
-    private static final int DEFAULT_LIMIT = 20;
-    private static final int MAX_LIMIT = 50;
+    /** 封禁到期的展示格式。与响应里的其他时间字段不同：这是一句话里的时间 */
+    private static final DateTimeFormatter BAN_UNTIL_FORMAT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     private final CommunityMapper communityMapper;
     private final CommunityMemberMapper memberMapper;
+    private final CommunityBanMapper banMapper;
+    private final CommunityHistoryMapper historyMapper;
 
-    public CommunityService(CommunityMapper communityMapper, CommunityMemberMapper memberMapper) {
+    public CommunityService(CommunityMapper communityMapper,
+                            CommunityMemberMapper memberMapper,
+                            CommunityBanMapper banMapper,
+                            CommunityHistoryMapper historyMapper) {
         this.communityMapper = communityMapper;
         this.memberMapper = memberMapper;
+        this.banMapper = banMapper;
+        this.historyMapper = historyMapper;
     }
 
     /**
      * 建社群。
      *
-     * 创建者同时成为**所有者**（t_community.owner_id）与**第一个成员**
-     * （t_community_member 一行），member_count 从 1 起。
+     * 创建者同时成为**所有者**（t_community.owner_id）、**第一个成员**
+     * （t_community_member 一行）与首条编年史的操作人，member_count 从 1 起。
      *
-     * 这三件事必须在同一个事务里：否则会出现"社群存在但没有所有者"
-     * 或"所有者不是成员、无法发帖"的中间态。
+     * 这几件事必须在同一个事务里：否则会出现"社群存在但没有所有者"、
+     * "所有者不是成员、无法发帖"或"社群在但历史里查不到它何时建立"的中间态。
      */
     @Transactional
     public CommunityDetail create(Long userId, CreateCommunityRequest req) {
@@ -115,20 +131,26 @@ public class CommunityService {
         // 创建者成为第一个成员。与"加入"走同一条代码路径，不会出现两套插入逻辑
         insertMember(community.getId(), userId);
 
+        // 首条编年史，与社群同一个事务：历史是"这个社群发生过什么"的事实，
+        // 不能出现「社群在、但没人记得它是什么时候由谁建的」。
+        // 存量社群由 V2 迁移用同样的口径回填（detail 一字不差）
+        historyMapper.insert(CommunityHistory.of(community.getId(),
+                CommunityHistory.EVENT_COMMUNITY_CREATED, CommunityHistory.CATEGORY_MILESTONE,
+                userId, userId, "创建了社群"));
+
         log.info("社群已创建 id={} name={} ownerId={}", community.getId(), name, userId);
         return CommunityDetail.of(community);
     }
 
     /** 社群列表，按创建时间倒序（游标分页） */
     public CommunityPage list(String cursor, Integer limit) {
-        int size = normalizeLimit(limit);
+        int size = Paging.normalizeLimit(limit);
         CursorCodec.Cursor c = CursorCodec.decode(cursor, SORT_NEW);
 
         LambdaQueryWrapper<Community> q = new LambdaQueryWrapper<Community>()
                 .eq(Community::getStatus, Community.STATUS_NORMAL);
         if (c != null) {
-            LocalDateTime ts = LocalDateTime.ofInstant(Instant.ofEpochMilli(c.timestampMillis()),
-                    ZoneId.systemDefault());
+            LocalDateTime ts = Paging.fromMillis(c.timestampMillis());
             // 复合游标：单列时间戳在并发建社群时会撞同一个毫秒，导致重复或跳过
             q.and(w -> w.lt(Community::getCreatedAt, ts)
                     .or(x -> x.eq(Community::getCreatedAt, ts).lt(Community::getId, c.id())));
@@ -143,7 +165,7 @@ public class CommunityService {
         }
         String next = rows.size() > size
                 ? CursorCodec.encode(SORT_NEW,
-                    toMillis(rows.get(size - 1).getCreatedAt()), rows.get(size - 1).getId())
+                    Paging.toMillis(rows.get(size - 1).getCreatedAt()), rows.get(size - 1).getId())
                 : null;
         return new CommunityPage(items, next);
     }
@@ -182,6 +204,17 @@ public class CommunityService {
         // 否则"插入撞唯一键（留下 S 锁）+ 更新成 X 锁"会死锁（见 CommunityMapper）
         Community community = requireByNameForUpdate(name);
 
+        // **封禁判定必须在插入之前**：封禁会把这人的成员行置为已退出，
+        // 如果先 revive 再判封禁，就得在同一个事务里回滚刚刚做的"复活"——
+        // 靠抛异常回滚也能对，但读代码的人需要同时相信三件事才能确认它是对的。
+        // 封禁只作用于当前社群，不影响登录与其他社群
+        CommunityBan ban = banMapper.selectActive(community.getId(), userId);
+        if (ban != null) {
+            // 封禁是业务规则（HTTP 403 + 41006），message 里带上原因与到期，
+            // 否则用户只能看到"你已被封禁"而不知道封到什么时候、找谁问
+            throw new BizException(CommunityErrorCode.COMMUNITY_BANNED, banMessage(ban));
+        }
+
         CommunityMember row = newMember(community.getId(), userId);
         boolean added;
         try {
@@ -204,7 +237,8 @@ public class CommunityService {
      * 退出社群。**幂等**：本来就不在社也返回成功。
      *
      * 所有者不能退出 —— 退出后会变成"不是成员的所有者"：不能发帖、社群也没人管。
-     * 转让能力在 P7，这是 P2 的已知缺口（见 p2-content.md §3.1）。
+     * P7.1 起他有两条出路：先转让（{@code POST /communities/{name}/transfer}），
+     * 或者不管事了让社群停在那里。P2 时期这个缺口只能改库，现在有了转让。
      */
     @Transactional
     public CommunityDetail leave(Long userId, String name) {
@@ -243,15 +277,14 @@ public class CommunityService {
      * 游标里存的是成员行 id，与社群列表的游标含义不同，所以两者的排序标记也不同。
      */
     private CommunityPage joinedCommunities(Long userId, String cursor, Integer limit, String sort) {
-        int size = normalizeLimit(limit);
+        int size = Paging.normalizeLimit(limit);
         CursorCodec.Cursor c = CursorCodec.decode(cursor, sort);
 
         LambdaQueryWrapper<CommunityMember> q = new LambdaQueryWrapper<CommunityMember>()
                 .eq(CommunityMember::getUserId, userId)
                 .eq(CommunityMember::getStatus, CommunityMember.STATUS_ACTIVE);
         if (c != null) {
-            LocalDateTime ts = LocalDateTime.ofInstant(Instant.ofEpochMilli(c.timestampMillis()),
-                    ZoneId.systemDefault());
+            LocalDateTime ts = Paging.fromMillis(c.timestampMillis());
             q.and(w -> w.lt(CommunityMember::getJoinedAt, ts)
                     .or(x -> x.eq(CommunityMember::getJoinedAt, ts).lt(CommunityMember::getId, c.id())));
         }
@@ -278,7 +311,7 @@ public class CommunityService {
         String next = null;
         if (rows.size() > size) {
             CommunityMember last = page.get(page.size() - 1);
-            next = CursorCodec.encode(sort, toMillis(last.getJoinedAt()), last.getId());
+            next = CursorCodec.encode(sort, Paging.toMillis(last.getJoinedAt()), last.getId());
         }
         return new CommunityPage(items, next);
     }
@@ -303,34 +336,48 @@ public class CommunityService {
     }
 
     /**
-     * 内部查询：这个用户是不是这个社群的成员。
+     * 内部查询：这个用户是不是这个社群的成员，以及管理/封禁状态。
      *
      * 不加行锁、不开事务：纯读，而且调用方（发帖校验）需要的是"此刻大概是什么状态"，
      * 强一致到毫秒没有意义 —— 用户退出社群的瞬间正好发出一个帖子，允许它成功。
+     *
+     * 判断顺序：**所有者 → 封禁 → 成员行**。
+     *   - 所有者一定算成员、一定不算被封禁（封禁管理员是 41008，不可能写入）：
+     *     owner_id 是社群属性，不依赖成员行这个不变量，
+     *     "所有者不能发帖"是荒谬的失败模式，不值得为省一次判断去赌数据一致性。
+     *   - 被封禁一律 member=false：即使脏数据里还留着 status=1 的成员行，
+     *     封禁也必须赢 —— 否则封禁就成了一条可以绕过的建议。
      */
     public MembershipResponse membership(Long communityId, Long userId) {
         Community community = communityMapper.selectById(communityId);
         if (community == null || Community.STATUS_NORMAL != community.getStatus()) {
             return MembershipResponse.notFound();
         }
-        // 所有者一定算成员：owner_id 是社群属性，不是成员行（见 p2-content.md §3.1）。
-        // 理论上建社群时已经插了成员行，但这里不依赖那个不变量 ——
-        // 所有者不能发帖是个荒谬的失败模式，不值得为省一次判断去赌数据一致性。
-        if (community.getOwnerId().equals(userId)) {
-            return MembershipResponse.of(true, CommunityMember.ROLE_MEMBER);
+        boolean admin = community.getOwnerId().equals(userId);
+        if (admin) {
+            return MembershipResponse.of(true, CommunityMember.ROLE_MEMBER, true);
+        }
+        CommunityBan ban = banMapper.selectActive(communityId, userId);
+        if (ban != null) {
+            return MembershipResponse.banned(false, ban.getReason(), ban.getExpiresAt());
         }
         CommunityMember member = memberMapper.selectOne(new LambdaQueryWrapper<CommunityMember>()
                 .eq(CommunityMember::getCommunityId, communityId)
                 .eq(CommunityMember::getUserId, userId)
                 .eq(CommunityMember::getStatus, CommunityMember.STATUS_ACTIVE));
         if (member == null) {
-            return MembershipResponse.of(false, null);
+            return MembershipResponse.of(false, null, false);
         }
-        return MembershipResponse.of(true, member.getRole());
+        return MembershipResponse.of(true, member.getRole(), false);
     }
 
-    /** 加行锁的按名查找，供成员变更写路径使用 */
-    private Community requireByNameForUpdate(String name) {
+    /**
+     * 加行锁的按名查找，供成员变更写路径使用。
+     *
+     * {@link CommunityGovernanceService} 也用它：治理写路径（封禁要移出成员并扣计数）
+     * 与加入/退出是同一类临界区，必须抢同一把锁。
+     */
+    public Community requireByNameForUpdate(String name) {
         Community community = communityMapper.selectByNameKeyForUpdate(NameKeys.of(name));
         if (community == null) {
             throw new BizException(CommunityErrorCode.COMMUNITY_NOT_FOUND);
@@ -346,14 +393,23 @@ public class CommunityService {
         return community;
     }
 
-    private static int normalizeLimit(Integer limit) {
-        if (limit == null || limit <= 0) {
-            return DEFAULT_LIMIT;
+    /**
+     * 41006 的 message：把封禁原因与到期情况讲清楚。
+     *
+     * 只说"你已被封禁"的话，用户唯一能做的就是去问管理员；而管理员自己也不一定记得
+     * 封到什么时候。这里拼在 message 里，前端直接原样展示（业务码仍是 41006）。
+     * 时间按机器时区（Asia/Shanghai）格式化成分钟级——秒对用户没有意义。
+     */
+    private static String banMessage(CommunityBan ban) {
+        StringBuilder message = new StringBuilder(CommunityErrorCode.COMMUNITY_BANNED.message());
+        if (ban.getReason() != null && !ban.getReason().isBlank()) {
+            message.append("：").append(ban.getReason());
         }
-        return Math.min(limit, MAX_LIMIT);
-    }
-
-    private static long toMillis(LocalDateTime ts) {
-        return ts.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+        if (ban.getExpiresAt() == null) {
+            message.append("；永久封禁");
+        } else {
+            message.append("；解封时间 ").append(BAN_UNTIL_FORMAT.format(ban.getExpiresAt()));
+        }
+        return message.toString();
     }
 }

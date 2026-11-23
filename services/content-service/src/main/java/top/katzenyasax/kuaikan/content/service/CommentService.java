@@ -4,13 +4,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import top.katzenyasax.kuaikan.common.api.CursorCodec;
-import top.katzenyasax.kuaikan.common.api.Result;
 import top.katzenyasax.kuaikan.common.error.BizException;
 import top.katzenyasax.kuaikan.common.error.CommonErrorCode;
-import top.katzenyasax.kuaikan.common.error.CommunityErrorCode;
 import top.katzenyasax.kuaikan.common.error.ContentErrorCode;
 import top.katzenyasax.kuaikan.common.mq.CommentCreated;
 import top.katzenyasax.kuaikan.common.mq.Topics;
@@ -19,7 +16,6 @@ import top.katzenyasax.kuaikan.common.outbox.OutboxMapper;
 import top.katzenyasax.kuaikan.content.domain.Comment;
 import top.katzenyasax.kuaikan.content.domain.Post;
 import top.katzenyasax.kuaikan.content.feign.CommunityMembershipClient;
-import top.katzenyasax.kuaikan.content.feign.MembershipView;
 import top.katzenyasax.kuaikan.content.mapper.CommentMapper;
 import top.katzenyasax.kuaikan.content.mapper.PostMapper;
 import top.katzenyasax.kuaikan.content.web.dto.CommentPage;
@@ -238,7 +234,7 @@ public class CommentService {
     }
 
     /**
-     * 删除评论。只有作者本人可以删。
+     * 删除评论。作者可以删自己的评论；P7 起**社群管理员可以删本社群内的任意评论**。
      *
      * <b>tombstone 不是一律软删</b>：
      *   - 有回复 → 软删（保留行，否则子回复的 root_comment_id 变孤儿）
@@ -249,17 +245,41 @@ public class CommentService {
      *
      * 连带处理：删掉一条回复后，若它的主楼是 tombstone 且已经没有任何回复，
      * 那条主楼也该一起物理删——否则不变量被破坏，列表里会冒出空壳。
+     *
+     * <h2>事务边界：本方法刻意不带 {@code @Transactional}</h2>
+     *
+     * 非作者路径要先从评论所属帖子拿到 communityId，再问 community-service
+     * 「你是不是这个社群的管理员」。把这次最坏 500ms 的远程调用包在事务里，
+     * 会让数据库连接陪着等（与 {@link #create} 同一取舍），所以权限查询在
+     * **事务外**，tombstone / 计数扣减由 {@link TransactionTemplate} 包成一个短事务。
+     *
+     * <b>作者删自己完全不看 community</b>：零额外跨服务调用。
      */
-    @Transactional
     public void delete(Long userId, Long commentId) {
         Comment comment = commentMapper.selectById(commentId);
         if (comment == null || comment.getStatus() == Comment.STATUS_HIDDEN) {
             throw new BizException(ContentErrorCode.COMMENT_NOT_FOUND);
         }
         if (!comment.getAuthorId().equals(userId)) {
-            // 帖主也不能删别人的评论；版主权限是 P7 的新概念
-            throw new BizException(CommonErrorCode.FORBIDDEN, "只能删除自己的评论");
+            // 评论本身没有 community_id，要经由它所属的帖子拿到（P7 方案 §4.3）。
+            // 帖行即使已被软删也还在（删帖是 update status），所以照样查得到。
+            Post post = postMapper.selectById(comment.getPostId());
+            if (post == null) {
+                // 拿不到 communityId 就无法证明管理员身份；不允许删
+                throw new BizException(CommonErrorCode.FORBIDDEN,
+                        "只能删除自己的评论，或由社群管理员删除");
+            }
+            // 下游不可用 → 50300（宁可删不了，也不放不确定的人过）
+            MembershipGuard.requireCommunityAdmin(membershipClient, post.getCommunityId(), userId,
+                    "删评论", "只能删除自己的评论，或由社群管理员删除", log);
         }
+        // 同类自调用不走代理，@Transactional 会静默失效：用 TransactionTemplate 显式开事务
+        transactionTemplate.executeWithoutResult(status -> remove(comment, userId));
+    }
+
+    /** 事务边界：只有本地 SQL —— 删行/tombstone + 计数扣减，没有远程调用 */
+    private void remove(Comment comment, Long userId) {
+        Long commentId = comment.getId();
         if (comment.getStatus() == Comment.STATUS_DELETED) {
             return; // 幂等：已删除，重复删不报错
         }
@@ -286,7 +306,7 @@ public class CommentService {
             }
         }
 
-        log.info("评论已删除 id={} 软删={} authorId={}", commentId, hasReplies, userId);
+        log.info("评论已删除 id={} 软删={} operatorId={}", commentId, hasReplies, userId);
     }
 
     // ---------------------------------------------------------------- 内部
@@ -346,28 +366,11 @@ public class CommentService {
     /**
      * 成员校验。与发帖走同一个内部接口（ADR 0008：服务间身份显式传参）。
      *
-     * 不复用 PostService 的私有方法：那会把两个服务类耦在一起。
-     * 这段逻辑很小，重复一份比引入耦合便宜。
+     * 判断顺序（41001 → 41006 → 41004）与发帖一致，统一在
+     * {@link MembershipGuard#requireCanWrite} 里，不在两个类里各写一份。
      */
     private void requireMembership(Long communityId, Long userId) {
-        Result<MembershipView> result;
-        try {
-            result = membershipClient.membership(communityId, userId);
-        } catch (Exception e) {
-            log.error("成员校验失败 communityId={} userId={}", communityId, userId, e);
-            throw new BizException(CommonErrorCode.UPSTREAM_UNAVAILABLE);
-        }
-        if (result == null || result.data() == null) {
-            log.error("成员校验返回空 body communityId={} userId={}", communityId, userId);
-            throw new BizException(CommonErrorCode.UPSTREAM_UNAVAILABLE);
-        }
-        MembershipView view = result.data();
-        if (!view.exists()) {
-            throw new BizException(CommunityErrorCode.COMMUNITY_NOT_FOUND);
-        }
-        if (!view.member()) {
-            throw new BizException(CommunityErrorCode.NOT_MEMBER);
-        }
+        MembershipGuard.requireCanWrite(membershipClient, communityId, userId, "发评论", log);
     }
 
     private static int normalizeLimit(Integer limit) {

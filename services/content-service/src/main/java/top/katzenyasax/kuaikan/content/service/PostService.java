@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -16,10 +17,8 @@ import java.util.Set;
 import java.util.UUID;
 import top.katzenyasax.kuaikan.common.api.CursorCodec;
 import top.katzenyasax.kuaikan.common.api.PageResult;
-import top.katzenyasax.kuaikan.common.api.Result;
 import top.katzenyasax.kuaikan.common.error.BizException;
 import top.katzenyasax.kuaikan.common.error.CommonErrorCode;
-import top.katzenyasax.kuaikan.common.error.CommunityErrorCode;
 import top.katzenyasax.kuaikan.common.error.ContentErrorCode;
 import top.katzenyasax.kuaikan.common.mq.PostCreated;
 import top.katzenyasax.kuaikan.common.mq.PostDeleted;
@@ -29,7 +28,6 @@ import top.katzenyasax.kuaikan.common.outbox.OutboxMapper;
 import top.katzenyasax.kuaikan.content.config.ContentProperties;
 import top.katzenyasax.kuaikan.content.domain.Post;
 import top.katzenyasax.kuaikan.content.feign.CommunityMembershipClient;
-import top.katzenyasax.kuaikan.content.feign.MembershipView;
 import top.katzenyasax.kuaikan.content.mapper.PostMapper;
 import top.katzenyasax.kuaikan.content.web.dto.BatchPostsRequest;
 import top.katzenyasax.kuaikan.content.web.dto.CreatePostRequest;
@@ -86,17 +84,20 @@ public class PostService {
     private final ContentProperties contentProperties;
     private final OutboxMapper outboxMapper;
     private final ObjectMapper objectMapper;
+    private final TransactionTemplate transactionTemplate;
 
     public PostService(PostMapper postMapper,
                        CommunityMembershipClient membershipClient,
                        ContentProperties contentProperties,
                        OutboxMapper outboxMapper,
-                       ObjectMapper objectMapper) {
+                       ObjectMapper objectMapper,
+                       TransactionTemplate transactionTemplate) {
         this.postMapper = postMapper;
         this.membershipClient = membershipClient;
         this.contentProperties = contentProperties;
         this.outboxMapper = outboxMapper;
         this.objectMapper = objectMapper;
+        this.transactionTemplate = transactionTemplate;
     }
 
     /**
@@ -110,7 +111,8 @@ public class PostService {
      */
     @Transactional
     public PostDetail create(Long userId, CreatePostRequest req) {
-        requireMembership(req.communityId(), userId);
+        // 判断顺序钉在 MembershipGuard 里：41001 → 41006（被封禁）→ 41004
+        MembershipGuard.requireCanWrite(membershipClient, req.communityId(), userId, "发帖", log);
 
         Post post = new Post();
         post.setCommunityId(req.communityId());
@@ -131,7 +133,7 @@ public class PostService {
     }
 
     /**
-     * 删帖。只有作者本人可以删（版主权限是 P7 的新概念）。
+     * 删帖。作者可以删自己的帖子；P7 起**本社群管理员可以删本社群内的任意帖子**。
      *
      * <b>软删，且事件与删除同事务</b>：搜索索引是派生读模型，删帖必须发
      * {@code PostDeleted} —— 否则会出现「搜得到但点进去 404」的脏数据。
@@ -139,17 +141,43 @@ public class PostService {
      * <b>只有真的改了行才发事件</b>：重复删、并发双删都返回幂等成功，
      * 但 {@code UPDATE ... WHERE status = 1} 影响 0 行时不写 outbox，
      * 避免同一事实被重复广播（消费方虽然幂等，但没必要制造噪音）。
+     *
+     * <h2>事务边界：本方法刻意不带 {@code @Transactional}</h2>
+     *
+     * 非作者路径要先问 community-service「你是不是这个社群的管理员」——
+     * 把一次最坏 500ms 的远程调用包在事务里，等于让数据库连接陪着等，
+     * 并发一上来就把连接池耗光（与 {@code CommentService.create} 同一取舍）。
+     * 所以：权限查询在**事务外**，本地软删 + {@code PostDeleted} outbox 由
+     * {@link TransactionTemplate} 显式包成一个短事务（{@link #softDelete}）。
+     *
+     * 代价是「确认是管理员」与「改到行」之间有一个窗口（例如这期间管理员刚好被转让）。
+     * 后果只是这一次删除越过了一次刚发生的权限变更，可接受；把远程调用塞进事务
+     * 是更确定的伤害。
+     *
+     * <b>作者删自己完全不看 community</b>：{@code authorId.equals(userId)} 直接放行，
+     * 零额外跨服务调用——最热的那条路径不允许变慢。
      */
-    @Transactional
     public void delete(Long userId, Long postId) {
         Post post = postMapper.selectById(postId);
         // 已删除的帖子对外一律「不存在」，不区分 404 与 403
         if (post == null) {
             throw new BizException(ContentErrorCode.POST_NOT_FOUND);
         }
+        // 权限在前、状态在后：非作者对一条已删帖子也该拿到 40300，
+        // 而不是因为「反正已经删了」拿到静默成功
         if (!post.getAuthorId().equals(userId)) {
-            throw new BizException(CommonErrorCode.FORBIDDEN, "只能删除自己的帖子");
+            // 下游不可用 → 50300（宁可删不了，也不放不确定的人过）
+            MembershipGuard.requireCommunityAdmin(membershipClient, post.getCommunityId(), userId,
+                    "删帖", "只能删除自己的帖子，或由社群管理员删除", log);
         }
+        // 不用 @Transactional：同类自调用不走代理，注解会静默失效（见 CommentService.create）。
+        // 用 TransactionTemplate 显式开事务，事务里只有本地 SQL
+        transactionTemplate.executeWithoutResult(status -> softDelete(post, userId));
+    }
+
+    /** 事务边界：只有本地 SQL —— 软删 + outbox，没有任何远程调用 */
+    private void softDelete(Post post, Long userId) {
+        Long postId = post.getId();
         if (post.getStatus() == null || post.getStatus() != Post.STATUS_NORMAL) {
             return; // 幂等：已经删过了，重复删不报错也不重复发事件
         }
@@ -165,7 +193,7 @@ public class PostService {
                 String.valueOf(postId));
         enqueue(Topics.POST_DELETED, event.eventId(), event);
 
-        log.info("帖子已删除 id={} authorId={}", postId, userId);
+        log.info("帖子已删除 id={} operatorId={}", postId, userId);
     }
 
     /** 全站最新帖。首页"最新帖子"用，游客可读 */
@@ -420,28 +448,5 @@ public class PostService {
         row.setRetryCount(0);
         row.setNextRetryAt(LocalDateTime.now());
         outboxMapper.insert(row);
-    }
-
-    private void requireMembership(Long communityId, Long userId) {
-        Result<MembershipView> result;
-        try {
-            result = membershipClient.membership(communityId, userId);
-        } catch (Exception e) {
-            // 超时、连接拒绝、下游 5xx 全在这里。不重试：重试会把 500ms 变成 1.5s，
-            // 而后端服务不可用时重试的收益为零、代价是线程被多占两倍时间。
-            log.error("成员校验失败 communityId={} userId={}", communityId, userId, e);
-            throw new BizException(CommonErrorCode.UPSTREAM_UNAVAILABLE);
-        }
-        if (result == null || result.data() == null) {
-            log.error("成员校验返回空 body communityId={} userId={}", communityId, userId);
-            throw new BizException(CommonErrorCode.UPSTREAM_UNAVAILABLE);
-        }
-        MembershipView view = result.data();
-        if (!view.exists()) {
-            throw new BizException(CommunityErrorCode.COMMUNITY_NOT_FOUND);
-        }
-        if (!view.member()) {
-            throw new BizException(CommunityErrorCode.NOT_MEMBER);
-        }
     }
 }

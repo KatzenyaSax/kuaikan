@@ -27,6 +27,10 @@ export const ERROR_MESSAGES: Readonly<Record<number, string>> = {
   41002: '该社群名称已被使用', // COMMUNITY_NAME_TAKEN
   41004: '需要先加入社群', // NOT_MEMBER
   41005: '社群创建者不能退出', // OWNER_CANNOT_LEAVE
+  41006: '你已被该社群封禁', // COMMUNITY_BANNED
+  41007: '只有社群管理员可以执行此操作', // NOT_COMMUNITY_ADMIN
+  41008: '不能封禁社群管理员', // CANNOT_BAN_ADMIN
+  41009: '只能将管理员转让给本社群在社成员', // TRANSFER_TARGET_INVALID
   42001: '帖子不存在', // POST_NOT_FOUND
   42002: '评论不存在', // COMMENT_NOT_FOUND
   42900: '请求过于频繁', // RATE_LIMITED
@@ -57,6 +61,10 @@ export const ERROR_HTTP_STATUS: Readonly<Record<number, number>> = {
   41002: 409,
   41004: 200,
   41005: 200,
+  41006: 403,
+  41007: 403,
+  41008: 200,
+  41009: 200,
   42001: 404,
   42002: 404,
   42900: 429,

@@ -12,6 +12,9 @@ package top.katzenyasax.kuaikan.common.error;
  *     与 P3 消费幂等是同一个手法。有「已是成员」这个码，就意味着调用方要区分
  *     「刚加入」和「本来就加入了」，而这两者在业务上不需要区分。
  *   - NOT_MEMBER 走 HTTP 200 + 业务码，它是**业务规则**不是传输层错误。
+ *   - 本枚举放在 kuaikan-common（而不是 community-service），因为 P7 起
+ *     content-service 也需要直接引用 COMMUNITY_BANNED（社群封禁用户发帖/评论拦截）。
+ *     严禁在业务服务里重复定义同一错误码。
  */
 public enum CommunityErrorCode implements ErrorCode {
 
@@ -27,7 +30,24 @@ public enum CommunityErrorCode implements ErrorCode {
      * 转让能力在 P7，中间这段时间只能由管理员改库——这是 P2 的已知缺口，
      * 不是遗漏。
      */
-    OWNER_CANNOT_LEAVE(41005, "社群创建者不能退出");
+    OWNER_CANNOT_LEAVE(41005, "社群创建者不能退出"),
+
+    /**
+     * 被封禁用户尝试加入、发帖或评论。
+     *
+     * 封禁只作用于**当前社群**：不影响登录，也不影响别的社群。
+     * 响应 message 可拼接原因与到期说明，前端只做兜底。
+     */
+    COMMUNITY_BANNED(41006, "你已被该社群封禁"),
+
+    /** 非当前管理员调用编辑信息、转让、封禁/解封、查成员/封禁名单 */
+    NOT_COMMUNITY_ADMIN(41007, "只有社群管理员可以执行此操作"),
+
+    /** 管理员尝试封禁自己 —— 业务规则，走 HTTP 200 + 业务码 */
+    CANNOT_BAN_ADMIN(41008, "不能封禁社群管理员"),
+
+    /** 转让给自己、非成员或已被封禁的用户 */
+    TRANSFER_TARGET_INVALID(41009, "只能将管理员转让给本社群在社成员");
 
     private final int code;
     private final String message;
