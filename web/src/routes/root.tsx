@@ -1,527 +1,483 @@
-import { useState } from 'react'
-import { Link, NavLink, Outlet, ScrollRestoration, useMatch, useNavigate } from 'react-router'
-import { TopbarSearch } from '@/features/search/topbar-search'
-import { useSession } from '@/features/auth/session'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link, NavLink, Outlet, useLocation } from 'react-router'
+import { AnimatePresence, motion } from 'framer-motion'
 import {
-  MESSAGE_TABS,
-  unreadCountOf,
-  useMarkRead,
-  useMessages,
-  useMessageStream,
-  useReadAll,
-  useUnread,
-  type MessageType,
-  type MessageView,
-} from '@/features/notification/api'
+  Activity,
+  Bell,
+  Compass,
+  Flame,
+  Layers,
+  LogIn,
+  Moon,
+  Palette,
+  Search,
+  Sparkles,
+  Sun,
+  User,
+  Users,
+} from 'lucide-react'
+import { useSession } from '@/features/auth/session'
+import { useMyCommunities, useCommunityList } from '@/features/community/api'
+import { useMessageStream, useUnread } from '@/features/notification/api'
+import type { LiveSseEvent, MessageType } from '@/features/notification/api'
+import { LiveMessageToast, MessageDrawer } from '@/features/notification/message-drawer'
+import { CommandPalette } from '@/features/search/command-palette'
+import { TopbarSearch } from '@/features/search/topbar-search'
+import { getCommunityChroma } from '@/shared/theme/community-chroma'
+import { useTheme } from '@/shared/theme/theme-store'
+import { ThemeStudioSheet } from '@/shared/theme/theme-studio'
+import { AuroraBackdrop } from '@/shared/ui/aurora-backdrop'
 import { Avatar } from '@/shared/ui/avatar'
-import { Group, groupRowClass } from '@/shared/ui/group'
-import { Toaster } from '@/shared/ui/toast'
-import { relativeTime } from '@/shared/lib/time'
+import { BrandMark } from '@/shared/ui/brand-mark'
 import { cn } from '@/shared/lib/cn'
 
-const NAV = [
-  { to: '/', label: '首页', end: true },
-  { to: '/c', label: '社群', end: false },
-  { to: '/following', label: '关注', end: false },
-  { to: '/hot', label: '热榜', end: false },
+const PRIMARY_NAV = [
+  { to: '/', label: '发现画廊', icon: Compass, end: true },
+  { to: '/hot', label: '极光热榜', icon: Flame, end: false },
+  { to: '/following', label: '关注动态', icon: Users, end: false },
+  { to: '/c', label: '社群空间', icon: Layers, end: false },
+  { to: '/search', label: '全站搜索', icon: Search, end: false, testId: 'nav-search' },
 ] as const
 
-/**
- * 顶栏/底栏文字的基准样式（Apple 导航栏的做法）：aux 档，正文色 80% 透明，
- * hover 回到 100%。当前项靠**字重 + 100% 透明**表达，不额外加颜色块。
- */
-const NAV_TEXT =
-  'text-aux text-foreground/80 transition-colors duration-[var(--duration-fast)] hover:text-foreground'
-
-/** 毛玻璃：Apple 的导航栏都不是半透明纯色，而是 saturate + blur 的“材质” */
-const GLASS = 'bg-[rgba(255,255,255,0.72)] backdrop-blur-[20px] backdrop-saturate-[180%]'
-
-/**
- * 应用外壳：顶栏 + 内容 + 底部 tab（窄屏）。
- *
- * 导航结构：
- *   左：品牌 + 主导航（首页 / 社群 / 关注 / 热榜 / 搜索）
- *   右：搜索框 + 消息（带未读数）+ 头像昵称
- *
- * **「我的」不占顶栏位置** —— 点昵称进入。顶栏是最贵的位置，
- * 只留给需要"随时可达"的东西：切换场景（主导航）、搜索、看消息、确认身份。
- *
- * 搜索是**页面**（/search）而不是覆盖层（P6.4）：搜索结果要能被分享、被刷新、
- * 被浏览器后退找回。覆盖层做不到这三件事，它只适合"瞬时的、不需要结果存活"的任务。
- * 顶栏的输入框只是入口，回车把关键词交给 /search。
- * 消息是右侧抽屉：读帖子时"瞥一眼消息"是轻任务。
- */
 export function RootLayout() {
+  const location = useLocation()
   const status = useSession((s) => s.status)
   const user = useSession((s) => s.user)
-  const navigate = useNavigate()
-  const [msgOpen, setMsgOpen] = useState(false)
-  const authed = status === 'authenticated'
-  const unread = useUnread()
-  // SSE 只负责让红点及时亮起来；未读数永远以接口为准
-  useMessageStream()
-  // 双栏阅读页占满视口高度，页脚会让页面多出一条"为看页脚而滚"的细滚动条。
-  // useMatch 必须在顶层无条件调用，不能写在条件里（hooks 顺序要稳定）。
-  const communityMatch = useMatch('/c/:name/*')
-  const inTwoPane = communityMatch !== null
+  const mode = useTheme((s) => s.mode)
+  const toggleMode = useTheme((s) => s.toggleMode)
+  const preset = useTheme((s) => s.preset)
+  const followCommunity = useTheme((s) => s.followCommunity)
+  const activeCommunity = useTheme((s) => s.activeCommunity)
+  const activeChroma = useTheme((s) => s.chroma)
+  const setActiveCommunity = useTheme((s) => s.setActiveCommunity)
+
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [drawerTab, setDrawerTab] = useState<MessageType | undefined>(undefined)
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  const [themeOpen, setThemeOpen] = useState(false)
+  const [liveToast, setLiveToast] = useState<LiveSseEvent | null>(null)
+
+  // 根据当前路由自动同步社群动态极光色系
+  useEffect(() => {
+    const m = /^\/c\/([^/]+)/.exec(location.pathname)
+    if (m?.[1]) {
+      try {
+        setActiveCommunity(decodeURIComponent(m[1]))
+      } catch {
+        setActiveCommunity(m[1])
+      }
+    } else {
+      setActiveCommunity(null)
+    }
+  }, [location.pathname, setActiveCommunity])
+
+  // 全局 ⌘K / Ctrl+K 唤起琉璃搜索命令面板
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setPaletteOpen((v) => !v)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  // 实时 SSE 推送事件 → 弹出流光 Toast（5 秒自动消散）
+  const handleLiveEvent = useCallback((ev: LiveSseEvent) => {
+    setLiveToast(ev)
+  }, [])
+
+  useEffect(() => {
+    if (!liveToast) return
+    const t = window.setTimeout(() => setLiveToast(null), 5000)
+    return () => window.clearTimeout(t)
+  }, [liveToast])
+
+  const { connected: sseConnected } = useMessageStream(handleLiveEvent)
+  const { data: unread } = useUnread()
+  const totalUnread = unread?.total ?? 0
+
+  const isAuth = status === 'authenticated'
+  const { data: myComms } = useMyCommunities(isAuth)
+  const { data: allComms } = useCommunityList(null)
+
+  const railCommunities = useMemo(() => {
+    if (isAuth && myComms?.items && myComms.items.length > 0) {
+      return myComms.items.slice(0, 8)
+    }
+    return (allComms?.items ?? []).slice(0, 6)
+  }, [isAuth, myComms, allComms])
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <header
-        className={cn('sticky top-0 z-40 h-[var(--topbar-h)] border-b border-border', GLASS)}
-      >
-        <div className="mx-auto flex h-full w-full max-w-[980px] items-center gap-7 px-6">
-          <Link to="/" className="shrink-0 text-body font-semibold tracking-[0.06em]">
-            kuaikan
-          </Link>
+    <div className="relative min-h-dvh text-foreground">
+      <AuroraBackdrop />
 
-          {/* 主导航：不用图标，靠字重与颜色表达当前项 */}
-          <nav className="hidden items-center gap-6 md:flex" aria-label="主导航">
-            {NAV.map((n) => (
-              <NavLink
-                key={n.to}
-                to={n.to}
-                end={n.end}
-                className={({ isActive }) =>
-                  cn(NAV_TEXT, isActive && 'font-semibold text-foreground')
-                }
-              >
-                {n.label}
-              </NavLink>
-            ))}
-            <NavLink
-              to="/search"
-              className={({ isActive }) =>
-                cn(NAV_TEXT, isActive && 'font-semibold text-foreground')
-              }
-              data-testid="nav-search"
+      {/* 左侧桌面端悬浮琉璃导航轨 */}
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-[236px] flex-col p-3.5 lg:flex">
+        <div className="glass-panel flex h-full flex-col justify-between rounded-3xl p-3.5">
+          <div className="space-y-5 overflow-y-auto pr-0.5">
+            {/* 品牌头 */}
+            <Link
+              to="/"
+              className="group flex items-center gap-3 rounded-2xl px-2 py-1.5 transition-colors hover:bg-[var(--bg-surface-hover)]"
             >
-              搜索
-            </NavLink>
-          </nav>
+              <BrandMark size={36} />
+              <div className="min-w-0">
+                <div className="font-display text-lg font-extrabold tracking-tight text-aurora">
+                  kuaikan
+                </div>
+                <div className="truncate text-[11px] font-medium text-muted-foreground">
+                  极光社群讨论空间
+                </div>
+              </div>
+            </Link>
 
-          <div className="ml-auto flex items-center gap-5">
-            <TopbarSearch />
+            {/* 主导航 */}
+            <nav aria-label="主导航" className="space-y-1">
+              {PRIMARY_NAV.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.end}
+                  data-testid={'testId' in item ? item.testId : undefined}
+                  className={({ isActive }) =>
+                    cn(
+                      'group relative flex items-center gap-3 rounded-2xl px-3.5 py-2.5 text-sm font-medium transition-colors',
+                      isActive
+                        ? ''
+                        : 'text-secondary-foreground hover:bg-[var(--bg-surface-hover)] hover:text-foreground',
+                    )
+                  }
+                  style={({ isActive }) =>
+                    isActive ? { color: 'var(--btn-fg, #ffffff)' } : undefined
+                  }
+                >
+                  {({ isActive }) => (
+                    <>
+                      {isActive && (
+                        <motion.span
+                          layoutId="desktop-rail-pill"
+                          transition={{ type: 'spring', stiffness: 400, damping: 32 }}
+                          className="absolute inset-0 -z-10 rounded-2xl shadow-lg"
+                          style={{
+                            background: 'var(--accent-gradient)',
+                            boxShadow: '0 8px 22px -6px rgba(var(--accent-rgb), 0.55)',
+                          }}
+                        />
+                      )}
+                      <item.icon className={cn('h-4 w-4 shrink-0', isActive ? '' : 'text-primary/80')} />
+                      <span>{item.label}</span>
+                    </>
+                  )}
+                </NavLink>
+              ))}
+            </nav>
+
+            {/* 社群极光快捷轨 */}
+            <div className="space-y-2 pt-1">
+              <div className="flex items-center justify-between px-2.5">
+                <span className="text-[11px] font-bold tracking-wider text-muted-foreground uppercase">
+                  {isAuth && myComms?.items?.length ? '我的社群' : '探索社群'}
+                </span>
+                <span className="inline-flex h-2 w-2 rounded-full" style={{ background: 'var(--aurora-2)' }} />
+              </div>
+
+              <div className="space-y-1">
+                {railCommunities.map((c) => {
+                  const name = c.name ?? ''
+                  const chroma = getCommunityChroma(name)
+                  const isCurrent = activeCommunity === name
+                  return (
+                    <Link
+                      key={c.id}
+                      to={`/c/${encodeURIComponent(name)}`}
+                      className={cn(
+                        'group flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium transition-all',
+                        isCurrent
+                          ? 'bg-[var(--color-primary-soft)] text-foreground shadow-sm'
+                          : 'text-secondary-foreground hover:bg-[var(--bg-surface-hover)] hover:text-foreground',
+                      )}
+                    >
+                      <span
+                        className="h-2.5 w-2.5 shrink-0 rounded-full transition-transform group-hover:scale-125"
+                        style={{
+                          background: chroma.gradient,
+                          boxShadow: isCurrent ? `0 0 10px ${chroma.darkPrimary}` : undefined,
+                        }}
+                      />
+                      <span className="truncate">{name}</span>
+                      <span className="tabular-nums ml-auto text-[10px] text-muted-foreground">
+                        {String(c.memberCount ?? 0)}
+                      </span>
+                    </Link>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* 底部配色工作室、明暗切换与探针入口 */}
+          <div className="space-y-2 border-t border-[var(--border-glass)] pt-3">
             <button
               type="button"
-              onClick={() => setMsgOpen(true)}
-              className={cn('inline-flex items-center', NAV_TEXT)}
-              data-testid="nav-messages"
+              data-testid="btn-theme-studio"
+              onClick={() => setThemeOpen(true)}
+              className="flex w-full cursor-pointer items-center justify-between rounded-2xl border border-[var(--border-glass)] bg-[var(--bg-input)] px-3 py-2 text-xs font-semibold text-foreground transition-all hover:border-[rgba(var(--accent-rgb),0.5)] hover:bg-[var(--bg-surface-hover)]"
             >
-              消息
-              {/*
-                未读徽标：全站唯一的红点，所以它一定意味着"有事情"。
-                放在行内而不是绝对定位——绝对定位的 -top 会压在"息"字上，
-                中文没有字母的上升部，压上去非常明显。
-              */}
-              {/* 未读为 0 时不渲染徽标本身：一个"0"比没有更吵 */}
-              {(unread.data?.total ?? 0) > 0 ? (
-                <span
-                  className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-caption font-semibold leading-none text-white tabular-nums"
-                  data-testid="nav-unread"
-                >
-                  {(unread.data?.total ?? 0) > 99 ? '99+' : unread.data?.total}
-                </span>
-              ) : null}
+              <span className="inline-flex items-center gap-2 min-w-0">
+                <Palette className="h-3.5 w-3.5 shrink-0 text-primary" />
+                <span className="truncate">{preset.name}</span>
+              </span>
+              <span className="flex shrink-0 items-center -space-x-1">
+                {preset.swatches.map((hex, i) => (
+                  <span
+                    key={i}
+                    className="h-3 w-3 rounded-full ring-1 ring-[var(--bg-canvas)]"
+                    style={{ backgroundColor: hex }}
+                  />
+                ))}
+              </span>
             </button>
 
-            {authed && user ? (
-              <button
-                type="button"
-                onClick={() => navigate('/me')}
-                className={cn('flex items-center gap-2', NAV_TEXT)}
-                data-testid="nav-user"
-                title="我的"
-              >
-                <Avatar url={user.avatarUrl} name={user.nickname} size={24} />
-                <span className="hidden max-w-[8em] truncate md:inline" data-testid="nav-nickname">
-                  {user.nickname}
-                </span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => navigate('/login')}
-                className={NAV_TEXT}
-                data-testid="nav-login"
-              >
-                登录
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={toggleMode}
+              className="flex w-full cursor-pointer items-center justify-between rounded-2xl border border-[var(--border-glass)] bg-[var(--bg-input)] px-3 py-2 text-xs font-medium text-secondary-foreground transition-all hover:border-[rgba(var(--accent-rgb),0.45)] hover:text-foreground"
+            >
+              <span className="inline-flex items-center gap-2">
+                <AnimatePresence mode="wait" initial={false}>
+                  <motion.span
+                    key={mode}
+                    initial={{ rotate: -60, opacity: 0, scale: 0.7 }}
+                    animate={{ rotate: 0, opacity: 1, scale: 1 }}
+                    exit={{ rotate: 60, opacity: 0, scale: 0.7 }}
+                    transition={{ duration: 0.2 }}
+                    className="inline-flex"
+                  >
+                    {mode === 'dark' ? (
+                      <Moon className="h-3.5 w-3.5 text-primary" />
+                    ) : (
+                      <Sun className="h-3.5 w-3.5 text-warning" />
+                    )}
+                  </motion.span>
+                </AnimatePresence>
+                <span>{mode === 'dark' ? '深色模式' : '亮色模式'}</span>
+              </span>
+              <span className="text-[10px] text-muted-foreground">切换</span>
+            </button>
+
+            <Link
+              to="/test"
+              className="flex items-center justify-between rounded-xl px-3 py-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-[var(--bg-surface-hover)] hover:text-foreground"
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <Activity className="h-3 w-3 text-success" />
+                微服务诊断台
+              </span>
+              <span className="font-mono text-[10px] opacity-70">/test</span>
+            </Link>
           </div>
         </div>
-      </header>
+      </aside>
 
-      <main className="flex-1">
-        <Outlet />
-      </main>
+      {/* 右侧主区域（悬浮胶囊顶栏 + 画布） */}
+      <div className="flex min-h-dvh flex-col lg:pl-[236px]">
+        <header className="sticky top-0 z-20 px-3 pt-3 sm:px-5 lg:px-7">
+          <div className="glass-panel mx-auto flex max-w-[1360px] items-center justify-between gap-3 rounded-2xl px-3.5 py-2.5 sm:px-4">
+            {/* 移动端品牌 / 桌面端当前社群极光指示器 */}
+            <div className="flex items-center gap-2.5">
+              <Link to="/" className="flex items-center gap-2 lg:hidden">
+                <BrandMark size={30} />
+                <span className="font-display text-base font-extrabold text-aurora">kuaikan</span>
+              </Link>
 
-      <footer
-        className={cn(
-          'border-t border-border pb-[var(--tabbar-h)] md:pb-0',
-          inTwoPane && 'hidden md:block',
-        )}
-      >
-        <div className="mx-auto w-full max-w-[980px] px-6 py-5 text-caption text-faint">
-          kuaikan · 一个以社群为单位的讨论社区
-        </div>
-      </footer>
+              {activeCommunity && followCommunity ? (
+                <Link
+                  to={`/c/${encodeURIComponent(activeCommunity)}`}
+                  className="hidden items-center gap-2 rounded-full border border-[rgba(var(--accent-rgb),0.35)] bg-[var(--color-primary-soft)] px-3 py-1 text-xs font-semibold text-foreground lg:inline-flex"
+                >
+                  <span
+                    className="h-2 w-2 rounded-full"
+                    style={{ background: activeChroma.gradient }}
+                  />
+                  <span>#{activeCommunity}</span>
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setThemeOpen(true)}
+                  className="hidden cursor-pointer items-center gap-1.5 rounded-full border border-[var(--border-glass)] bg-[var(--bg-input)] px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-[rgba(var(--accent-rgb),0.45)] hover:text-foreground lg:inline-flex"
+                >
+                  <Sparkles className="h-3.5 w-3.5 text-primary" />
+                  <span>{preset.name}</span>
+                </button>
+              )}
+            </div>
 
-      {/* 窄屏：主导航进底部 tab bar。同样是毛玻璃材质，五个主导航一个不少 */}
+            {/* 中央搜索胶囊 */}
+            <div className="flex flex-1 justify-center">
+              <TopbarSearch onOpenPalette={() => setPaletteOpen(true)} />
+            </div>
+
+            {/* 右侧操作簇 */}
+            <div className="flex shrink-0 items-center gap-2">
+              {/* 顶栏快捷配色工作室入口 */}
+              <button
+                type="button"
+                onClick={() => setThemeOpen(true)}
+                aria-label="切换配色风格"
+                title="配色风格工作室"
+                className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-[var(--border-glass)] bg-[var(--bg-input)] text-secondary-foreground transition-all hover:border-[rgba(var(--accent-rgb),0.45)] hover:text-primary"
+              >
+                <Palette className="h-4 w-4" />
+              </button>
+
+              {/* 移动端主题切换 */}
+              <button
+                type="button"
+                onClick={toggleMode}
+                aria-label="切换深浅主题"
+                className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-[var(--border-glass)] bg-[var(--bg-input)] text-secondary-foreground transition-all hover:border-[rgba(var(--accent-rgb),0.45)] hover:text-foreground lg:hidden"
+              >
+                {mode === 'dark' ? <Moon className="h-4 w-4 text-primary" /> : <Sun className="h-4 w-4 text-warning" />}
+              </button>
+
+              {isAuth && user ? (
+                <>
+                  {/* 实时消息铃铛 */}
+                  <button
+                    type="button"
+                    data-testid="nav-messages"
+                    onClick={() => {
+                      setDrawerTab(undefined)
+                      setDrawerOpen(true)
+                    }}
+                    aria-label="消息中心"
+                    className="relative inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-[var(--border-glass)] bg-[var(--bg-input)] text-secondary-foreground transition-all hover:border-[rgba(var(--accent-rgb),0.5)] hover:text-foreground"
+                  >
+                    <Bell className="h-4 w-4" />
+                    {sseConnected && totalUnread === 0 && (
+                      <span
+                        title="实时推送在线"
+                        className="absolute right-1.5 bottom-1.5 h-1.5 w-1.5 rounded-full bg-success"
+                      />
+                    )}
+                    {totalUnread > 0 && (
+                      <span
+                        data-testid="nav-unread"
+                        className="tabular-nums absolute -top-1 -right-1 flex h-4.5 min-w-4.5 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white shadow-md"
+                        style={{
+                          background: 'linear-gradient(135deg, #FB7185, #F43F5E)',
+                          boxShadow: '0 0 12px rgba(251, 113, 133, 0.7)',
+                        }}
+                      >
+                        {totalUnread > 99 ? '99+' : totalUnread}
+                      </span>
+                    )}
+                  </button>
+
+                  {/* 个人中心入口 */}
+                  <Link
+                    to="/me"
+                    data-testid="nav-user"
+                    className="flex items-center gap-2 rounded-2xl border border-[var(--border-glass)] bg-[var(--bg-input)] py-1 pr-3 pl-1 transition-all hover:border-[rgba(var(--accent-rgb),0.5)] hover:bg-[var(--bg-surface-hover)]"
+                  >
+                    <Avatar name={user.nickname} src={user.avatarUrl} size="sm" />
+                    <span
+                      data-testid="nav-nickname"
+                      className="hidden max-w-[110px] truncate text-xs font-semibold text-foreground sm:inline"
+                    >
+                      {user.nickname}
+                    </span>
+                  </Link>
+                </>
+              ) : (
+                <Link
+                  to="/login"
+                  data-testid="nav-login"
+                  className="btn-aurora inline-flex h-9 items-center gap-1.5 rounded-xl px-4 text-xs font-semibold"
+                >
+                  <LogIn className="h-3.5 w-3.5" />
+                  <span>登录</span>
+                </Link>
+              )}
+            </div>
+          </div>
+        </header>
+
+        {/* 主画布 */}
+        <main className="mx-auto w-full max-w-[1360px] flex-1 px-3 pt-5 pb-24 sm:px-5 lg:px-7 lg:pb-12">
+          <Outlet />
+        </main>
+      </div>
+
+      {/* 移动端底部悬浮琉璃 Dock */}
       <nav
-        className={cn(
-          'fixed inset-x-0 bottom-0 z-45 border-t border-border pb-[env(safe-area-inset-bottom,0px)] md:hidden',
-          GLASS,
-        )}
-        aria-label="底部导航"
+        aria-label="移动导航"
         data-testid="tabbar"
+        className="fixed inset-x-3 bottom-3 z-30 lg:hidden"
       >
-        <div className="grid h-[var(--tabbar-h)] grid-cols-5">
-          {NAV.map((n) => (
+        <div className="glass-panel-strong mx-auto grid max-w-md grid-cols-5 items-center rounded-3xl p-1.5">
+          {[
+            { to: '/', label: '发现', icon: Compass, end: true },
+            { to: '/hot', label: '热榜', icon: Flame, end: false },
+            { to: '/following', label: '关注', icon: Users, end: false },
+            { to: '/c', label: '社群', icon: Layers, end: false },
+            { to: isAuth ? '/me' : '/login', label: isAuth ? '我的' : '登录', icon: User, end: false },
+          ].map((item) => (
             <NavLink
-              key={n.to}
-              to={n.to}
-              end={n.end}
+              key={item.to}
+              to={item.to}
+              end={item.end}
               className={({ isActive }) =>
                 cn(
-                  'flex flex-col items-center justify-center gap-1 text-caption text-faint transition-colors duration-[var(--duration-fast)]',
-                  isActive && 'font-semibold text-foreground',
+                  'relative flex flex-col items-center justify-center gap-0.5 rounded-2xl py-2 text-[10px] font-semibold transition-colors',
+                  isActive ? '' : 'text-muted-foreground',
                 )
               }
+              style={({ isActive }) =>
+                isActive ? { color: 'var(--btn-fg, #ffffff)' } : undefined
+              }
             >
-              {n.label}
-              <span className="h-[3px] w-[3px] rounded-full bg-current opacity-0 [.font-semibold_&]:opacity-100 aria-[current=page]:opacity-100" />
+              {({ isActive }) => (
+                <>
+                  {isActive && (
+                    <motion.span
+                      layoutId="mobile-dock-pill"
+                      transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                      className="absolute inset-0 -z-10 rounded-2xl shadow-md"
+                      style={{
+                        background: 'var(--accent-gradient)',
+                      }}
+                    />
+                  )}
+                  <item.icon className="h-4 w-4" />
+                  <span>{item.label}</span>
+                </>
+              )}
             </NavLink>
           ))}
-          <NavLink
-            to="/search"
-            className={({ isActive }) =>
-              cn(
-                'flex flex-col items-center justify-center gap-1 text-caption text-faint transition-colors duration-[var(--duration-fast)]',
-                isActive && 'font-semibold text-foreground',
-              )
-            }
-          >
-            搜索
-            <span className="h-[3px] w-[3px] rounded-full bg-current opacity-0 aria-[current=page]:opacity-100" />
-          </NavLink>
         </div>
       </nav>
 
-      <MessageDrawer open={msgOpen} onClose={() => setMsgOpen(false)} />
-
-      <ScrollRestoration />
-      <Toaster />
-    </div>
-  )
-}
-
-/**
- * 消息抽屉。
- *
- * 五分类来自 p55-social.md §4.2：点赞 / 评论 / @ / 关注 / 系统。
- * 每类是**诚实的空态**，不是"假装没有消息"。
- *
- * 文案在前端拼（后端只给结构化字段）：改措辞不该动后端、不该发版。
- *
- * **FOLLOW 不参与折叠**：每一条关注都是一次可以「回关」的具体关系，
- * 合并成「X 等 N 人关注了你」会把入口弄丢（p55-social.md §1）。
- */
-function MessageDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [tab, setTab] = useState<MessageType>('LIKE')
-  const unread = useUnread()
-  const messages = useMessages(tab)
-  const readAll = useReadAll()
-  const raw = (messages.data?.pages ?? []).flatMap((p) => p.items ?? [])
-  const items = foldMessages(raw)
-
-  // 未读数按**字段名**取，不按位置解构：follow 是追加在 system 之后的字段
-  const tabs = MESSAGE_TABS.map((t) => ({
-    ...t,
-    count: unreadCountOf(unread.data, t.key),
-  }))
-
-  const total = unread.data?.total ?? 0
-
-  return (
-    <>
-      <div
-        onClick={onClose}
-        aria-hidden
-        className={cn(
-          'fixed inset-0 z-50 bg-[rgba(0,0,0,0.32)] transition-opacity duration-[var(--duration-base)]',
-          open ? 'opacity-100' : 'pointer-events-none opacity-0',
-        )}
+      {/* 实时消息抽屉 + 右上角流光 Toast + ⌘K 命令面板 + 配色风格工作室 */}
+      <MessageDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        initialTab={drawerTab}
+        sseConnected={sseConnected}
       />
-      <aside
-        role="dialog"
-        aria-modal="true"
-        aria-label="消息"
-        data-testid="message-drawer"
-        className={cn(
-          // 抽屉本体是浅底（#f5f5f7），消息按 inset grouped 分组放在白面上，
-          // 头部和 tab 保持白色 —— 与顶栏同一种材质，视觉上像从右边抽出来的一层。
-          'fixed inset-y-0 right-0 z-[55] flex w-[min(420px,100vw)] flex-col bg-surface transition-transform duration-[var(--duration-base)]',
-          open ? 'translate-x-0' : 'translate-x-full',
-        )}
-        style={{ boxShadow: 'var(--shadow-float)' }}
-      >
-        <div className="flex h-[var(--topbar-h)] shrink-0 items-center justify-between border-b border-border bg-background px-5">
-          <div className="flex items-baseline gap-2.5">
-            <h2 className="m-0 text-read font-semibold">消息</h2>
-            {total > 0 ? (
-              <button
-                type="button"
-                onClick={() => readAll.mutate()}
-                disabled={readAll.isPending}
-                className="text-aux text-primary transition-colors duration-[var(--duration-fast)] hover:text-primary-hover hover:underline disabled:opacity-50"
-                data-testid="btn-read-all"
-              >
-                全部已读
-              </button>
-            ) : null}
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-aux text-muted-foreground transition-colors duration-[var(--duration-fast)] hover:text-foreground"
-          >
-            关闭
-          </button>
-        </div>
-
-        <div className="flex shrink-0 gap-5 border-b border-border bg-background px-5" role="tablist">
-          {tabs.map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              role="tab"
-              aria-selected={tab === t.key}
-              onClick={() => setTab(t.key)}
-              className={cn(
-                'relative h-11 text-aux transition-colors duration-[var(--duration-fast)]',
-                tab === t.key ? 'font-semibold text-foreground' : 'text-muted-foreground',
-              )}
-            >
-              {t.label}
-              {t.count > 0 ? (
-                <span className="ml-1 text-caption tabular-nums text-danger">{t.count}</span>
-              ) : null}
-              {tab === t.key ? (
-                <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-foreground" />
-              ) : null}
-            </button>
-          ))}
-        </div>
-
-        <div className="overflow-y-auto pb-10" data-testid="message-list">
-          {messages.isPending ? (
-            <p className="px-5 py-10 text-center text-aux text-faint">加载中…</p>
-          ) : items.length === 0 ? (
-            <EmptyTab tab={tab} />
-          ) : (
-            <div className="p-4">
-              <Group>
-                <ul className="m-0 list-none p-0">
-                  {items.map((f) => (
-                    <li
-                      key={f.head.id}
-                      className={groupRowClass({
-                        interactive: true,
-                        className: 'items-start px-4 py-3.5',
-                      })}
-                      data-testid="message-item"
-                    >
-                      <MessageRow
-                        message={f.head}
-                        sameTargetCount={f.sameTargetCount}
-                        onClose={onClose}
-                      />
-                    </li>
-                  ))}
-                </ul>
-              </Group>
-            </div>
-          )}
-          {messages.hasNextPage ? (
-            <button
-              type="button"
-              onClick={() => void messages.fetchNextPage()}
-              disabled={messages.isFetchingNextPage}
-              className="block w-full py-3 text-center text-aux text-primary disabled:opacity-50"
-            >
-              {messages.isFetchingNextPage ? '加载中…' : '加载更多'}
-            </button>
-          ) : null}
-        </div>
-      </aside>
-    </>
-  )
-}
-
-/** 空态。系统消息还没有产生者，如实说明，不摆假内容 */
-function EmptyTab({ tab }: { tab: MessageType }) {
-  const hint: Record<MessageType, string> = {
-    LIKE: '还没有人赞过你的内容',
-    COMMENT: '还没有评论消息',
-    MENTION: '还没有人 @ 你',
-    FOLLOW: '还没有人关注你',
-    SYSTEM: '还没有系统通知',
-  }
-  return (
-    <p className="px-5 py-14 text-center text-aux text-muted-foreground">{hint[tab]}</p>
-  )
-}
-
-/**
- * 摘录只是"这条消息说了什么"的一句话提示，不是正文。
- *
- * 正文是 Markdown，直接截 120 字会把 `##`、`**`、反引号带进来，
- * 看起来像坏了。在**展示层**清掉而不是写入时清：
- * 已有的消息也能一起变干净，不需要回填。
- *
- * 只去掉最扎眼的几种标记，不做完整解析——过度清洗会把 `2*3` 变成 `23`。
- */
-function cleanExcerpt(text: string | undefined): string {
-  if (!text) return ''
-  return text
-    .replace(/^\s{0,3}#{1,6}\s+/gm, '')   // 标题
-    .replace(/^\s{0,3}[-*+]\s+/gm, '')    // 无序列表
-    .replace(/^\s{0,3}\d+\.\s+/gm, '')   // 有序列表
-    .replace(/\*\*|__|`/g, '')            // 粗体 / 行内代码
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-/**
- * 折叠连赞：相邻的、同类型 + 同目标的消息合成一条。
- *
- * <b>只在展示层折叠，存储不折叠</b>（不变量 9）。每一次点赞都是独立的事实，
- * 但它们对读者是同一件事——"这条帖子被很多人赞了"。
- *
- * 只折叠**相邻**的：跨页或中间夹了别的消息就不合并。
- * 这是一条刻意保守的规则——为了合并而重排顺序，会让"最新在上"变得不可信。
- *
- * 只在 LIKE 上折叠。评论与 @ 每条都带着不同的话，合并了就丢了信息。
- */
-type FoldedMessage = { head: MessageView; sameTargetCount: number; ids: string[] }
-
-function foldMessages(items: MessageView[]): FoldedMessage[] {
-  const out: FoldedMessage[] = []
-  for (const m of items) {
-    const last = out[out.length - 1]
-    const mergeable =
-      last &&
-      m.type === 'LIKE' &&
-      last.head.type === 'LIKE' &&
-      m.targetId &&
-      m.targetId === last.head.targetId &&
-      m.postId === last.head.postId
-    if (mergeable) {
-      last.sameTargetCount += 1
-      last.ids.push(m.id ?? '')
-      continue
-    }
-    out.push({ head: m, sameTargetCount: 1, ids: [m.id ?? ''] })
-  }
-  return out
-}
-
-/**
- * 一条消息。
- *
- * 显式列出四种文案，而不是拼 `actorNickname + '赞了你'`——
- * 后者的措辞会散落在各个分支里，以后想改"赞了你"为"觉得不错"要翻遍代码。
- */
-function MessageRow({
-  message,
-  sameTargetCount,
-  onClose,
-}: {
-  message: MessageView
-  /** 同一目标的连续点赞条数；>1 时显示"等 N 人" */
-  sameTargetCount: number
-  onClose: () => void
-}) {
-  const markRead = useMarkRead()
-  const text = (() => {
-    switch (message.type) {
-      case 'LIKE':
-        // 折叠后是"林间 等 5 人 赞了你的"——"等 N 人"而不是"和其他 N 人"，
-        // 因为折叠的条数里已经包含了 head 自己
-        return sameTargetCount > 1 ? `等 ${String(sameTargetCount)} 人 赞了你的` : '赞了你的'
-      case 'COMMENT':
-        return '评论了你的'
-      case 'MENTION':
-        return '在评论里提到了你'
-      case 'FOLLOW':
-        // 关注消息**不折叠**，所以永远只有单个 actor 的措辞
-        return '关注了你'
-      case 'SYSTEM':
-        return '系统通知'
-      default:
-        return '有新消息'
-    }
-  })()
-  const unread = !message.readAt
-  // 跳转目标：
-  //   FOLLOW → 对方的个人主页（/u/{actorId}），方便直接回关
-  //   其余 → 帖子页（V2 之前写的消息没有社群名/帖子 id，当初没存），
-  //          那种消息保持不可点——比点了跳到 404 好
-  const href =
-    message.type === 'FOLLOW'
-      ? message.actorId
-        ? `/u/${encodeURIComponent(message.actorId)}`
-        : null
-      : message.communityName && message.postId
-        ? `/c/${encodeURIComponent(message.communityName)}/p/${message.postId}` +
-          (message.commentId
-            ? `?comment=${encodeURIComponent(message.commentId)}` +
-              (message.rootCommentId ? `&root=${encodeURIComponent(message.rootCommentId)}` : '')
-            : '')
-        : null
-
-  const body = (
-    <div className="flex gap-3">
-      <Avatar url={message.actorAvatar ?? null} name={message.actorNickname ?? ''} size={32} />
-      <div className="min-w-0 flex-1">
-        <p className="m-0 text-body leading-[1.6] text-foreground">
-          <span className="font-medium">{message.actorNickname ?? '某人'}</span>{' '}
-          <span className="text-muted-foreground">{text}</span>
-          {message.targetTitle ? (
-            <>
-              {' '}
-              <span className="font-medium">《{message.targetTitle}》</span>
-            </>
-          ) : null}
-        </p>
-        {cleanExcerpt(message.excerpt) ? (
-          <p className="m-0 mt-1 line-clamp-2 text-aux text-faint">
-            {cleanExcerpt(message.excerpt)}
-          </p>
-        ) : null}
-        <p className="m-0 mt-1.5 flex items-center gap-2 text-caption text-faint">
-          <span>{relativeTime(message.createdAt)}</span>
-          {unread ? <span className="h-1.5 w-1.5 rounded-full bg-danger" aria-label="未读" /> : null}
-        </p>
-      </div>
+      <LiveMessageToast
+        event={liveToast}
+        onDismiss={() => setLiveToast(null)}
+        onOpenDrawer={(tab) => {
+          setDrawerTab(tab)
+          setDrawerOpen(true)
+        }}
+      />
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      <ThemeStudioSheet open={themeOpen} onClose={() => setThemeOpen(false)} />
     </div>
-  )
-
-  return href ? (
-    <Link
-      to={href}
-      onClick={() => {
-        // 点开就是读过了。跳转不等它返回——一个"顺手"的请求不该挡住导航
-        if (unread) markRead.mutate(message.id ?? '')
-        onClose()
-      }}
-      className="block"
-      data-testid="message-link"
-    >
-      {body}
-    </Link>
-  ) : (
-    body
   )
 }

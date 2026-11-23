@@ -1,251 +1,354 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router'
+import { motion } from 'framer-motion'
+import {
+  ArrowLeft,
+  Crown,
+  Edit3,
+  History,
+  ShieldBan,
+  ShieldCheck,
+  Sparkles,
+  UserCheck,
+} from 'lucide-react'
 import {
   useCommunityAdminHistory,
   useCommunityDetail,
   useCommunityHistory,
-  type HistoryCategory,
 } from '@/features/community/api'
+import type { HistoryCategory } from '@/features/community/api'
 import { pickAuthor, useUserSummaries } from '@/features/content/api'
-import { authErrorMessage } from '@/features/auth/auth-error'
+import { getCommunityChroma } from '@/shared/theme/community-chroma'
 import { Avatar } from '@/shared/ui/avatar'
+import { LuminousIcon } from '@/shared/ui/brand-mark'
+import { Button } from '@/shared/ui/button'
+import { Card } from '@/shared/ui/card'
 import { Empty } from '@/shared/ui/empty'
-import { Group, GroupHeader, groupRowClass } from '@/shared/ui/group'
 import { Pill } from '@/shared/ui/pill'
 import { Segmented } from '@/shared/ui/segmented'
 import { Skeleton } from '@/shared/ui/skeleton'
 import { absoluteDate, absoluteDateTime } from '@/shared/lib/time'
 
-/**
- * 事件类型的展示名。
- *
- * 映射写在**前端**而不是让后端直接返回中文：category 与 eventType 是契约里稳定的
- * 机器可读值，文案属于展示层。未知类型不隐藏，退化成原始 code ——
- * 后端加了一种事件而前端还没跟上时，编年史不该整条消失。
- */
-const EVENT_LABEL: Record<string, string> = {
-  COMMUNITY_CREATED: '社群创建',
-  ADMIN_TRANSFERRED: '管理员转让',
-  INFO_UPDATED: '信息更新',
-  MEMBER_BANNED: '封禁成员',
-  MEMBER_UNBANNED: '解除封禁',
+const EVENT_META: Record<
+  string,
+  { label: string; gradient: string; icon: typeof Sparkles }
+> = {
+  COMMUNITY_CREATED: {
+    label: '社群创立',
+    gradient: 'linear-gradient(135deg, #FBBF24, #F97316)',
+    icon: Sparkles,
+  },
+  ADMIN_TRANSFERRED: {
+    label: '管理员交接',
+    gradient: 'linear-gradient(135deg, #A78BFA, #EC4899)',
+    icon: Crown,
+  },
+  INFO_UPDATED: {
+    label: '信息更新',
+    gradient: 'linear-gradient(135deg, #22D3EE, #3B82F6)',
+    icon: Edit3,
+  },
+  MEMBER_BANNED: {
+    label: '成员封禁',
+    gradient: 'linear-gradient(135deg, #FB7185, #E11D48)',
+    icon: ShieldBan,
+  },
+  MEMBER_UNBANNED: {
+    label: '解除封禁',
+    gradient: 'linear-gradient(135deg, #34D399, #06B6D4)',
+    icon: ShieldCheck,
+  },
 }
 
-const FILTERS: Array<{ value: HistoryCategory; label: string; testId: string }> = [
-  { value: 'all', label: '全部', testId: 'history-filter-all' },
-  { value: 'milestone', label: '大事记', testId: 'history-filter-milestone' },
-  { value: 'moderation', label: '治理记录', testId: 'history-filter-moderation' },
-]
-
-/**
- * 社群历史（公开路由 `/c/:name/history`）。
- *
- * 三件事决定了它的形状：
- *
- * 1. **游客可读**。编年史是社群的公共记忆，包括治理记录（谁因为什么被封）。
- *    因此这里没有 viewer 字段，也没有任何按登录态变化的分支。
- * 2. **单栏 980**，不套 `CommunityLayout` 的双栏：历史不是"在某个社群里读帖子"，
- *    它是这个社群的档案，左栏的帖子列表在这里只会分散注意力。
- * 3. **两个请求各自独立**：历任管理员不分页（任数量级是个位数），时间线游标分页。
- *    任一个挂了不该让另一个也空着。
- */
 export function CommunityHistoryPage() {
-  const { name } = useParams<{ name: string }>()
-  const detail = useCommunityDetail(name)
+  const { name } = useParams()
+  const communityName = name ?? ''
   const [category, setCategory] = useState<HistoryCategory>('all')
-  const adminHistory = useCommunityAdminHistory(name)
-  const history = useCommunityHistory(name, category)
 
-  const terms = adminHistory.data?.items ?? []
-  const events = (history.data?.pages ?? []).flatMap((p) => p.items ?? [])
+  const detail = useCommunityDetail(communityName)
+  const adminHistory = useCommunityAdminHistory(communityName)
+  const history = useCommunityHistory(communityName, category)
+  const chroma = getCommunityChroma(detail.data?.name ?? communityName)
 
-  // 操作人 / 对象 / 历任管理员的昵称头像一次取完：一屏 N 条 = 1 个请求，
-  // 不逐条查（那是 N+1，也是 p55-social.md §7 明确否掉的写法）。
-  const summaries = useUserSummaries([
-    ...terms.map((t) => t.userId),
-    ...events.flatMap((e) => [e.operatorId, e.targetUserId]),
-  ])
-  const nameOf = (userId: string | undefined) =>
-    pickAuthor(summaries.data, userId)?.nickname ?? (summaries.isPending ? '…' : '已注销用户')
-  const avatarOf = (userId: string | undefined) =>
-    pickAuthor(summaries.data, userId)?.avatarUrl ?? null
+  const terms = useMemo(() => adminHistory.data?.items ?? [], [adminHistory.data])
+  const events = useMemo(
+    () => history.data?.pages.flatMap((p) => p.items ?? []) ?? [],
+    [history.data],
+  )
 
-  const communityName = detail.data?.name ?? name ?? ''
+  const allUserIds = useMemo(() => {
+    const ids: Array<string | undefined> = []
+    for (const t of terms) ids.push(t.userId)
+    for (const e of events) {
+      ids.push(e.operatorId)
+      ids.push(e.targetUserId)
+    }
+    return ids
+  }, [terms, events])
+
+  const { data: users } = useUserSummaries(allUserIds)
 
   return (
-    <div
-      className="min-h-[calc(100vh-var(--topbar-h))] bg-surface"
-      data-testid="community-history-page"
-    >
-      <div className="mx-auto w-full max-w-[980px] px-6 pb-24 pt-12">
+    <div data-testid="community-history-page" className="mx-auto max-w-4xl space-y-7">
+      {/* 顶部返回与标题 */}
+      <div className="space-y-4">
         <Link
-          to={`/c/${encodeURIComponent(name ?? '')}`}
-          className="text-aux text-muted-foreground transition-colors duration-[var(--duration-fast)] hover:text-foreground hover:underline"
+          to={`/c/${encodeURIComponent(communityName)}`}
           data-testid="history-back-link"
+          className="glass-panel inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold text-secondary-foreground transition-colors hover:border-[rgba(var(--accent-rgb),0.45)] hover:text-foreground"
         >
-          ← 返回 {communityName}
+          <ArrowLeft className="h-3.5 w-3.5 text-primary" />
+          返回「{detail.data?.name ?? communityName}」
         </Link>
 
-        <header className="mt-5 mb-10">
-          <h1 className="m-0 text-title" data-testid="history-title">
-            {communityName}的历史
-          </h1>
-          <p className="m-0 mt-2 max-w-[38rem] text-read text-muted-foreground">
-            谁在这里当过管理员，以及发生过什么。全部公开可读。
-          </p>
-        </header>
-
-        {/* ---------------- 历代管理员 ---------------- */}
-        <section className="mb-12">
-          <GroupHeader className="px-1">历代管理员</GroupHeader>
-          <Group data-testid="admin-history-section">
-            {adminHistory.isPending ? (
-              <div className="px-4 py-4">
-                <Skeleton className="h-10 w-full" />
-              </div>
-            ) : adminHistory.isError ? (
-              <p className="m-0 px-4 py-4 text-aux text-danger">
-                {authErrorMessage(adminHistory.error)}
-              </p>
-            ) : terms.length === 0 ? (
-              <Empty title="还没有管理员记录" description="历任管理员由建社与转让事件推导。" />
-            ) : (
-              <ul className="m-0 list-none p-0">
-                {terms.map((t) => (
-                  <li
-                    key={`${String(t.term)}-${t.userId ?? ''}`}
-                    className={groupRowClass()}
-                    data-testid="admin-term-item"
-                  >
-                    <span className="w-14 shrink-0 text-caption tabular-nums text-faint">
-                      第 {t.term ?? 1} 任
-                    </span>
-                    <Link
-                      to={`/u/${encodeURIComponent(t.userId ?? '')}`}
-                      className="inline-flex min-w-0 items-center gap-2.5 transition-opacity duration-[var(--duration-fast)] hover:opacity-80"
-                      data-testid="admin-term-user"
-                    >
-                      <Avatar url={avatarOf(t.userId)} name={nameOf(t.userId)} size={32} />
-                      <span className="truncate text-body font-medium text-foreground">
-                        {nameOf(t.userId)}
-                      </span>
-                    </Link>
-                    {t.current ? (
-                      <span
-                        className="inline-flex h-[20px] shrink-0 items-center rounded-full bg-fill px-2 text-caption font-medium text-muted-foreground"
-                        data-testid="admin-term-current"
-                      >
-                        现任
-                      </span>
-                    ) : null}
-                    <span className="ml-auto shrink-0 text-caption tabular-nums text-faint">
-                      {absoluteDate(t.startedAt)}
-                      {' — '}
-                      {t.current ? '至今' : absoluteDate(t.endedAt)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Group>
-        </section>
-
-        {/* ---------------- 时间线 ---------------- */}
-        <section>
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3 px-1">
-            <h2 className="m-0 text-sub font-semibold">社群时间线</h2>
-            {/* 切筛选 = 换一个 query（游标绑定分类），不用清空已有列表手忙脚乱 */}
-            <Segmented value={category} onChange={setCategory} options={FILTERS} />
-          </div>
-
-          <Group>
-            {history.isPending ? (
-              <div className="space-y-2 px-4 py-4">
-                {[0, 1, 2].map((i) => (
-                  <Skeleton key={i} className="h-12 w-full" />
-                ))}
-              </div>
-            ) : history.isError ? (
-              <p className="m-0 px-4 py-4 text-aux text-danger" data-testid="history-error">
-                {authErrorMessage(history.error)}
-              </p>
-            ) : events.length === 0 ? (
-              <Empty
-                title="还没有这一类的记录"
-                description={
-                  category === 'moderation'
-                    ? '封禁与解封会出现在这里。'
-                    : category === 'milestone'
-                      ? '建社、转让管理员、改信息会出现在这里。'
-                      : '社群发生的事会按时间倒序记在这里。'
-                }
-                testId="history-empty"
-              />
-            ) : (
-              <ul className="m-0 list-none p-0" data-testid="community-history-list">
-                {events.map((e) => (
-                  <li
-                    key={e.id}
-                    className={groupRowClass({ className: 'flex-col items-start gap-1.5 py-4' })}
-                    data-testid="history-item"
-                  >
-                    <div className="flex w-full flex-wrap items-center gap-x-2 gap-y-1 text-caption text-faint">
-                      <Pill data-testid="history-event-type">
-                        {EVENT_LABEL[e.eventType ?? ''] ?? e.eventType ?? '事件'}
-                      </Pill>
-                      <span>操作人</span>
-                      <Link
-                        to={`/u/${encodeURIComponent(e.operatorId ?? '')}`}
-                        className="text-muted-foreground transition-colors duration-[var(--duration-fast)] hover:text-foreground hover:underline"
-                        data-testid="history-operator"
-                      >
-                        {nameOf(e.operatorId)}
-                      </Link>
-                      {e.targetUserId ? (
-                        <>
-                          <span>·</span>
-                          <span>对象</span>
-                          <Link
-                            to={`/u/${encodeURIComponent(e.targetUserId)}`}
-                            className="text-muted-foreground transition-colors duration-[var(--duration-fast)] hover:text-foreground hover:underline"
-                            data-testid="history-target"
-                          >
-                            {nameOf(e.targetUserId)}
-                          </Link>
-                        </>
-                      ) : null}
-                      {/* 编年史用绝对时间：这里要的是"哪天发生的"，不是"多久以前" */}
-                      <span className="ml-auto shrink-0 tabular-nums">
-                        {absoluteDateTime(e.createdAt)}
-                      </span>
-                    </div>
-                    {e.detail ? (
-                      <p
-                        className="m-0 break-words text-body leading-[1.75] text-foreground"
-                        data-testid="history-detail"
-                      >
-                        {e.detail}
-                      </p>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Group>
-
-          {history.hasNextPage ? (
-            <button
-              type="button"
-              onClick={() => void history.fetchNextPage()}
-              disabled={history.isFetchingNextPage}
-              className="mt-2 w-full rounded-full py-3 text-aux text-muted-foreground transition-colors duration-[var(--duration-fast)] hover:bg-fill hover:text-foreground disabled:opacity-50"
-              data-testid="btn-load-more-history"
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <LuminousIcon size="lg" gradient={chroma.gradient}>
+              <History className="h-6 w-6" />
+            </LuminousIcon>
+            <h1
+              data-testid="history-title"
+              className="font-display text-2xl font-extrabold tracking-tight text-foreground sm:text-3xl"
             >
-              {history.isFetchingNextPage ? '加载中…' : '加载更多'}
-            </button>
-          ) : null}
-        </section>
+              {detail.data?.name ?? communityName} ·{' '}
+              <span className="text-aurora">社群编年史</span>
+            </h1>
+          </div>
+        </div>
       </div>
+
+      {/* ====================================================================
+          历代管理员勋章脉络
+         ==================================================================== */}
+      <section data-testid="admin-history-section" className="space-y-3">
+        <div className="flex items-center gap-2 px-1">
+          <Crown className="h-4 w-4 text-warning" />
+          <h2 className="font-display text-sm font-bold tracking-wide text-foreground">
+            历代管理员脉络
+          </h2>
+        </div>
+
+        {adminHistory.isPending ? (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-24 w-full rounded-2xl" />
+            ))}
+          </div>
+        ) : terms.length === 0 ? (
+          <Card padding="sm" spotlight={false}>
+            <p className="text-xs text-muted-foreground">暂无管理员交接记录。</p>
+          </Card>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {terms.map((t, idx) => {
+              const u = pickAuthor(users, t.userId)
+              const nick = u?.nickname ?? (t.userId ? `用户 #${t.userId.slice(-4)}` : '已注销用户')
+              return (
+                <motion.div
+                  key={`${String(t.term)}-${t.userId ?? String(idx)}`}
+                  data-testid="admin-term-item"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.25, delay: idx * 0.05 }}
+                >
+                  <Card
+                    padding="sm"
+                    className={
+                      t.current
+                        ? 'rounded-2xl border-warning/45 shadow-lg'
+                        : 'rounded-2xl'
+                    }
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="tabular-nums rounded-lg border border-[var(--border-glass-strong)] bg-[var(--bg-input)] px-2 py-0.5 font-mono text-[11px] font-bold text-secondary-foreground">
+                        第 {String(t.term ?? idx + 1)} 任
+                      </span>
+                      {t.current && (
+                        <Pill tone="warning" data-testid="admin-term-current">
+                          <Crown className="h-3 w-3" />
+                          现任
+                        </Pill>
+                      )}
+                    </div>
+
+                    <div className="mt-3 flex items-center gap-2.5">
+                      <Avatar name={nick} src={u?.avatarUrl} size="sm" ring={Boolean(t.current)} />
+                      <div className="min-w-0">
+                        {t.userId ? (
+                          <Link
+                            to={`/u/${encodeURIComponent(t.userId)}`}
+                            data-testid="admin-term-user"
+                            className="block truncate text-sm font-bold text-foreground hover:text-primary"
+                          >
+                            {nick}
+                          </Link>
+                        ) : (
+                          <span
+                            data-testid="admin-term-user"
+                            className="block truncate text-sm font-bold text-foreground"
+                          >
+                            {nick}
+                          </span>
+                        )}
+                        <p className="tabular-nums text-[11px] text-muted-foreground">
+                          {absoluteDate(t.startedAt)} — {t.endedAt ? absoluteDate(t.endedAt) : '至今'}
+                        </p>
+                      </div>
+                    </div>
+                  </Card>
+                </motion.div>
+              )
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* ====================================================================
+          竖向发光编年史时间轴
+         ==================================================================== */}
+      <section className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-display text-base font-bold text-foreground">事件编年史</h2>
+          <Segmented
+            size="sm"
+            value={category}
+            onChange={setCategory}
+            options={[
+              { value: 'all', label: '全部', testId: 'history-filter-all' },
+              { value: 'milestone', label: '大事记', testId: 'history-filter-milestone' },
+              { value: 'moderation', label: '治理记录', testId: 'history-filter-moderation' },
+            ]}
+          />
+        </div>
+
+        {history.isPending ? (
+          <div className="space-y-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-24 w-full rounded-2xl" />
+            ))}
+          </div>
+        ) : history.isError ? (
+          <Empty
+            testId="history-error"
+            title="社群历史加载失败"
+            description="请稍后重试。"
+          />
+        ) : events.length === 0 ? (
+          <Empty
+            testId="history-empty"
+            title="该分类下暂无历史记录"
+            description="社群的每一次重大变更与治理动作都会永久记录在此。"
+            icon={<History className="h-5 w-5" />}
+          />
+        ) : (
+          <div data-testid="community-history-list" className="relative pl-6 sm:pl-8">
+            {/* 竖向极光发光主光束 */}
+            <div
+              aria-hidden="true"
+              className="absolute top-2 bottom-2 left-2.5 w-[2px] rounded-full sm:left-3.5"
+              style={{
+                background:
+                  'linear-gradient(180deg, var(--aurora-1), var(--aurora-2) 55%, var(--aurora-3) 90%, transparent)',
+                opacity: 0.75,
+              }}
+            />
+
+            <div className="space-y-4">
+              {events.map((ev, idx) => {
+                const meta = EVENT_META[ev.eventType ?? ''] ?? {
+                  label: ev.eventType ?? '事件',
+                  gradient: chroma.gradient,
+                  icon: UserCheck,
+                }
+                const Icon = meta.icon
+                const operator = pickAuthor(users, ev.operatorId)
+                const target = pickAuthor(users, ev.targetUserId)
+
+                return (
+                  <motion.div
+                    key={ev.id ?? String(idx)}
+                    data-testid="history-item"
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.28, delay: Math.min(idx * 0.04, 0.3) }}
+                    className="relative"
+                  >
+                    {/* 发光光束节点 */}
+                    <span
+                      className="absolute top-5 -left-[25px] flex h-6 w-6 items-center justify-center rounded-full text-white shadow-lg ring-4 ring-[var(--bg-canvas)] sm:-left-[29px]"
+                      style={{ background: meta.gradient }}
+                    >
+                      <Icon className="h-3 w-3" />
+                    </span>
+
+                    <Card padding="sm" className="rounded-2xl">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span
+                          data-testid="history-event-type"
+                          className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold text-white shadow-sm"
+                          style={{ background: meta.gradient }}
+                        >
+                          {meta.label}
+                        </span>
+                        <span className="tabular-nums font-mono text-[11px] text-muted-foreground">
+                          {absoluteDateTime(ev.createdAt)}
+                        </span>
+                      </div>
+
+                      {ev.detail && (
+                        <p
+                          data-testid="history-detail"
+                          className="mt-2.5 text-sm leading-relaxed text-foreground"
+                        >
+                          {ev.detail}
+                        </p>
+                      )}
+
+                      <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                        {ev.operatorId && (
+                          <span data-testid="history-operator" className="inline-flex items-center gap-1.5">
+                            <span>操作人：</span>
+                            <Link
+                              to={`/u/${encodeURIComponent(ev.operatorId)}`}
+                              className="font-semibold text-secondary-foreground hover:text-primary"
+                            >
+                              {operator?.nickname ?? `用户 #${ev.operatorId.slice(-4)}`}
+                            </Link>
+                          </span>
+                        )}
+                        {ev.targetUserId && (
+                          <span data-testid="history-target" className="inline-flex items-center gap-1.5">
+                            <span>涉及成员：</span>
+                            <Link
+                              to={`/u/${encodeURIComponent(ev.targetUserId)}`}
+                              className="font-semibold text-secondary-foreground hover:text-primary"
+                            >
+                              {target?.nickname ?? `用户 #${ev.targetUserId.slice(-4)}`}
+                            </Link>
+                          </span>
+                        )}
+                      </div>
+                    </Card>
+                  </motion.div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {history.hasNextPage && (
+          <div className="pt-2 text-center">
+            <Button
+              variant="secondary"
+              data-testid="btn-load-more-history"
+              disabled={history.isFetchingNextPage}
+              onClick={() => void history.fetchNextPage()}
+            >
+              {history.isFetchingNextPage ? '加载中…' : '加载更早记录'}
+            </Button>
+          </div>
+        )}
+      </section>
     </div>
   )
 }

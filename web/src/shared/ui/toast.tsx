@@ -1,65 +1,60 @@
-import { useEffect, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { AlertCircle, CheckCircle2, Info, X } from 'lucide-react'
+import { cn } from '@/shared/lib/cn'
 
-type ToastItem = { id: number; text: string }
+export type ToastTone = 'info' | 'success' | 'danger'
 
-let seq = 0
-const listeners = new Set<(items: ToastItem[]) => void>()
-let items: ToastItem[] = []
-
-function emit() {
-  for (const fn of listeners) fn(items)
-}
-
-/**
- * 轻提示。模块级函数，任何地方都能调，不需要 context。
- *
- * 用它代替"页面上散落的红字"：错误提示、操作成功反馈都走这里，
- * 才能保证同一件事在全站长得一样、位置一样。
- */
-export function toast(text: string, ms = 1800) {
-  const id = (seq += 1)
-  items = [...items, { id, text }]
-  emit()
-  window.setTimeout(() => {
-    items = items.filter((t) => t.id !== id)
-    emit()
-  }, ms)
-}
-
-/**
- * 挂在应用根部一次即可。
- *
- * 形态是**深色胶囊 + 毛玻璃**：它要能压在白底、浅灰底、深色带上都看得清，
- * 而中性深色是唯一同时满足三者的选择（白色 toast 在白底上会消失）。
- */
-export function Toaster() {
-  const [list, setList] = useState<ToastItem[]>(items)
-
-  useEffect(() => {
-    listeners.add(setList)
-    return () => {
-      listeners.delete(setList)
-    }
-  }, [])
+export function Toast({
+  message,
+  tone = 'info',
+  onClose,
+  testId,
+  className,
+}: {
+  message: string | null | undefined
+  tone?: ToastTone
+  onClose?: () => void
+  testId?: string | undefined
+  className?: string
+}) {
+  const Icon = tone === 'danger' ? AlertCircle : tone === 'success' ? CheckCircle2 : Info
+  const toneClass =
+    tone === 'danger'
+      ? 'border-danger/40 bg-[var(--color-danger-soft)] text-danger'
+      : tone === 'success'
+        ? 'border-success/40 bg-[var(--color-success-soft)] text-success'
+        : 'border-[rgba(var(--accent-rgb),0.4)] bg-[var(--color-primary-soft)] text-foreground'
 
   return (
-    <div
-      className="pointer-events-none fixed bottom-9 left-1/2 z-[70] flex -translate-x-1/2 flex-col items-center gap-2"
-      aria-live="polite"
-    >
-      {list.map((t) => (
-        <div
-          key={t.id}
-          className="rounded-full bg-[rgba(29,29,31,0.90)] px-4.5 py-2.5 text-aux text-white backdrop-blur-[12px]"
-          style={{
-            boxShadow: 'var(--shadow-float)',
-            animation: 'rise var(--duration-base) var(--ease-out-soft) both',
-          }}
-          data-testid="toast"
+    <AnimatePresence>
+      {message && (
+        <motion.div
+          role={tone === 'danger' ? 'alert' : 'status'}
+          data-testid={testId ?? (tone === 'danger' ? 'toast-error' : 'toast')}
+          initial={{ opacity: 0, y: -8, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -6, scale: 0.98 }}
+          transition={{ duration: 0.2 }}
+          className={cn(
+            'flex items-center gap-2.5 rounded-2xl border px-4 py-3 text-sm font-medium backdrop-blur-xl',
+            toneClass,
+            className,
+          )}
         >
-          {t.text}
-        </div>
-      ))}
-    </div>
+          <Icon className="h-4 w-4 shrink-0" />
+          <span className="flex-1 leading-snug">{message}</span>
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="关闭提示"
+              className="cursor-pointer rounded-lg p-1 opacity-75 transition-opacity hover:opacity-100"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </motion.div>
+      )}
+    </AnimatePresence>
   )
 }

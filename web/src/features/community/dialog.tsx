@@ -1,124 +1,143 @@
-import { useEffect, type ReactNode } from 'react'
+import { useEffect } from 'react'
+import type { ReactNode } from 'react'
+import { createPortal } from 'react-dom'
+import { AnimatePresence, motion } from 'framer-motion'
+import { X } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
+import { cn } from '@/shared/lib/cn'
 
-/**
- * 居中弹窗。社群治理里所有的"确认"都走这一个壳。
- *
- * 与 `shared/ui/sheet.tsx`（底部弹窗）分工明确：
- *   - Sheet 用来**浏览一组东西**（社群切换器：大卡片列表，滑得动）
- *   - Modal 用来**做一个决定**（删帖、封禁、转让）：遮罩 + 居中卡片，
- *     两个按钮在右下角，视线不用从内容上离开
- *
- * 四件必须做到的事（与 Sheet 同一套标准）：遮罩点击关闭、ESC 关闭、
- * 打开时锁 body 滚动、面板挡住点击不穿透。
- *
- * 只在需要时挂载（调用方 `{cond ? <Modal/> : null}`），不做 `open` 动画态：
- * 一个"要做一个决定"的弹窗不该有 250ms 的滑入让人等。
- */
-export function Modal({
+export function Dialog({
+  open,
+  onClose,
   title,
   description,
   children,
-  onClose,
   testId,
-  footer,
+  className,
 }: {
-  title: string
-  description?: ReactNode
-  children?: ReactNode
+  open: boolean
   onClose: () => void
-  testId?: string
-  footer?: ReactNode
+  title: ReactNode
+  description?: ReactNode
+  children: ReactNode
+  testId?: string | undefined
+  className?: string
 }) {
   useEffect(() => {
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    if (!open) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.body.style.overflow = prev
-      document.removeEventListener('keydown', onKey)
-    }
-  }, [onClose])
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, onClose])
 
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.32)] p-4"
-      onClick={onClose}
-      data-testid={testId}
-      style={{ animation: 'fade-in var(--duration-fast) var(--ease-out-soft) both' }}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        onClick={(e) => e.stopPropagation()}
-        className="max-h-[86vh] w-full max-w-[27rem] overflow-y-auto rounded-[var(--radius-xl)] bg-background p-7"
-        style={{ boxShadow: 'var(--shadow-float)' }}
-      >
-        <h2 className="m-0 text-sub font-semibold">{title}</h2>
-        {description ? (
-          <div className="m-0 mt-2 text-aux leading-[1.7] text-muted-foreground">{description}</div>
-        ) : null}
-        {children ? <div className="mt-5">{children}</div> : null}
-        {footer ? <div className="mt-6 flex flex-wrap justify-end gap-2">{footer}</div> : null}
-      </div>
-    </div>
+  const content = (
+    <AnimatePresence>
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="fixed inset-0 bg-black/60 backdrop-blur-md"
+          />
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            data-testid={testId}
+            initial={{ opacity: 0, scale: 0.94, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 8 }}
+            transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+            className={cn(
+              'glass-panel-strong relative z-10 w-full max-w-lg overflow-hidden rounded-3xl shadow-2xl',
+              className,
+            )}
+          >
+            <div
+              className="h-[2px] w-full"
+              style={{ background: 'var(--accent-gradient)' }}
+            />
+            <div className="flex items-start justify-between gap-3 border-b border-[var(--border-glass)] px-6 py-4">
+              <div>
+                <h2 className="font-display text-base font-bold text-foreground">{title}</h2>
+                {description && (
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    {description}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="关闭弹窗"
+                className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-[var(--bg-surface-hover)] hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="p-6">{children}</div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
   )
+
+  return typeof document !== 'undefined' ? createPortal(content, document.body) : content
 }
 
-/**
- * 二次确认。管理员删帖/删评、转让管理员都要过这一道。
- *
- * 文案必须说清**后果**（"删除后…"），而不只是问"确定吗" ——
- * 一个只问"确定吗"的弹窗，用户点到第三次就不看了。
- */
 export function ConfirmDialog({
+  open,
+  onClose,
+  onConfirm,
   title,
   description,
-  confirmLabel,
-  onConfirm,
-  onCancel,
-  busy = false,
+  confirmLabel = '确认',
+  cancelLabel = '取消',
   danger = false,
+  pending = false,
+  error,
   testId,
   confirmTestId,
 }: {
+  open: boolean
+  onClose: () => void
+  onConfirm: () => void
   title: string
   description: ReactNode
-  confirmLabel: string
-  onConfirm: () => void
-  onCancel: () => void
-  busy?: boolean
+  confirmLabel?: string
+  cancelLabel?: string
   danger?: boolean
-  testId?: string
-  confirmTestId?: string
+  pending?: boolean
+  error?: string | null | undefined
+  testId?: string | undefined
+  confirmTestId?: string | undefined
 }) {
   return (
-    <Modal
-      title={title}
-      description={description}
-      onClose={onCancel}
-      {...(testId === undefined ? {} : { testId })}
-      footer={
-        <>
-          <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
-            取消
+    <Dialog open={open} onClose={onClose} title={title} testId={testId}>
+      <div className="space-y-5">
+        <div className="text-sm leading-relaxed text-secondary-foreground">{description}</div>
+        {error && (
+          <p className="rounded-xl border border-danger/35 bg-[var(--color-danger-soft)] px-3.5 py-2.5 text-xs font-medium text-danger">
+            {error}
+          </p>
+        )}
+        <div className="flex justify-end gap-2.5">
+          <Button variant="secondary" onClick={onClose} disabled={pending}>
+            {cancelLabel}
           </Button>
           <Button
-            variant="primary"
-            size="sm"
+            variant={danger ? 'danger' : 'primary'}
             onClick={onConfirm}
-            disabled={busy}
-            className={danger ? 'bg-danger hover:bg-danger' : undefined}
+            disabled={pending}
             data-testid={confirmTestId}
           >
-            {busy ? '处理中…' : confirmLabel}
+            {pending ? '处理中…' : confirmLabel}
           </Button>
-        </>
-      }
-    />
+        </div>
+      </div>
+    </Dialog>
   )
 }

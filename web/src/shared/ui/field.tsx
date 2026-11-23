@@ -1,25 +1,57 @@
-import type { ComponentProps } from 'react'
+import type { InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from 'react'
+import { forwardRef } from 'react'
 import { cn } from '@/shared/lib/cn'
 
-/*
- * 输入框的统一外观。
- *
- * 形态取 Apple 的表单：**淡灰填充 + 无边框**，聚焦时底色变白、加一圈
- * 3px 的浅蓝光晕。不用粗 ring 描边：粗 ring 会把布局撑开、也会在密集表单里显得吵。
- *
- * 填充色选 surface 而不是 fill：白底页面（登录、发帖）上 fill（5% 黑）太淡，
- * 看不出这里可以打字；而白底分组卡片里的输入框本来就少见。
- */
-const FIELD =
-  'w-full rounded-[var(--radius-md)] border border-transparent bg-surface px-3.5 text-body text-foreground placeholder:text-faint ' +
-  'transition-[background-color,border-color,box-shadow] duration-[var(--duration-fast)] ' +
-  'hover:bg-surface-strong ' +
-  'focus:border-primary focus:bg-background focus:outline-none focus:shadow-[0_0_0_3px_var(--color-primary-soft)]'
+const BASE_CONTROL =
+  'w-full rounded-xl border border-[var(--border-glass-strong)] bg-[var(--bg-input)] px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/75 transition-all duration-200 focus:border-[rgba(var(--accent-rgb),0.65)] focus:outline-none focus:ring-2 focus:ring-[var(--ring-glow)] disabled:opacity-50'
 
-export function Input({ className, ...rest }: ComponentProps<'input'>) {
-  return <input className={cn(FIELD, 'h-10', className)} {...rest} />
-}
+export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
+  function Input({ className, ...rest }, ref) {
+    return <input ref={ref} className={cn(BASE_CONTROL, className)} {...rest} />
+  },
+)
 
-export function Textarea({ className, ...rest }: ComponentProps<'textarea'>) {
-  return <textarea className={cn(FIELD, 'resize-y py-3 leading-[1.7]', className)} {...rest} />
+export const Textarea = forwardRef<
+  HTMLTextAreaElement,
+  TextareaHTMLAttributes<HTMLTextAreaElement>
+>(function Textarea({ className, ...rest }, ref) {
+  return <textarea ref={ref} className={cn(BASE_CONTROL, 'resize-y leading-relaxed', className)} {...rest} />
+})
+
+export function Field({
+  label,
+  hint,
+  error,
+  htmlFor,
+  right,
+  children,
+  className,
+}: {
+  label: string
+  hint?: string | undefined
+  error?: string | undefined
+  htmlFor?: string | undefined
+  right?: ReactNode
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <div className={cn('space-y-1.5', className)}>
+      <div className="flex items-center justify-between gap-2">
+        <label
+          htmlFor={htmlFor}
+          className="text-xs font-semibold tracking-wide text-secondary-foreground"
+        >
+          {label}
+        </label>
+        {right}
+      </div>
+      {children}
+      {error ? (
+        <p className="text-xs font-medium text-danger">{error}</p>
+      ) : hint ? (
+        <p className="text-xs text-muted-foreground">{hint}</p>
+      ) : null}
+    </div>
+  )
 }

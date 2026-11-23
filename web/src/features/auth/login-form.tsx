@@ -1,138 +1,135 @@
 import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
+import { ArrowRight, Lock, Mail } from 'lucide-react'
 import { authErrorMessage } from '@/features/auth/auth-error'
 import { useSession } from '@/features/auth/session'
+import { BrandMark } from '@/shared/ui/brand-mark'
 import { Button } from '@/shared/ui/button'
-import { Input } from '@/shared/ui/field'
+import { Card } from '@/shared/ui/card'
+import { Field, Input } from '@/shared/ui/field'
+import { Toast } from '@/shared/ui/toast'
 
-/**
- * 登录。
- *
- * 版式照 Apple ID 登录页：**居中窄栏（400px）+ 大标题 + 无框留白**，
- * 没有卡片、没有边框。登录页只有一件事，容器一宽就散了。
- *
- * 输入框走共享的 `Input`（淡灰填充 + 聚焦蓝光晕），主按钮是 lg 实心胶囊：
- * 页面上唯一的蓝，也只有一个动作值得蓝。
- */
 export function LoginForm() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const login = useSession((s) => s.login)
   const logoutReason = useSession((s) => s.logoutReason)
+  const clearSession = useSession((s) => s.clear)
+  const clearLogoutReason = () => clearSession(null)
 
-  const [email, setEmail] = useState(params.get('registered') ?? '')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
 
-  const returnTo = params.get('returnTo') ?? '/me'
+  const returnTo = params.get('returnTo')
+  const safeReturnTo = returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/'
 
-  const onSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-    setBusy(true)
+    setSubmitting(true)
     try {
-      await login(email, password)
-      navigate(returnTo, { replace: true })
+      await login(email.trim(), password)
+      void navigate(safeReturnTo, { replace: true })
     } catch (err) {
       setError(authErrorMessage(err))
     } finally {
-      setBusy(false)
+      setSubmitting(false)
     }
   }
 
   return (
-    <div className="mx-auto w-full max-w-[400px] px-6 pb-24 pt-16 md:pt-24">
-      <h1 className="m-0 text-title">登录</h1>
-      <p className="m-0 mt-2 text-read text-muted-foreground">
-        用邮箱和密码进来，接着看你在追的帖子。
-      </p>
+    <Card padding="lg" strong className="mx-auto w-full max-w-md rounded-3xl">
+      <div className="mb-6 flex flex-col items-center text-center">
+        <BrandMark size={48} className="mb-3" />
+        <h1 className="font-display text-2xl font-extrabold tracking-tight text-foreground">
+          欢迎回到 <span className="text-aurora">kuaikan</span>
+        </h1>
+        <p className="mt-1 text-xs text-muted-foreground">使用邮箱登录你的极光社群空间</p>
+      </div>
 
-      {logoutReason === 'banned' ? (
-        <p
-          className="m-0 mt-6 rounded-[var(--radius-md)] bg-surface px-3.5 py-3 text-aux text-danger"
-          data-testid="session-notice"
-        >
-          账号已被封禁，如有疑问请联系管理员。
-        </p>
-      ) : logoutReason === 'expired' ? (
-        <p
-          className="m-0 mt-6 rounded-[var(--radius-md)] bg-surface px-3.5 py-3 text-aux text-warning"
-          data-testid="session-notice"
-        >
-          登录状态已过期，请重新登录。
-        </p>
-      ) : logoutReason === 'password_changed' ? (
-        // 改密成功必然全端下线：这句话必须出现在**登录页本身**。
-        // 从前它靠 router location.state 传递，被 RequireAuth 的同帧重定向抹掉，
-        // 用户只看到一个空白登录页（以为改密失败了）。现在改走 store 的 logoutReason。
-        <p
-          className="m-0 mt-6 rounded-[var(--radius-md)] bg-surface px-3.5 py-3 text-aux text-success"
-          data-testid="login-notice"
-        >
-          密码已修改，请使用新密码重新登录
-        </p>
-      ) : null}
+      <div className="mb-4 space-y-2.5">
+        {logoutReason === 'password_changed' && (
+          <Toast
+            tone="success"
+            message="密码已修改，全部设备已安全退出，请使用新密码重新登录。"
+            testId="login-notice"
+            onClose={clearLogoutReason}
+          />
+        )}
+        {logoutReason === 'banned' && (
+          <Toast
+            tone="danger"
+            message="该账号已被封禁，暂无法登录。你仍可以游客身份浏览全部公开内容。"
+            testId="session-notice"
+            onClose={clearLogoutReason}
+          />
+        )}
+        {logoutReason === 'expired' && (
+          <Toast
+            tone="info"
+            message="登录状态已过期，请重新登录。"
+            testId="session-notice"
+            onClose={clearLogoutReason}
+          />
+        )}
+        {error && <Toast tone="danger" message={error} testId="toast-error" />}
+      </div>
 
-      {params.get('registered') ? (
-        <p className="m-0 mt-6 rounded-[var(--radius-md)] bg-surface px-3.5 py-3 text-aux text-success">
-          注册成功，请用刚才的邮箱登录。
-        </p>
-      ) : null}
-
-      <form className="mt-8" onSubmit={onSubmit} data-testid="login-form" noValidate>
-        <div className="space-y-5">
-          <label className="block">
-            <span className="mb-2 block text-caption text-muted-foreground">邮箱</span>
+      <form data-testid="login-form" onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
+        <Field label="邮箱地址" htmlFor="login-email">
+          <div className="relative">
+            <Mail className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              data-testid="field-email"
-              className="h-11"
+              id="login-email"
               type="email"
+              autoComplete="email"
+              data-testid="field-email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              autoComplete="username"
+              placeholder="you@example.com"
+              className="pl-10"
+              required
             />
-          </label>
+          </div>
+        </Field>
 
-          <label className="block">
-            <span className="mb-2 block text-caption text-muted-foreground">密码</span>
+        <Field label="登录密码" htmlFor="login-password">
+          <div className="relative">
+            <Lock className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              data-testid="field-password"
-              className="h-11"
+              id="login-password"
               type="password"
+              autoComplete="current-password"
+              data-testid="field-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
+              placeholder="输入密码"
+              className="pl-10"
+              required
             />
-          </label>
-        </div>
-
-        {error ? (
-          <p className="m-0 mt-4 text-aux text-danger" data-testid="toast-error">
-            {error}
-          </p>
-        ) : null}
+          </div>
+        </Field>
 
         <Button
           type="submit"
           size="lg"
-          className="mt-7 w-full"
-          disabled={busy}
           data-testid="btn-submit"
+          disabled={submitting}
+          className="mt-2 w-full"
         >
-          {busy ? '登录中…' : '登录'}
+          <span>{submitting ? '正在验证身份…' : '登录'}</span>
+          <ArrowRight className="h-4 w-4" />
         </Button>
-
-        <p className="m-0 mt-6 border-t border-border pt-6 text-center text-aux text-muted-foreground">
-          还没有账号？
-          <Link
-            to="/register"
-            className="ml-1 text-primary underline-offset-[3px] hover:underline"
-          >
-            去注册
-          </Link>
-        </p>
       </form>
-    </div>
+
+      <p className="mt-6 text-center text-xs text-muted-foreground">
+        还没有账号？{' '}
+        <Link to="/register" className="font-semibold text-primary hover:underline">
+          立即注册
+        </Link>
+      </p>
+    </Card>
   )
 }

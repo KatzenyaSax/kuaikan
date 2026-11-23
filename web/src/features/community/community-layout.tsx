@@ -1,58 +1,96 @@
-import { Outlet, useMatch, useParams } from 'react-router'
-import { CommunitySwitcher } from '@/features/community/community-switcher'
+import { Link, Outlet, useParams } from 'react-router'
+import { ArrowLeft, PenLine } from 'lucide-react'
 import { useCommunityDetail } from '@/features/community/api'
+import { CommunitySwitcher } from '@/features/community/community-switcher'
 import { PostList } from '@/features/content/post-list'
-import { GroupHeader } from '@/shared/ui/group'
+import { getCommunityChroma } from '@/shared/theme/community-chroma'
+import { Avatar } from '@/shared/ui/avatar'
+import { Card } from '@/shared/ui/card'
 import { cn } from '@/shared/lib/cn'
 
 /**
- * 双栏布局：左边帖子列表，右边正文。
- *
- * 四条关键决定：
- *
- * 1. **容器跟顶栏同一个 980px、同一份 px-6**。左栏的左边就是顶栏 logo 的左边，
- *    右栏的右边就是顶栏右端的右边——页面和内壳是一个宽度，不是两个。
- *    （顶栏是 980，这里如果还用 1200，两栏之间的留白会被拉成一条空带。）
- *
- * 2. **URL 才是状态**。右栏内容由路由决定（index = 社群概览，p/:postId = 帖子正文），
- *    不用 useState。否则失去分享链接、后退键、刷新保持、cmd+click 开新标签。
- *
- * 3. **每栏各自滚动，页面本身不滚**。高度 = 视口 − 顶栏，用 `var(--topbar-h)`
- *    而不是写死的数字：顶栏高度改了这里自动跟上。
- *    （这条路由不显示页脚——双栏阅读页不需要页脚，见 RootLayout。）
- *
- * 4. **窄屏只显示一栏**：路由不变，按"当前是 index 还是详情"切换显示哪一栏。
- *
- * 左栏是浅底（#f5f5f7）+ 白色分组：inset grouped 需要底色衬托，否则白分组看不见。
+ * 社群双栏琉璃工作台：
+ * - 桌面端：左栏（社群标识 + 帖子时间线）+ 右栏（社群概览或帖子沉浸阅读）
+ * - 移动端：阅读帖子时收敛为单栏沉浸态，顶部提供返回帖子列表入口
  */
 export function CommunityLayout() {
-  const { name } = useParams<{ name: string }>()
-  const detail = useCommunityDetail(name)
-  const inDetail = Boolean(useMatch('/c/:name/p/:postId'))
+  const { name, postId } = useParams()
+  const communityName = name ?? ''
+  const detail = useCommunityDetail(communityName)
+  const chroma = getCommunityChroma(communityName)
+  const viewingPost = Boolean(postId)
 
   return (
-    <div className="mx-auto flex h-[calc(100vh-var(--topbar-h))] w-full max-w-[980px] px-0 md:px-6">
+    <div className="grid gap-5 lg:grid-cols-12">
+      {/* 左栏：社群头 + 帖子列表 */}
       <aside
-        className={cn(
-          'w-full shrink-0 overflow-y-auto bg-surface md:w-[272px]',
-          inDetail ? 'hidden md:block' : 'block',
-        )}
         data-testid="left-pane"
+        className={cn(
+          'lg:col-span-4 xl:col-span-4',
+          viewingPost ? 'hidden lg:block' : 'block',
+        )}
       >
-        <div className="px-3 pb-10 pt-5">
-          <GroupHeader className="px-1 pb-2.5">选择社群</GroupHeader>
-          <CommunitySwitcher activeName={detail.data?.name} />
+        <div className="sticky top-24 space-y-3.5">
+          <Card padding="none" className="overflow-hidden rounded-3xl">
+            <div className="h-1.5 w-full" style={{ background: chroma.gradient }} />
+            <div className="p-4">
+              <div className="flex items-center justify-between gap-2">
+                <Link
+                  to={`/c/${encodeURIComponent(communityName)}`}
+                  className="flex min-w-0 items-center gap-2.5 group"
+                >
+                  <Avatar
+                    name={detail.data?.name ?? communityName}
+                    src={detail.data?.avatarUrl}
+                    size="sm"
+                    shape="rounded"
+                  />
+                  <div className="min-w-0">
+                    <p className="truncate font-display text-sm font-bold text-foreground group-hover:text-primary">
+                      {detail.data?.name ?? communityName}
+                    </p>
+                    <p className="tabular-nums text-[11px] text-muted-foreground">
+                      {String(detail.data?.memberCount ?? 0)} 位成员
+                    </p>
+                  </div>
+                </Link>
 
-          <GroupHeader className="px-1 pb-2.5 pt-7">帖子</GroupHeader>
-          {/* key 用社群 id：切社群时整个列表重新挂载，分页状态自然归零 */}
-          <PostList key={detail.data?.id ?? 'pending'} communityId={detail.data?.id} />
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <CommunitySwitcher currentName={communityName} />
+                  <Link
+                    to={`/c/${encodeURIComponent(communityName)}/new`}
+                    title="发新帖"
+                    className="btn-aurora inline-flex h-8 w-8 items-center justify-center rounded-xl"
+                  >
+                    <PenLine className="h-3.5 w-3.5" />
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          <div className="max-h-[calc(100vh-14.5rem)] overflow-y-auto pr-0.5">
+            <PostList communityId={detail.data?.id} communityName={communityName} />
+          </div>
         </div>
       </aside>
 
+      {/* 右栏：社群概览 / 帖子沉浸阅读 */}
       <section
-        className={cn('flex-1 overflow-y-auto', inDetail ? 'block' : 'hidden md:block')}
         data-testid="right-pane"
+        className="min-w-0 lg:col-span-8 xl:col-span-8"
       >
+        {viewingPost && (
+          <div className="mb-3 lg:hidden">
+            <Link
+              to={`/c/${encodeURIComponent(communityName)}`}
+              className="glass-panel inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold text-foreground"
+            >
+              <ArrowLeft className="h-3.5 w-3.5 text-primary" />
+              返回「{communityName}」帖子列表
+            </Link>
+          </div>
+        )}
         <Outlet />
       </section>
     </div>

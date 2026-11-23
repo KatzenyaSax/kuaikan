@@ -1,5 +1,17 @@
-import { createContext, useContext, useState } from 'react'
-import { Link } from 'react-router'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useSearchParams } from 'react-router'
+import {
+  ChevronDown,
+  ChevronUp,
+  CornerDownRight,
+  MessageCircle,
+  Send,
+  ShieldBan,
+  Trash2,
+} from 'lucide-react'
+import { useSession } from '@/features/auth/session'
+import { BanMemberDialog } from '@/features/community/ban-member-dialog'
+import { ConfirmDialog } from '@/features/community/dialog'
 import {
   collectCommentUserIds,
   pickAuthor,
@@ -8,112 +20,145 @@ import {
   useDeleteComment,
   useReplies,
   useUserSummaries,
-  type CommentSort,
-  type CommentView,
 } from '@/features/content/api'
-import { useMyCommunityStatus } from '@/features/community/api'
-import { BanMemberDialog } from '@/features/community/ban-member-dialog'
-import { ConfirmDialog } from '@/features/community/dialog'
-import { authErrorMessage } from '@/features/auth/auth-error'
-import { useSession } from '@/features/auth/session'
+import type { CommentSort, CommentView, UserSummary } from '@/features/content/api'
+import { MentionText } from '@/features/content/mention-text'
 import { useInteractionStates } from '@/features/interaction/api'
 import { LikeButton } from '@/features/interaction/interaction-buttons'
+import { ApiError } from '@/shared/api/api-error'
 import { Avatar } from '@/shared/ui/avatar'
 import { Button } from '@/shared/ui/button'
+import { Card } from '@/shared/ui/card'
 import { Textarea } from '@/shared/ui/field'
-import { relativeTime } from '@/shared/lib/time'
-import { MentionText } from '@/features/content/mention-text'
+import { Pill } from '@/shared/ui/pill'
 import { Segmented } from '@/shared/ui/segmented'
-import { toast } from '@/shared/ui/toast'
+import { Skeleton } from '@/shared/ui/skeleton'
+import { relativeTime } from '@/shared/lib/time'
 import { cn } from '@/shared/lib/cn'
 
-/**
- * 帖子作者 id。评论里要标「楼主」——几乎所有论坛都这么做，
- * 因为它决定"这条回复的分量"，读者一眼就能看出来。
- *
- * 用 context 而不是逐层传参：`CommentSection` → `TopLevelComment` →
- * `ReplyList` → `ReplyItem` 有四层，多一个参数会把每层签名都挤满。
- * context 只在本模块内可见，不污染外部。
- */
-const PostAuthorContext = createContext<string | undefined>(undefined)
-
-/**
- * 当前社群名。评论行的快捷治理（删除 / 封禁作者）靠它判"我是不是这个社群的管理员"，
- * 与帖子正文用同一个 `/my-status` 缓存（同一个 queryKey，不会多一个请求）。
- *
- * 同样只在本模块内可见：多传一个 prop 会穿过 `CommentSection → TopLevelComment →
- * ReplyList → ReplyItem` 四层签名。
- */
-const CommunityNameContext = createContext<string | undefined>(undefined)
-
-/**
- * 评论行的次级动作（回复 / 删除 / 展开）的胶囊形态。
- *
- * 用小胶囊而不是纯文字：它们是**可点的**，而 12px 纯灰字看起来像标签。
- * 胶囊在 hover 时才亮底，所以不点的时候仍然安静。
- */
-const ACTION_CLASS =
-  'inline-flex h-7 items-center rounded-full px-2 text-caption text-faint ' +
-  'transition-colors duration-[var(--duration-fast)] hover:bg-fill hover:text-foreground'
-
-/** 「楼主」小标。刻意用浅灰而不是蓝色——蓝色在本项目里只表示“可点” */
-function AuthorBadge() {
-  return (
-    <span
-      className="inline-flex h-[18px] items-center rounded-full bg-fill px-2 align-middle text-caption font-medium leading-none text-muted-foreground"
-      data-testid="author-badge"
-    >
-      楼主
-    </span>
-  )
-}
-
-/**
- * 评论区。
- *
- * 两级平铺：一级评论下面直接列出它名下的**所有**回复，不再按层级缩进。
- * `replyToUserId` 用「回复 @某人」表达对话关系 —— 这就是不用缩进也读得懂的原因。
- *
- * tombstone（已删除但有回复）显示成"该评论已删除"，且**仍然可以展开回复**：
- * 位置还在，回复不该跟着消失。
- *
- * 分区只有一条 1px hairline，没有背景块、没有卡片。
- */
 export function CommentSection({
   postId,
-  commentCount,
   postAuthorId,
   communityName,
+  commentCount,
+  isCommunityAdmin,
 }: {
   postId: string
+  postAuthorId: string | undefined
+  communityName: string
   commentCount: number
-  postAuthorId?: string | undefined
-  /** 社群名。管理员的快捷治理入口靠它判权限 */
-  communityName?: string | undefined
+  isCommunityAdmin: boolean
 }) {
   const status = useSession((s) => s.status)
-  const authed = status === 'authenticated'
-  // 默认时间序。热度序是可选视图，不是替换——"我刚发的评论应该看得见"更符合直觉。
+  const meId = useSession((s) => s.user?.userId)
+  const isAuth = status === 'authenticated'
+
   const [sort, setSort] = useState<CommentSort>('time')
-  const list = useComments(postId, sort)
-  const items = (list.data?.pages ?? []).flatMap((p) => p.items ?? [])
+  const [searchParams, setSearchParams] = useSearchParams()
+  const anchorCommentId = searchParams.get('comment')
+  const anchorRootId = searchParams.get('root')
+
+  const [expandedRoots, setExpandedRoots] = useState<Record<string, boolean>>(() =>
+    anchorRootId ? { [anchorRootId]: true } : {},
+  )
+  const [highlightedId, setHighlightedId] = useState<string | null>(null)
+  const [adminDeleteTarget, setAdminDeleteTarget] = useState<string | null>(null)
+  const [adminDeleteError, setAdminDeleteError] = useState<string | null>(null)
+  const [banTarget, setBanTarget] = useState<{ userId: string; nickname: string } | null>(null)
+
+  const commentsQuery = useComments(postId, sort)
+  const createComment = useCreateComment(postId)
+  const deleteComment = useDeleteComment(postId)
+
+  const items = useMemo(
+    () => commentsQuery.data?.pages.flatMap((p) => p.items ?? []) ?? [],
+    [commentsQuery.data],
+  )
+
+  const userIds = useMemo(() => collectCommentUserIds(items), [items])
+  const { data: users } = useUserSummaries(userIds)
+
+  const commentTargets = useMemo(
+    () => items.map((c) => `COMMENT:${c.id ?? ''}`).filter((t) => t !== 'COMMENT:'),
+    [items],
+  )
+  const { data: states } = useInteractionStates(commentTargets, isAuth)
+  const likedSet = useMemo(() => {
+    const s = new Set<string>()
+    for (const st of states ?? []) {
+      if (st.targetType === 'COMMENT' && st.liked && st.targetId) s.add(st.targetId)
+    }
+    return s
+  }, [states])
+
+  // 锚点评论自动滚动 + 2 秒极光脉冲高亮 + 清理 URL 参数
+  useEffect(() => {
+    if (!anchorCommentId) return
+    let cancelled = false
+    const deadline = Date.now() + 3000
+
+    const tryScroll = () => {
+      if (cancelled) return
+      const el = document.getElementById(`comment-${anchorCommentId}`)
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        setHighlightedId(anchorCommentId)
+        const next = new URLSearchParams(searchParams)
+        next.delete('comment')
+        next.delete('root')
+        setSearchParams(next, { replace: true })
+        window.setTimeout(() => {
+          if (!cancelled) setHighlightedId(null)
+        }, 2300)
+        return
+      }
+      if (Date.now() < deadline) {
+        window.setTimeout(tryScroll, 180)
+      } else {
+        const next = new URLSearchParams(searchParams)
+        next.delete('comment')
+        next.delete('root')
+        setSearchParams(next, { replace: true })
+      }
+    }
+
+    tryScroll()
+    return () => {
+      cancelled = true
+    }
+  }, [anchorCommentId, searchParams, setSearchParams])
+
+  const confirmAdminDelete = () => {
+    if (!adminDeleteTarget) return
+    setAdminDeleteError(null)
+    deleteComment.mutate(adminDeleteTarget, {
+      onSuccess: () => {
+        setAdminDeleteTarget(null)
+      },
+      onError: (err) => {
+        setAdminDeleteError(err instanceof ApiError ? err.message : '删除评论失败')
+      },
+    })
+  }
 
   return (
-    <CommunityNameContext.Provider value={communityName}>
-      <PostAuthorContext.Provider value={postAuthorId}>
-      <section className="mt-16" data-testid="comment-section">
-      <div className="mb-6 flex items-center gap-2.5">
-        <h2 className="m-0 text-sub font-semibold">评论</h2>
-        {/* 计数为 0 不显示 */}
-        {commentCount > 0 ? (
-          <span className="text-aux text-faint" data-testid="comment-count">
-            {commentCount}
+    <section data-testid="comment-section" className="mt-8 space-y-5">
+      {/* 评论区顶栏 */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <MessageCircle className="h-5 w-5 text-primary" />
+          <h2 className="font-display text-lg font-bold text-foreground">评论讨论</h2>
+          <span
+            data-testid="comment-count"
+            className="tabular-nums rounded-full border border-[var(--border-glass-strong)] bg-[var(--bg-input)] px-2.5 py-0.5 font-mono text-xs font-semibold text-secondary-foreground"
+          >
+            {String(commentCount)}
           </span>
-        ) : null}
-        {/* 只有一个评论时不显示切换——切了也看不出区别 */}
-        {commentCount > 1 ? (
+        </div>
+
+        {(commentCount > 1 || items.length > 1) && (
           <Segmented
-            className="ml-auto"
+            size="sm"
             value={sort}
             onChange={setSort}
             options={[
@@ -121,492 +166,651 @@ export function CommentSection({
               { value: 'hot', label: '热度' },
             ]}
           />
-        ) : null}
+        )}
       </div>
 
-      {authed ? (
-        <CommentComposer postId={postId} replyTo={undefined} onDone={undefined} autoFocus={undefined} />
+      {/* 发一级评论输入框 */}
+      {isAuth ? (
+        <CommentComposer
+          placeholder="写下你的观点，支持 @昵称 提醒本社群成员…"
+          pending={createComment.isPending}
+          onSubmit={(body, onDone, onErr) => {
+            createComment.mutate(
+              { body },
+              {
+                onSuccess: () => onDone(),
+                onError: (err) => onErr(err instanceof ApiError ? err.message : '评论发送失败'),
+              },
+            )
+          }}
+        />
       ) : (
-        <p className="m-0 text-aux text-muted-foreground" data-testid="comment-login-hint">
-          登录后可以发表评论
-        </p>
+        <Card padding="sm" spotlight={false} className="rounded-2xl text-center">
+          <p data-testid="comment-login-hint" className="text-sm text-muted-foreground">
+            <Link to="/login" className="font-semibold text-primary hover:underline">
+              登录
+            </Link>{' '}
+            并加入社群后即可参与评论讨论
+          </p>
+        </Card>
       )}
 
-      {list.isPending ? (
-        <p className="mt-8 text-aux text-faint">加载中…</p>
-      ) : list.isError ? (
-        <p className="mt-8 text-aux text-danger">{authErrorMessage(list.error)}</p>
+      {/* 评论列表 */}
+      {commentsQuery.isPending ? (
+        <div className="space-y-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 w-full rounded-2xl" />
+          ))}
+        </div>
       ) : items.length === 0 ? (
-        <p className="mt-8 text-aux text-faint" data-testid="comment-empty">
-          还没有评论，来说两句
+        <p
+          data-testid="comment-empty"
+          className="rounded-2xl border border-[var(--border-glass)] bg-[var(--bg-surface)] py-10 text-center text-sm text-muted-foreground"
+        >
+          还没有评论，来发表第一条精彩见解吧。
         </p>
       ) : (
-        <ul className="m-0 mt-7 list-none p-0" data-testid="comment-list">
-          {items.map((c) => (
-            <li key={c.id} className="py-5 [&+&]:border-t [&+&]:border-border">
-              <TopLevelComment comment={c} postId={postId} />
-            </li>
-          ))}
+        <ul data-testid="comment-list" className="m-0 list-none space-y-3 p-0">
+          {items.map((c) => {
+            const id = c.id ?? ''
+            const isExpanded = Boolean(expandedRoots[id]) || anchorRootId === id
+            return (
+              <TopLevelCommentItem
+                key={id}
+                comment={c}
+                author={pickAuthor(users, c.authorId)}
+                postId={postId}
+                postAuthorId={postAuthorId}
+                meId={meId}
+                isAuth={isAuth}
+                isCommunityAdmin={isCommunityAdmin}
+                liked={likedSet.has(id)}
+                expanded={isExpanded}
+                highlightedId={highlightedId}
+                onToggleExpand={() =>
+                  setExpandedRoots((prev) => ({ ...prev, [id]: !isExpanded }))
+                }
+                onSelfDelete={(cid) => deleteComment.mutate(cid)}
+                onAdminDelete={(cid) => {
+                  setAdminDeleteError(null)
+                  setAdminDeleteTarget(cid)
+                }}
+                onAdminBan={(uid, nick) => setBanTarget({ userId: uid, nickname: nick })}
+              />
+            )
+          })}
         </ul>
       )}
 
-      {list.hasNextPage ? (
-        <button
-          type="button"
-          onClick={() => void list.fetchNextPage()}
-          disabled={list.isFetchingNextPage}
-          className="mt-1 w-full rounded-full py-2.5 text-aux text-muted-foreground transition-colors duration-[var(--duration-fast)] hover:bg-fill hover:text-foreground"
-          data-testid="btn-more-comments"
-        >
-          {list.isFetchingNextPage ? '加载中…' : '加载更多评论'}
-        </button>
-      ) : null}
-      </section>
-      </PostAuthorContext.Provider>
-    </CommunityNameContext.Provider>
+      {commentsQuery.hasNextPage && (
+        <div className="pt-2 text-center">
+          <Button
+            variant="secondary"
+            size="sm"
+            data-testid="btn-more-comments"
+            disabled={commentsQuery.isFetchingNextPage}
+            onClick={() => void commentsQuery.fetchNextPage()}
+          >
+            {commentsQuery.isFetchingNextPage ? '加载中…' : '查看更多评论'}
+          </Button>
+        </div>
+      )}
+
+      {/* 管理员删评确认弹窗 */}
+      <ConfirmDialog
+        open={Boolean(adminDeleteTarget)}
+        onClose={() => setAdminDeleteTarget(null)}
+        onConfirm={confirmAdminDelete}
+        title="确认以管理员身份删除该评论？"
+        description="删除后该评论内容将变为「该评论已删除」占位，并同步更新帖子评论数。"
+        confirmLabel="确认删除"
+        danger
+        pending={deleteComment.isPending}
+        error={adminDeleteError}
+        testId="admin-delete-comment-dialog"
+        confirmTestId="btn-confirm-delete-comment"
+      />
+
+      {/* 管理员封禁评论作者弹窗 */}
+      {banTarget && (
+        <BanMemberDialog
+          open={Boolean(banTarget)}
+          onClose={() => setBanTarget(null)}
+          communityName={communityName}
+          targetUserId={banTarget.userId}
+          targetNickname={banTarget.nickname}
+        />
+      )}
+    </section>
   )
 }
 
 function CommentComposer({
-  postId,
   replyTo,
-  onDone,
-  autoFocus,
+  placeholder,
+  pending,
+  onSubmit,
+  onCancel,
 }: {
-  postId: string
-  replyTo: string | undefined
-  onDone: (() => void) | undefined
-  autoFocus: boolean | undefined
+  replyTo?: { commentId: string; nickname: string } | undefined
+  placeholder: string
+  pending: boolean
+  onSubmit: (body: string, onDone: () => void, onErr: (msg: string) => void) => void
+  onCancel?: (() => void) | undefined
 }) {
-  const create = useCreateComment(postId)
   const [body, setBody] = useState('')
   const [error, setError] = useState<string | null>(null)
 
-  const submit = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (body.trim() === '') return
     setError(null)
-    // exactOptionalPropertyTypes: 一级评论要**省略** replyToCommentId，不能传 undefined
-    const payload = replyTo ? { replyToCommentId: replyTo, body } : { body }
-    create.mutate(payload, {
-      onSuccess: () => {
+    const clean = body.trim()
+    if (!clean) {
+      setError('评论内容不能为空')
+      return
+    }
+    onSubmit(
+      clean,
+      () => {
         setBody('')
-        onDone?.()
+        onCancel?.()
       },
-      onError: (err) => setError(authErrorMessage(err)),
-    })
+      (msg) => setError(msg),
+    )
   }
 
   return (
-    <form onSubmit={submit}>
+    <form
+      onSubmit={handleSubmit}
+      className="glass-panel rounded-2xl p-3.5 space-y-2.5"
+    >
+      {replyTo && (
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>
+            正在回复 <strong className="text-primary">{replyTo.nickname}</strong>
+          </span>
+          {onCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="cursor-pointer text-xs hover:text-foreground"
+            >
+              取消
+            </button>
+          )}
+        </div>
+      )}
       <Textarea
         data-testid={replyTo ? 'field-reply-body' : 'field-comment-body'}
         value={body}
         onChange={(e) => setBody(e.target.value)}
-        maxLength={2000}
+        placeholder={placeholder}
         rows={replyTo ? 2 : 3}
-        autoFocus={autoFocus}
-        placeholder={replyTo ? '写下你的回复…' : '写下你的评论…'}
+        maxLength={2000}
       />
-      <div className="mt-3 flex items-center gap-3">
+      {error && <p className="text-xs font-medium text-danger">{error}</p>}
+      <div className="flex items-center justify-between">
+        <span className="tabular-nums text-[11px] text-muted-foreground">
+          {String(body.length)} / 2000
+        </span>
         <Button
           type="submit"
-          disabled={create.isPending}
+          size="sm"
           data-testid={replyTo ? 'btn-submit-reply' : 'btn-submit-comment'}
+          disabled={pending}
         >
-          {create.isPending ? '发送中…' : replyTo ? '回复' : '发表'}
+          <Send className="h-3.5 w-3.5" />
+          {pending ? '发送中…' : replyTo ? '发送回复' : '发表评论'}
         </Button>
-        {error ? <span className="text-aux text-danger">{error}</span> : null}
       </div>
     </form>
   )
 }
 
-function TopLevelComment({ comment, postId }: { comment: CommentView; postId: string }) {
-  const session = useSession((s) => s.user)
-  const authed = useSession((s) => s.status) === 'authenticated'
-  const del = useDeleteComment(postId)
-  const [replying, setReplying] = useState(false)
-  const [expanded, setExpanded] = useState(false)
-  const authors = useUserSummaries([comment.authorId])
-  const author = pickAuthor(authors.data, comment.authorId)
-  const isMine = session?.userId === comment.authorId
-  // useContext 必须在顶层无条件调用：写在 && 右边会因为短路而跳过，
-  // 渲染次数一变 hooks 顺序就变了（lint 的 rules-of-hooks 抓的就是这个）
-  const postAuthorId = useContext(PostAuthorContext)
-  const isPostAuthor = !!comment.authorId && comment.authorId === postAuthorId
-  const states = useInteractionStates(comment.id ? [`comment:${comment.id}`] : [], authed)
-  // 快捷治理：当前用户是这个社群的管理员、且这条不是自己的
-  const communityName = useContext(CommunityNameContext)
-  const myStatus = useMyCommunityStatus(communityName, authed)
-  const [confirmDelete, setConfirmDelete] = useState(false)
-  const [banAuthor, setBanAuthor] = useState(false)
-  const canGovern =
-    myStatus.data?.admin === true && !isMine && !comment.deleted && Boolean(comment.authorId)
+function TopLevelCommentItem({
+  comment,
+  author,
+  postId,
+  postAuthorId,
+  meId,
+  isAuth,
+  isCommunityAdmin,
+  liked,
+  expanded,
+  highlightedId,
+  onToggleExpand,
+  onSelfDelete,
+  onAdminDelete,
+  onAdminBan,
+}: {
+  comment: CommentView
+  author: UserSummary | null
+  postId: string
+  postAuthorId: string | undefined
+  meId: string | undefined
+  isAuth: boolean
+  isCommunityAdmin: boolean
+  liked: boolean
+  expanded: boolean
+  highlightedId: string | null
+  onToggleExpand: () => void
+  onSelfDelete: (commentId: string) => void
+  onAdminDelete: (commentId: string) => void
+  onAdminBan: (userId: string, nickname: string) => void
+}) {
+  const [replyOpen, setReplyOpen] = useState(false)
+  const createComment = useCreateComment(postId)
+
+  const id = comment.id ?? ''
+  const nick = author?.nickname ?? '已注销用户'
+  const isOwner = Boolean(meId && meId === comment.authorId)
+  const isPostAuthor = Boolean(postAuthorId && postAuthorId === comment.authorId)
+  const isHighlighted = highlightedId === id
+  const replyCount = comment.replyCount ?? 0
 
   return (
-    <div
+    <li
+      id={`comment-${id}`}
       data-testid="comment-item"
-      data-comment-anchor={comment.id}
-      className="scroll-mt-24 rounded-md transition-colors duration-500 data-[highlighted=true]:bg-primary-soft"
-    >
-      <div className="flex items-center gap-2 text-aux text-faint">
-        {comment.deleted ? (
-          <span data-testid="comment-deleted">该评论已删除</span>
-        ) : (
-          <>
-            {/* 头像 + 昵称整体是一个链接：点击热区够大，也支持 cmd+click */}
-            <Link
-              to={`/u/${encodeURIComponent(comment.authorId ?? '')}`}
-              className="inline-flex min-w-0 items-center gap-2 transition-opacity duration-[var(--duration-fast)] hover:opacity-80"
-              data-testid="comment-author-link"
-            >
-              <Avatar url={author?.avatarUrl ?? null} name={author?.nickname ?? ''} size={24} />
-              <span
-                className="truncate text-body font-medium text-foreground"
-                data-testid="comment-author"
-              >
-                {author?.nickname ?? '…'}
-              </span>
-            </Link>
-            {isPostAuthor ? <AuthorBadge /> : null}
-            <span>·</span>
-            <span>{relativeTime(comment.createdAt)}</span>
-          </>
-        )}
-      </div>
-
-      {!comment.deleted ? (
-        <p
-          className="m-0 mt-2.5 whitespace-pre-wrap break-words text-body leading-[1.75] text-foreground"
-          data-testid="comment-body"
-        >
-          <MentionText body={comment.body} mentions={comment.mentions} />
-        </p>
-      ) : null}
-
-      <div className="mt-1.5 -ml-2 flex items-center gap-1 text-caption text-faint">
-        {!comment.deleted ? (
-          <LikeButton
-            compact
-            targetType="comment"
-            targetId={comment.id ?? ''}
-            count={comment.likeCount ?? 0}
-            states={states.data}
-          />
-        ) : null}
-        {!comment.deleted ? (
-          <button
-            type="button"
-            onClick={() => setReplying((v) => !v)}
-            className={ACTION_CLASS}
-            data-testid="btn-reply"
-          >
-            回复
-          </button>
-        ) : null}
-        {isMine && !comment.deleted ? (
-          <button
-            type="button"
-            onClick={() => del.mutate(comment.id ?? '')}
-            disabled={del.isPending}
-            className={ACTION_CLASS}
-            data-testid="btn-delete-comment"
-          >
-            删除
-          </button>
-        ) : null}
-        {/* 社群管理员的快捷治理。删除要二次确认，封禁走与管理台同一个弹窗 */}
-        {canGovern ? (
-          <>
-            <button
-              type="button"
-              onClick={() => setConfirmDelete(true)}
-              className={ACTION_CLASS}
-              data-testid="admin-delete-comment"
-            >
-              删除
-            </button>
-            <button
-              type="button"
-              onClick={() => setBanAuthor(true)}
-              className={ACTION_CLASS}
-              data-testid="admin-ban-comment-author"
-            >
-              封禁作者
-            </button>
-          </>
-        ) : null}
-        {/* 展开 N 条回复：N 是后代总数（不是直接子节点数），与展开后条数一致 */}
-        {(comment.replyCount ?? 0) > 0 ? (
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            className={ACTION_CLASS}
-            data-testid="btn-expand-replies"
-            // 从消息跳进来时，滚动逻辑靠这个属性找到“要展开哪一个 root”
-            data-expand-root={comment.id}
-          >
-            {expanded ? '收起回复' : `展开 ${String(comment.replyCount ?? 0)} 条回复`}
-          </button>
-        ) : null}
-      </div>
-
-      {replying ? (
-        <div className="mt-3">
-          <CommentComposer
-            postId={postId}
-            replyTo={comment.id ?? ''}
-            autoFocus
-            onDone={() => {
-              setReplying(false)
-              setExpanded(true)
-            }}
-          />
-        </div>
-      ) : null}
-
-      {expanded ? <ReplyList rootCommentId={comment.id ?? null} postId={postId} /> : null}
-
-      {confirmDelete ? (
-        <ConfirmDialog
-          title="删除这条评论？"
-          description="删除后评论位置会留为「该评论已删除」，已有回复不受影响。这是管理员操作。"
-          confirmLabel="删除"
-          danger
-          busy={del.isPending}
-          testId="admin-delete-comment-dialog"
-          confirmTestId="btn-confirm-delete-comment"
-          onCancel={() => setConfirmDelete(false)}
-          onConfirm={() => {
-            del.mutate(comment.id ?? '', {
-              onSuccess: () => {
-                setConfirmDelete(false)
-                toast('已删除评论')
-              },
-              onError: (err) => {
-                setConfirmDelete(false)
-                toast(authErrorMessage(err))
-              },
-            })
-          }}
-        />
-      ) : null}
-
-      {banAuthor && comment.authorId ? (
-        <BanMemberDialog
-          communityName={communityName}
-          targetUserId={comment.authorId}
-          targetNickname={author?.nickname}
-          onClose={() => setBanAuthor(false)}
-        />
-      ) : null}
-    </div>
-  )
-}
-
-function ReplyList({ rootCommentId, postId }: { rootCommentId: string | null; postId: string }) {
-  const replies = useReplies(rootCommentId)
-  const items = (replies.data?.pages ?? []).flatMap((p) => p.items ?? [])
-
-  if (replies.isPending) {
-    return <p className="mt-3 text-aux text-faint">加载回复…</p>
-  }
-  if (replies.isError) {
-    return <p className="mt-3 text-aux text-danger">{authErrorMessage(replies.error)}</p>
-  }
-
-  return (
-    <ul
-      className="m-0 mt-4 list-none border-l border-border p-0 pl-4"
-      data-testid="reply-list"
-    >
-      {items.map((r) => (
-        <li key={r.id} className="py-3 [&+&]:border-t [&+&]:border-border">
-          <ReplyItem comment={r} postId={postId} />
-        </li>
-      ))}
-      {replies.hasNextPage ? (
-        <li className="py-2">
-          <button
-            type="button"
-            onClick={() => void replies.fetchNextPage()}
-            className="rounded-full px-2 text-caption text-muted-foreground transition-colors duration-[var(--duration-fast)] hover:bg-fill hover:text-foreground"
-          >
-            加载更多回复
-          </button>
-        </li>
-      ) : null}
-    </ul>
-  )
-}
-
-function ReplyItem({ comment, postId }: { comment: CommentView; postId: string }) {
-  const session = useSession((s) => s.user)
-  const authed = useSession((st) => st.status) === 'authenticated'
-  const del = useDeleteComment(postId)
-  const [replying, setReplying] = useState(false)
-  const states = useInteractionStates(comment.id ? [`comment:${comment.id}`] : [], authed)
-  const authors = useUserSummaries(collectCommentUserIds([comment]))
-  const author = pickAuthor(authors.data, comment.authorId)
-  const replyTo = pickAuthor(authors.data, comment.replyToUserId)
-  const isMine = session?.userId === comment.authorId
-  const postAuthorId = useContext(PostAuthorContext)
-  const isPostAuthor = !!comment.authorId && comment.authorId === postAuthorId
-  const communityName = useContext(CommunityNameContext)
-  const myStatus = useMyCommunityStatus(communityName, authed)
-  const [confirmDelete, setConfirmDelete] = useState(false)
-  const [banAuthor, setBanAuthor] = useState(false)
-  const canGovern =
-    myStatus.data?.admin === true && !isMine && !comment.deleted && Boolean(comment.authorId)
-
-  return (
-    <div
-      data-testid="reply-item"
-      data-comment-anchor={comment.id}
       className={cn(
-        'scroll-mt-24 rounded-md transition-colors duration-500 data-[highlighted=true]:bg-primary-soft',
-        comment.deleted && 'text-muted-foreground',
+        'glass-panel rounded-2xl p-4 transition-all',
+        isHighlighted && 'comment-anchor-flash',
       )}
     >
-      <div className="flex flex-wrap items-center gap-2 text-caption text-faint">
-        {comment.deleted ? (
-          <span data-testid="reply-deleted">该回复已删除</span>
-        ) : (
-          <>
-            <Link
-              to={`/u/${encodeURIComponent(comment.authorId ?? '')}`}
-              className="inline-flex min-w-0 items-center gap-1.5 transition-opacity duration-[var(--duration-fast)] hover:opacity-80"
-              data-testid="reply-author-link"
-            >
-              <Avatar url={author?.avatarUrl ?? null} name={author?.nickname ?? ''} size={18} />
-              <span className="truncate font-medium text-foreground" data-testid="reply-author">
-                {author?.nickname ?? '…'}
-              </span>
-            </Link>
-            {isPostAuthor ? <AuthorBadge /> : null}
-            {/* 「回复 @某人」——两级平铺下用它表达对话关系，不用缩进 */}
-            {comment.replyToUserId ? (
-              <Link
-                to={`/u/${encodeURIComponent(comment.replyToUserId)}`}
-                className="rounded-[3px] text-muted-foreground underline-offset-[3px] hover:text-foreground hover:underline"
-                data-testid="reply-to"
-              >
-                回复 @{replyTo?.nickname ?? '某人'}
-              </Link>
-            ) : null}
-            <span>·</span>
-            <span>{relativeTime(comment.createdAt)}</span>
-          </>
-        )}
-      </div>
-
-      {!comment.deleted ? (
-        <p
-          className="m-0 mt-1.5 whitespace-pre-wrap break-words text-body leading-[1.75] text-foreground"
-          data-testid="reply-body"
-        >
-          <MentionText body={comment.body} mentions={comment.mentions} />
+      {comment.deleted ? (
+        <p data-testid="comment-deleted" className="text-xs italic text-muted-foreground">
+          该评论已删除
         </p>
-      ) : null}
+      ) : (
+        <div className="space-y-2.5">
+          {/* 评论作者头 */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              {comment.authorId ? (
+                <Link
+                  to={`/u/${encodeURIComponent(comment.authorId)}`}
+                  data-testid="comment-author-link"
+                  className="inline-flex items-center gap-2 min-w-0 group"
+                >
+                  <Avatar name={nick} src={author?.avatarUrl} size="xs" />
+                  <span
+                    data-testid="comment-author"
+                    className="truncate text-sm font-bold text-foreground group-hover:text-primary"
+                  >
+                    {nick}
+                  </span>
+                </Link>
+              ) : (
+                <span data-testid="comment-author" className="text-sm font-medium text-muted-foreground">
+                  {nick}
+                </span>
+              )}
+              {isPostAuthor && (
+                <Pill tone="primary" data-testid="author-badge">
+                  作者
+                </Pill>
+              )}
+            </div>
+            <span className="tabular-nums shrink-0 text-[11px] text-muted-foreground">
+              {relativeTime(comment.createdAt)}
+            </span>
+          </div>
 
-      {!comment.deleted ? (
-        <div className="mt-1 -ml-2 flex items-center gap-1 text-caption text-faint">
-          <LikeButton
-            compact
-            targetType="comment"
-            targetId={comment.id ?? ''}
-            count={comment.likeCount ?? 0}
-            states={states.data}
-          />
-          {authed ? (
-            <button
-              type="button"
-              onClick={() => setReplying((v) => !v)}
-              className={ACTION_CLASS}
-              data-testid="btn-reply-to-reply"
-            >
-              回复
-            </button>
-          ) : null}
-          {isMine ? (
-            <button
-              type="button"
-              onClick={() => del.mutate(comment.id ?? '')}
-              disabled={del.isPending}
-              className={ACTION_CLASS}
-              data-testid="btn-delete-reply"
-            >
-              删除
-            </button>
-          ) : null}
-          {canGovern ? (
-            <>
+          {/* 评论正文（支持 @mention 链接） */}
+          <p
+            data-testid="comment-body"
+            className="whitespace-pre-wrap text-sm leading-relaxed text-secondary-foreground"
+          >
+            <MentionText body={comment.body} mentions={comment.mentions} />
+          </p>
+
+          {/* 评论操作条 */}
+          <div className="flex flex-wrap items-center gap-2 pt-0.5">
+            <LikeButton
+              targetType="COMMENT"
+              targetId={id}
+              liked={liked}
+              count={comment.likeCount ?? 0}
+              compact
+            />
+
+            {isAuth && (
               <button
                 type="button"
-                onClick={() => setConfirmDelete(true)}
-                className={ACTION_CLASS}
-                data-testid="admin-delete-reply"
+                data-testid="btn-reply"
+                onClick={() => setReplyOpen((v) => !v)}
+                className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-xl px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-[var(--bg-surface-hover)] hover:text-foreground"
               >
+                <CornerDownRight className="h-3.5 w-3.5" />
+                回复
+              </button>
+            )}
+
+            {isOwner && (
+              <button
+                type="button"
+                data-testid="btn-delete-comment"
+                onClick={() => onSelfDelete(id)}
+                className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-xl px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-[var(--color-danger-soft)] hover:text-danger"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
                 删除
               </button>
-              <button
-                type="button"
-                onClick={() => setBanAuthor(true)}
-                className={ACTION_CLASS}
-                data-testid="admin-ban-comment-author"
-              >
-                封禁作者
-              </button>
-            </>
-          ) : null}
-        </div>
-      ) : null}
+            )}
 
-      {replying ? (
-        <div className="mt-2">
-          <CommentComposer
-            postId={postId}
-            replyTo={comment.id ?? ''}
-            autoFocus
-            onDone={() => setReplying(false)}
-          />
-        </div>
-      ) : null}
+            {isCommunityAdmin && !isOwner && (
+              <>
+                <button
+                  type="button"
+                  data-testid="admin-delete-comment"
+                  onClick={() => onAdminDelete(id)}
+                  className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-xl px-2.5 text-xs font-medium text-danger transition-colors hover:bg-[var(--color-danger-soft)]"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  管理员删评
+                </button>
+                {comment.authorId && (
+                  <button
+                    type="button"
+                    data-testid="admin-ban-comment-author"
+                    onClick={() => onAdminBan(comment.authorId ?? '', nick)}
+                    className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-xl px-2.5 text-xs font-medium text-danger transition-colors hover:bg-[var(--color-danger-soft)]"
+                  >
+                    <ShieldBan className="h-3.5 w-3.5" />
+                    封禁
+                  </button>
+                )}
+              </>
+            )}
+          </div>
 
-      {confirmDelete ? (
-        <ConfirmDialog
-          title="删除这条回复？"
-          description="删除后回复位置会留为「该回复已删除」。这是管理员操作。"
-          confirmLabel="删除"
-          danger
-          busy={del.isPending}
-          testId="admin-delete-reply-dialog"
-          confirmTestId="btn-confirm-delete-reply"
-          onCancel={() => setConfirmDelete(false)}
-          onConfirm={() => {
-            del.mutate(comment.id ?? '', {
-              onSuccess: () => {
-                setConfirmDelete(false)
-                toast('已删除回复')
+          {/* 回复输入框 */}
+          {replyOpen && (
+            <div className="pt-2">
+              <CommentComposer
+                replyTo={{ commentId: id, nickname: nick }}
+                placeholder={`回复 ${nick}…`}
+                pending={createComment.isPending}
+                onCancel={() => setReplyOpen(false)}
+                onSubmit={(body, onDone, onErr) => {
+                  createComment.mutate(
+                    { body, replyToCommentId: id },
+                    {
+                      onSuccess: () => {
+                        onDone()
+                        if (!expanded) onToggleExpand()
+                      },
+                      onError: (err) =>
+                        onErr(err instanceof ApiError ? err.message : '回复发送失败'),
+                    },
+                  )
+                }}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 展开 / 收起二级回复 */}
+      {replyCount > 0 && (
+        <div className="mt-3 border-t border-[var(--border-glass)] pt-2.5">
+          <button
+            type="button"
+            data-testid="btn-expand-replies"
+            onClick={onToggleExpand}
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-semibold text-primary transition-colors hover:bg-[var(--color-primary-soft)]"
+          >
+            {expanded ? (
+              <>
+                <ChevronUp className="h-3.5 w-3.5" />
+                收起回复
+              </>
+            ) : (
+              <>
+                <ChevronDown className="h-3.5 w-3.5" />
+                展开 {String(replyCount)} 条回复
+              </>
+            )}
+          </button>
+
+          {expanded && (
+            <ReplyList
+              rootCommentId={id}
+              postId={postId}
+              postAuthorId={postAuthorId}
+              meId={meId}
+              isAuth={isAuth}
+              isCommunityAdmin={isCommunityAdmin}
+              highlightedId={highlightedId}
+              onSelfDelete={onSelfDelete}
+              onAdminDelete={onAdminDelete}
+              onAdminBan={onAdminBan}
+            />
+          )}
+        </div>
+      )}
+    </li>
+  )
+}
+
+function ReplyList({
+  rootCommentId,
+  postId,
+  postAuthorId,
+  meId,
+  isAuth,
+  isCommunityAdmin,
+  highlightedId,
+  onSelfDelete,
+  onAdminDelete,
+  onAdminBan,
+}: {
+  rootCommentId: string
+  postId: string
+  postAuthorId: string | undefined
+  meId: string | undefined
+  isAuth: boolean
+  isCommunityAdmin: boolean
+  highlightedId: string | null
+  onSelfDelete: (commentId: string) => void
+  onAdminDelete: (commentId: string) => void
+  onAdminBan: (userId: string, nickname: string) => void
+}) {
+  const repliesQuery = useReplies(rootCommentId)
+  const createComment = useCreateComment(postId)
+  const [replyTarget, setReplyTarget] = useState<{ commentId: string; nickname: string } | null>(
+    null,
+  )
+
+  const replies = useMemo(
+    () => repliesQuery.data?.pages.flatMap((p) => p.items ?? []) ?? [],
+    [repliesQuery.data],
+  )
+  const userIds = useMemo(() => collectCommentUserIds(replies), [replies])
+  const { data: users } = useUserSummaries(userIds)
+
+  const targets = useMemo(
+    () => replies.map((r) => `COMMENT:${r.id ?? ''}`).filter((t) => t !== 'COMMENT:'),
+    [replies],
+  )
+  const { data: states } = useInteractionStates(targets, isAuth)
+  const likedSet = useMemo(() => {
+    const s = new Set<string>()
+    for (const st of states ?? []) {
+      if (st.targetType === 'COMMENT' && st.liked && st.targetId) s.add(st.targetId)
+    }
+    return s
+  }, [states])
+
+  if (repliesQuery.isPending) {
+    return (
+      <div className="mt-2.5 space-y-2 pl-4">
+        <Skeleton className="h-14 w-full rounded-xl" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-2.5 space-y-2.5 border-l-2 border-[rgba(var(--accent-rgb),0.28)] pl-4">
+      <ul data-testid="reply-list" className="m-0 list-none space-y-2.5 p-0">
+        {replies.map((r) => {
+          const rid = r.id ?? ''
+          const author = pickAuthor(users, r.authorId)
+          const replyToUser = pickAuthor(users, r.replyToUserId)
+          const nick = author?.nickname ?? '已注销用户'
+          const isOwner = Boolean(meId && meId === r.authorId)
+          const isPostAuthor = Boolean(postAuthorId && postAuthorId === r.authorId)
+          const showReplyTo = Boolean(r.replyToCommentId && r.replyToCommentId !== rootCommentId && replyToUser)
+
+          return (
+            <li
+              key={rid}
+              id={`comment-${rid}`}
+              data-testid="reply-item"
+              className={cn(
+                'rounded-xl border border-[var(--border-glass)] bg-[var(--bg-input)] p-3 transition-all',
+                highlightedId === rid && 'comment-anchor-flash',
+              )}
+            >
+              {r.deleted ? (
+                <p data-testid="reply-deleted" className="text-xs italic text-muted-foreground">
+                  该回复已删除
+                </p>
+              ) : (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                      {r.authorId ? (
+                        <Link
+                          to={`/u/${encodeURIComponent(r.authorId)}`}
+                          data-testid="reply-author-link"
+                          className="inline-flex items-center gap-1.5 group"
+                        >
+                          <Avatar name={nick} src={author?.avatarUrl} size="xs" />
+                          <span
+                            data-testid="reply-author"
+                            className="truncate font-bold text-foreground group-hover:text-primary"
+                          >
+                            {nick}
+                          </span>
+                        </Link>
+                      ) : (
+                        <span data-testid="reply-author" className="font-medium text-muted-foreground">
+                          {nick}
+                        </span>
+                      )}
+                      {isPostAuthor && <Pill tone="primary">作者</Pill>}
+                      {showReplyTo && (
+                        <span data-testid="reply-to" className="text-muted-foreground">
+                          回复 <strong className="text-secondary-foreground">{replyToUser?.nickname}</strong>
+                        </span>
+                      )}
+                    </div>
+                    <span className="tabular-nums shrink-0 text-[11px] text-muted-foreground">
+                      {relativeTime(r.createdAt)}
+                    </span>
+                  </div>
+
+                  <p
+                    data-testid="reply-body"
+                    className="whitespace-pre-wrap text-xs leading-relaxed text-secondary-foreground sm:text-sm"
+                  >
+                    <MentionText body={r.body} mentions={r.mentions} />
+                  </p>
+
+                  <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                    <LikeButton
+                      targetType="COMMENT"
+                      targetId={rid}
+                      liked={likedSet.has(rid)}
+                      count={r.likeCount ?? 0}
+                      compact
+                    />
+
+                    {isAuth && (
+                      <button
+                        type="button"
+                        data-testid="btn-reply-to-reply"
+                        onClick={() => setReplyTarget({ commentId: rid, nickname: nick })}
+                        className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-xl px-2 text-xs text-muted-foreground hover:bg-[var(--bg-surface-hover)] hover:text-foreground"
+                      >
+                        <CornerDownRight className="h-3 w-3" />
+                        回复
+                      </button>
+                    )}
+
+                    {isOwner && (
+                      <button
+                        type="button"
+                        data-testid="btn-delete-reply"
+                        onClick={() => onSelfDelete(rid)}
+                        className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-xl px-2 text-xs text-muted-foreground hover:text-danger"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                        删除
+                      </button>
+                    )}
+
+                    {isCommunityAdmin && !isOwner && (
+                      <>
+                        <button
+                          type="button"
+                          data-testid="admin-delete-reply"
+                          onClick={() => onAdminDelete(rid)}
+                          className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-xl px-2 text-xs text-danger hover:bg-[var(--color-danger-soft)]"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                          删评
+                        </button>
+                        {r.authorId && (
+                          <button
+                            type="button"
+                            data-testid="admin-ban-comment-author"
+                            onClick={() => onAdminBan(r.authorId ?? '', nick)}
+                            className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-xl px-2 text-xs text-danger hover:bg-[var(--color-danger-soft)]"
+                          >
+                            <ShieldBan className="h-3 w-3" />
+                            封禁
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+
+      {replyTarget && (
+        <CommentComposer
+          replyTo={replyTarget}
+          placeholder={`回复 ${replyTarget.nickname}…`}
+          pending={createComment.isPending}
+          onCancel={() => setReplyTarget(null)}
+          onSubmit={(body, onDone, onErr) => {
+            createComment.mutate(
+              { body, replyToCommentId: replyTarget.commentId },
+              {
+                onSuccess: () => onDone(),
+                onError: (err) => onErr(err instanceof ApiError ? err.message : '回复发送失败'),
               },
-              onError: (err) => {
-                setConfirmDelete(false)
-                toast(authErrorMessage(err))
-              },
-            })
+            )
           }}
         />
-      ) : null}
+      )}
 
-      {banAuthor && comment.authorId ? (
-        <BanMemberDialog
-          communityName={communityName}
-          targetUserId={comment.authorId}
-          targetNickname={author?.nickname}
-          onClose={() => setBanAuthor(false)}
-        />
-      ) : null}
+      {repliesQuery.hasNextPage && (
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={repliesQuery.isFetchingNextPage}
+          onClick={() => void repliesQuery.fetchNextPage()}
+        >
+          {repliesQuery.isFetchingNextPage ? '加载中…' : '查看更多回复'}
+        </Button>
+      )}
     </div>
   )
 }

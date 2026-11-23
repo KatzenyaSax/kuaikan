@@ -1,295 +1,305 @@
-import { useState, type CSSProperties } from 'react'
+import { useState } from 'react'
 import { Link, useParams } from 'react-router'
+import {
+  Crown,
+  History,
+  LogIn,
+  LogOut,
+  Megaphone,
+  PenLine,
+  Settings,
+  ShieldAlert,
+  UserPlus,
+  Users,
+} from 'lucide-react'
+import { useSession } from '@/features/auth/session'
 import {
   useCommunityDetail,
   useMembership,
-  useMyCommunities,
   useMyCommunityStatus,
 } from '@/features/community/api'
 import { pickAuthor, useUserSummaries } from '@/features/content/api'
-import { authErrorMessage } from '@/features/auth/auth-error'
-import { useSession } from '@/features/auth/session'
+import { ApiError } from '@/shared/api/api-error'
+import { getCommunityChroma } from '@/shared/theme/community-chroma'
 import { Avatar } from '@/shared/ui/avatar'
-import { Button, buttonClass } from '@/shared/ui/button'
+import { Button } from '@/shared/ui/button'
+import { Card } from '@/shared/ui/card'
+import { Empty } from '@/shared/ui/empty'
+import { Pill } from '@/shared/ui/pill'
 import { Skeleton } from '@/shared/ui/skeleton'
-import { toast } from '@/shared/ui/toast'
-import { absoluteDateTime } from '@/shared/lib/time'
+import { absoluteDate, absoluteDateTime } from '@/shared/lib/time'
 
-/** hero 渐显的错开。80ms 一档，再多就会让人等 */
-const heroDelay = (ms: number): CSSProperties => ({ '--hero-delay': `${ms}ms` }) as CSSProperties
-
-/**
- * 社群概览 = 双栏布局的右栏**空态**（`/c/:name` 还没选帖子时）。
- *
- * 空态放社群概览而不是"请从左边选一个帖子"：用户进来先要知道这是个什么社群，
- * 而不是被要求做一件他还没理解的事。
- *
- * "我加没加入 / 我是不是管理员 / 我被没被封"都从 `/my-status` 推导（P7）；
- * 公开详情里没有 viewer 字段（放行 = 匿名），所以 /mine 只作为它回来之前的回退。
- *
- * 排版是**营销页风**（与首页 hero 同一套语言）：大号社群名（display 档）、
- * 一行成员数、一段简介、两个胶囊按钮。**不用卡片**，靠留白分区。
- * 右栏是白底，左栏是浅底 —— 两栏靠底色分开，不需要一条竖线再强调一次。
- */
 export function CommunityOverview() {
-  const { name } = useParams<{ name: string }>()
-  const detail = useCommunityDetail(name)
+  const { name } = useParams()
+  const communityName = name ?? ''
   const status = useSession((s) => s.status)
-  const authed = status === 'authenticated'
-  const mine = useMyCommunities(authed)
-  // 已登录才发：/my-status 是登录态端点，游客必然 401（P7）
-  const myStatus = useMyCommunityStatus(name, authed)
-  // 管理员昵称头像不在社群详情里（跨服务引用，ADR 0009），要单独批量取一次。
-  // **必须写在所有早返回之前**：hook 不能在条件分支里跳过。
-  const ownerSummaries = useUserSummaries([detail.data?.ownerId])
-  const { join, leave } = useMembership()
-  const [actionError, setActionError] = useState<string | null>(null)
+  const isAuth = status === 'authenticated'
 
-  // 「我加入没加入」以 /my-status 为准，/mine 作为它回来之前的回退：
-  // /mine 是分页的（limit=50），社群一多就可能不含当前这一个，
-  // 而 /my-status 是精确的单点查询。被封禁时后端返回 joined=false —— 那是正确的答案：
-  // 封禁会把在社的成员行置为已退出。
-  const joined =
-    myStatus.data !== undefined
-      ? myStatus.data.joined === true
-      : (mine.data?.items ?? []).some((c) => c.name === detail.data?.name)
-  const banned = myStatus.data?.banned === true
-  const isAdmin = myStatus.data?.admin === true
-  const busy = join.isPending || leave.isPending
+  const detail = useCommunityDetail(communityName)
+  const myStatus = useMyCommunityStatus(communityName, isAuth)
+  const membership = useMembership()
+  const [memError, setMemError] = useState<string | null>(null)
+
+  const ownerId = detail.data?.ownerId
+  const { data: ownerSummaries } = useUserSummaries([ownerId])
+  const owner = pickAuthor(ownerSummaries, ownerId)
+  const chroma = getCommunityChroma(detail.data?.name ?? communityName)
 
   if (detail.isPending) {
     return (
-      <div className="px-8 pb-24 pt-12 md:px-10">
-        <div className="mx-auto max-w-[34rem]">
-          <Skeleton className="h-14 w-14 rounded-full" />
-          <Skeleton className="mt-6 h-9 w-52" />
-          <Skeleton className="mt-4 h-4 w-24" />
-          <Skeleton className="mt-8 h-20 w-full" />
-        </div>
+      <div className="space-y-4">
+        <Skeleton className="h-56 w-full rounded-3xl" />
+        <Skeleton className="h-28 w-full rounded-3xl" />
       </div>
     )
   }
 
-  if (detail.isError) {
+  if (detail.isError || !detail.data) {
     return (
-      <div className="px-8 pb-24 pt-12 md:px-10">
-        <p className="m-0 text-body text-danger" data-testid="community-error">
-          {authErrorMessage(detail.error)}
-        </p>
-        <Link to="/" className="mt-3 inline-block text-aux text-primary hover:underline">
-          返回首页
-        </Link>
-      </div>
+      <Empty
+        testId="community-error"
+        title="社群不存在或暂时无法加载"
+        description={
+          detail.error instanceof ApiError
+            ? detail.error.message
+            : '请检查社群名称是否正确，或返回首页浏览全部社群。'
+        }
+        action={
+          <Link
+            to="/"
+            className="btn-aurora inline-flex h-10 items-center rounded-xl px-5 text-sm font-semibold"
+          >
+            返回发现画廊
+          </Link>
+        }
+      />
     )
   }
 
-  const community = detail.data
-  const owner = pickAuthor(ownerSummaries.data, community.ownerId)
-  // 摘要没回来时不要渲染"已注销用户"——那会闪一下又变，比留白更像 bug
-  const ownerName = owner?.nickname ?? (ownerSummaries.isPending ? '…' : '已注销用户')
+  const c = detail.data
+  const joined = Boolean(myStatus.data?.joined)
+  const isAdmin = Boolean(myStatus.data?.admin)
+  const isBanned = Boolean(myStatus.data?.banned)
+  const memPending = membership.join.isPending || membership.leave.isPending
+
+  const handleToggleMembership = (join: boolean) => {
+    setMemError(null)
+    const mutation = join ? membership.join : membership.leave
+    mutation.mutate(c.name ?? communityName, {
+      onError: (err) => {
+        setMemError(err instanceof ApiError ? err.message : '操作失败，请稍后再试')
+      },
+    })
+  }
 
   return (
-    <div className="px-8 pb-24 pt-12 md:px-10" data-testid="community-page">
-      <div className="mx-auto max-w-[34rem]">
-        <div className="hero-in" style={heroDelay(0)}>
-          {/* 有头像就显示头像，没有就退回首字母渐变（Avatar 内部处理协议白名单） */}
-          <Avatar name={community.name ?? ''} url={community.avatarUrl ?? null} size={60} />
-        </div>
-
-        <h1
-          className="hero-in m-0 mt-6 text-display [overflow-wrap:anywhere]"
-          style={heroDelay(40)}
-          data-testid="community-name"
-        >
-          {community.name}
-        </h1>
-
-        <p className="hero-in m-0 mt-3 text-aux text-faint" style={heroDelay(80)}>
-          {community.memberCount} 成员
-        </p>
-
-        {/*
-          当前管理员。
-
-          昵称头像**不在社群详情里**（跨服务引用，ADR 0009），所以要单独批量取一次。
-          这里只取一个 id，用的是与其他地方同一个 `useUserSummaries`，
-          所以从帖子页点进来时这份数据通常已经在缓存里。
-        */}
-        {community.ownerId ? (
-          <div
-            className="hero-in mt-5 flex items-center gap-2.5 text-aux"
-            style={heroDelay(100)}
-            data-testid="community-admin"
-          >
-            <span className="text-faint">当前管理员</span>
-            <Link
-              to={`/u/${encodeURIComponent(community.ownerId)}`}
-              className="inline-flex min-w-0 items-center gap-2 transition-opacity duration-[var(--duration-fast)] hover:opacity-80"
-              data-testid="community-admin-link"
-            >
-              <Avatar
-                url={owner?.avatarUrl ?? null}
-                name={owner?.nickname ?? ''}
-                size={22}
-              />
-              <span className="truncate text-body font-medium text-foreground">
-                {ownerName}
-              </span>
-            </Link>
-            <span className="inline-flex h-[20px] items-center rounded-full bg-fill px-2 text-caption font-medium text-muted-foreground">
-              管理员
-            </span>
-          </div>
-        ) : null}
-
-        {/* 公告：纯文本、保留换行。没有公告就整块不渲染，不占位 */}
-        {community.announcement ? (
-          <div
-            className="hero-in mt-8 rounded-[var(--radius-lg)] bg-surface p-4"
-            style={heroDelay(110)}
-            data-testid="community-announcement"
-          >
-            <p className="m-0 text-caption font-medium text-muted-foreground">社群公告</p>
-            <p className="m-0 mt-1.5 whitespace-pre-wrap break-words text-body leading-[1.75] text-foreground">
-              {community.announcement}
-            </p>
-          </div>
-        ) : null}
-
-        <div className="hero-in mt-7" style={heroDelay(120)}>
-          {community.description ? (
-            <p
-              className="m-0 whitespace-pre-wrap text-read leading-[1.8]"
-              data-testid="community-desc"
-            >
-              {community.description}
-            </p>
-          ) : (
-            <p className="m-0 text-body text-faint">这个社群还没有简介</p>
-          )}
-        </div>
-
+    <div data-testid="community-page" className="space-y-5">
+      {/* 社群极光主视觉 Hero 卡 */}
+      <Card padding="none" className="overflow-hidden rounded-3xl">
+        {/* 顶部全息流光横幅 */}
         <div
-          className="hero-in mt-9 flex flex-wrap items-center gap-x-7 gap-y-3"
-          style={heroDelay(160)}
+          className="relative h-28 w-full sm:h-32"
+          style={{ background: chroma.gradient }}
         >
-          {!authed ? (
-            <a
-              href={`/login?returnTo=${encodeURIComponent(`/c/${name ?? ''}`)}`}
-              className={buttonClass({ size: 'lg' })}
-              data-testid="link-login-to-join"
-            >
-              登录后可以加入社群
-            </a>
-          ) : banned ? (
-            // 被封禁时**加入和发帖都不给点**：给一个可点的按钮然后弹错，
-            // 等于让用户用一次失败去发现一个早就能告诉他的事实。
-            <Button size="lg" disabled data-testid="btn-join-community">
-              暂时无法加入
-            </Button>
-          ) : joined ? (
-            <>
-              {/* 发帖是这个页面唯一的主操作 —— 每屏最多一个 primary */}
-              <Link
-                to={`/c/${encodeURIComponent(name ?? '')}/new`}
-                className={buttonClass({ size: 'lg' })}
-                data-testid="link-new-post"
-              >
-                发帖
-              </Link>
-              {/* 退出是第三级操作：不被强调，但也不藏起来 */}
-              <Button
-                variant="link"
-                disabled={busy}
-                onClick={() => {
-                  setActionError(null)
-                  leave.mutate(community.name ?? '', {
-                    onSuccess: () => toast('已退出社群'),
-                    onError: (err) => setActionError(authErrorMessage(err)),
-                  })
-                }}
-                data-testid="btn-leave-community"
-              >
-                {busy ? '处理中…' : '退出社群'}
-              </Button>
-            </>
-          ) : (
-            <Button
-              size="lg"
-              disabled={busy}
-              onClick={() => {
-                setActionError(null)
-                join.mutate(community.name ?? '', {
-                  onSuccess: () => toast('已加入社群'),
-                  // 41006 的 message 已由后端拼好「原因 + 解封时间」，
-                  // authErrorMessage 原样透传，不用前端静态文案覆盖
-                  onError: (err) => setActionError(authErrorMessage(err)),
-                })
-              }}
-              data-testid="btn-join-community"
-            >
-              {busy ? '处理中…' : '加入社群'}
-            </Button>
-          )}
+          <div
+            className="absolute inset-0"
+            style={{
+              background:
+                'radial-gradient(circle at 80% 25%, rgba(255,255,255,0.34), transparent 55%)',
+            }}
+          />
         </div>
 
-        {/* 封禁提示条：让“为什么不能发帖”在页面上有答案，而不是只有按钮灰着 */}
-        {banned ? (
-          <div
-            className="hero-in mt-6 rounded-[var(--radius-md)] bg-[rgba(200,30,30,0.06)] px-4 py-3"
-            style={heroDelay(180)}
-            data-testid="community-banned-banner"
+        <div className="px-6 pt-4 pb-6">
+          {/* 头像 + 快捷按钮栏（仅头像上跨横幅，标题与按钮稳落卡片正面） */}
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div className="flex items-end gap-4">
+              <div className="-mt-14 shrink-0 rounded-3xl bg-[var(--bg-canvas)] p-1.5 shadow-xl ring-1 ring-[var(--border-glass-strong)]">
+                <Avatar
+                  name={c.name ?? communityName}
+                  src={c.avatarUrl}
+                  size="xl"
+                  shape="rounded"
+                />
+              </div>
+              <div className="min-w-0 pb-0.5">
+                <h1
+                  data-testid="community-name"
+                  className="font-display text-2xl font-extrabold tracking-tight text-foreground sm:text-3xl"
+                >
+                  {c.name}
+                </h1>
+                <div className="mt-1 flex flex-wrap items-center gap-2.5 text-xs text-muted-foreground">
+                  <span className="tabular-nums inline-flex items-center gap-1 font-semibold text-secondary-foreground">
+                    <Users className="h-3.5 w-3.5 text-primary" />
+                    {String(c.memberCount ?? 0)} 位成员
+                  </span>
+                  {c.createdAt && <span>· 建于 {absoluteDate(c.createdAt)}</span>}
+                </div>
+              </div>
+            </div>
+
+            {/* 核心操作簇 */}
+            <div className="flex flex-wrap items-center gap-2">
+              {!isAuth ? (
+                <Link
+                  to={`/login?returnTo=${encodeURIComponent(`/c/${c.name ?? communityName}`)}`}
+                  data-testid="link-login-to-join"
+                  className="btn-aurora inline-flex h-10 items-center gap-1.5 rounded-xl px-4 text-sm font-semibold"
+                >
+                  <LogIn className="h-4 w-4" />
+                  登录加入
+                </Link>
+              ) : joined ? (
+                <>
+                  {!isBanned && (
+                    <Link
+                      to={`/c/${encodeURIComponent(c.name ?? communityName)}/new`}
+                      data-testid="link-new-post"
+                      className="btn-aurora inline-flex h-10 items-center gap-1.5 rounded-xl px-4 text-sm font-semibold"
+                    >
+                      <PenLine className="h-4 w-4" />
+                      发布新帖
+                    </Link>
+                  )}
+                  {!isAdmin && (
+                    <Button
+                      variant="secondary"
+                      data-testid="btn-leave-community"
+                      disabled={memPending}
+                      onClick={() => handleToggleMembership(false)}
+                    >
+                      <LogOut className="h-4 w-4" />
+                      退出社群
+                    </Button>
+                  )}
+                </>
+              ) : (
+                <Button
+                  data-testid="btn-join-community"
+                  disabled={memPending}
+                  onClick={() => handleToggleMembership(true)}
+                >
+                  <UserPlus className="h-4 w-4" />
+                  {memPending ? '加入中…' : '加入社群'}
+                </Button>
+              )}
+
+              <Link
+                to={`/c/${encodeURIComponent(c.name ?? communityName)}/history`}
+                data-testid="community-history-link"
+                className="glass-panel inline-flex h-10 items-center gap-1.5 rounded-xl px-3.5 text-xs font-semibold text-secondary-foreground transition-colors hover:border-[rgba(var(--accent-rgb),0.45)] hover:text-foreground"
+              >
+                <History className="h-3.5 w-3.5 text-primary" />
+                社群历史
+              </Link>
+
+              {isAdmin && (
+                <Link
+                  to={`/c/${encodeURIComponent(c.name ?? communityName)}/manage`}
+                  data-testid="community-manage-link"
+                  className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-warning/40 bg-[var(--color-warning-soft)] px-3.5 text-xs font-semibold text-warning transition-all hover:bg-warning hover:text-white"
+                >
+                  <Settings className="h-3.5 w-3.5" />
+                  管理社群
+                </Link>
+              )}
+            </div>
+          </div>
+
+          {/* 简介 */}
+          <p
+            data-testid="community-desc"
+            className="mt-5 text-sm leading-relaxed text-secondary-foreground"
           >
-            <p className="m-0 text-aux font-medium text-danger">你已被该社群封禁</p>
-            {myStatus.data?.banReason ? (
-              <p className="m-0 mt-1 text-caption leading-[1.6] text-muted-foreground">
-                原因：{myStatus.data.banReason}
-              </p>
-            ) : null}
-            <p className="m-0 mt-1 text-caption leading-[1.6] text-muted-foreground">
+            {c.description || '欢迎来到本讨论社群！点击左侧任一帖子开始阅读，或加入社群发布你的观点。'}
+          </p>
+
+          {/* 当前管理员卡片 */}
+          {ownerId && (
+            <div
+              data-testid="community-admin"
+              className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--border-glass)] bg-[var(--bg-input)] px-4 py-3"
+            >
+              <div className="flex items-center gap-2.5">
+                <Pill tone="warning">
+                  <Crown className="h-3 w-3" />
+                  当前管理员
+                </Pill>
+                <Link
+                  to={`/u/${encodeURIComponent(ownerId)}`}
+                  data-testid="community-admin-link"
+                  className="inline-flex items-center gap-2 text-sm font-semibold text-foreground transition-colors hover:text-primary"
+                >
+                  <Avatar
+                    name={owner?.nickname ?? '管理员'}
+                    src={owner?.avatarUrl}
+                    size="xs"
+                  />
+                  <span>{owner?.nickname ?? `用户 #${ownerId.slice(-4)}`}</span>
+                </Link>
+              </div>
+            </div>
+          )}
+
+          {/* 成员操作错误提示 */}
+          {memError && (
+            <p
+              data-testid="membership-error"
+              className="mt-4 rounded-xl border border-danger/35 bg-[var(--color-danger-soft)] px-3.5 py-2.5 text-xs font-medium text-danger"
+            >
+              {memError}
+            </p>
+          )}
+        </div>
+      </Card>
+
+      {/* 封禁状态警示横幅 */}
+      {isBanned && (
+        <div
+          data-testid="community-banned-banner"
+          className="flex items-start gap-3 rounded-3xl border border-danger/45 bg-[var(--color-danger-soft)] p-5 text-danger backdrop-blur-xl"
+        >
+          <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0" />
+          <div className="space-y-1 text-sm">
+            <p className="font-bold">你当前已被该社群封禁，无法发帖、评论或重新加入</p>
+            {myStatus.data?.banReason && (
+              <p className="text-xs opacity-90">封禁原因：{myStatus.data.banReason}</p>
+            )}
+            <p className="text-xs opacity-85">
               {myStatus.data?.bannedUntil
                 ? `解封时间：${absoluteDateTime(myStatus.data.bannedUntil)}`
-                : '永久封禁'}
+                : '封禁时长：永久封禁'}
             </p>
           </div>
-        ) : null}
-
-        {actionError ? (
-          <p className="mt-4 text-aux text-danger" data-testid="membership-error">
-            {actionError}
-          </p>
-        ) : null}
-
-        {/*
-          两个入口。
-
-          社群历史是**公开**的公共记忆（连治理记录也公开，见 p7-community-admin.md），
-          所以游客也看得到；管理台只有当前管理员可见 —— 隐藏入口不是权限（后端仍是唯一门禁），
-          而是不给普通用户展示一个点进去必然 403 的按钮。
-        */}
-        <div className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-border pt-6">
-          <Link
-            to={`/c/${encodeURIComponent(name ?? '')}/history`}
-            className="text-aux text-primary transition-colors duration-[var(--duration-fast)] hover:text-primary-hover hover:underline"
-            data-testid="community-history-link"
-          >
-            社群历史 ›
-          </Link>
-          {isAdmin ? (
-            <Link
-              to={`/c/${encodeURIComponent(name ?? '')}/manage`}
-              className="text-aux text-primary transition-colors duration-[var(--duration-fast)] hover:text-primary-hover hover:underline"
-              data-testid="community-manage-link"
-            >
-              管理社群 ›
-            </Link>
-          ) : null}
         </div>
+      )}
 
-        <p className="mt-14 text-aux text-muted-foreground">
-          从左边选一篇帖子开始读。
-        </p>
-      </div>
+      {/* 社群公告琉璃卡片 */}
+      {c.announcement && (
+        <Card
+          padding="md"
+          data-testid="community-announcement"
+          className="rounded-3xl border-[rgba(var(--accent-rgb),0.32)]"
+        >
+          <div className="flex items-start gap-3">
+            <span
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white shadow"
+              style={{ background: chroma.gradient }}
+            >
+              <Megaphone className="h-4 w-4" />
+            </span>
+            <div className="min-w-0 flex-1 space-y-1.5">
+              <p className="font-display text-xs font-bold tracking-wider text-primary uppercase">
+                社群公告
+              </p>
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+                {c.announcement}
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
     </div>
   )
 }

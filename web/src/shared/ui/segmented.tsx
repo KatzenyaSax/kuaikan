@@ -1,47 +1,81 @@
+import { useId } from 'react'
+import { motion } from 'framer-motion'
 import { cn } from '@/shared/lib/cn'
 
-/**
- * 分段控件：日榜 / 周榜 这类"互斥的少量选项"。
- *
- * 形态取 Apple 的 segmented control：一条淡灰轨道（fill），选中的那格是
- * **白色浮起块** —— 靠"白 + 一点点阴影"表达选中，而不是靠蓝色填充。
- * 蓝色留给真正的动作。
- */
+export type SegmentedOption<T extends string> = {
+  value: T
+  label: string
+  badge?: number | string | undefined
+  testId?: string | undefined
+}
+
 export function Segmented<T extends string>({
   value,
   options,
   onChange,
   className,
+  size = 'md',
 }: {
   value: T
-  /** `testId` 是可选的：e2e 依赖的那几个 Tab 需要它，新写的可以不给 */
-  options: Array<{ value: T; label: string; testId?: string }>
-  onChange: (v: T) => void
+  options: readonly SegmentedOption<T>[]
+  onChange: (next: T) => void
   className?: string
+  size?: 'sm' | 'md'
 }) {
+  const groupId = useId()
+
   return (
     <div
-      className={cn('inline-flex rounded-full bg-fill p-[3px]', className)}
       role="tablist"
+      className={cn(
+        'glass-panel inline-flex items-center gap-1 rounded-2xl p-1',
+        className,
+      )}
     >
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          role="tab"
-          aria-selected={o.value === value}
-          onClick={() => onChange(o.value)}
-          data-testid={o.testId}
-          className={cn(
-            'h-7 rounded-full px-4 text-aux transition-[background-color,color,box-shadow] duration-[var(--duration-fast)]',
-            o.value === value
-              ? 'bg-background font-medium text-foreground shadow-[var(--shadow-soft)]'
-              : 'text-muted-foreground hover:text-foreground',
-          )}
-        >
-          {o.label}
-        </button>
-      ))}
+      {options.map((o) => {
+        const active = o.value === value
+        return (
+          <button
+            key={o.value}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            data-testid={o.testId}
+            onClick={() => onChange(o.value)}
+            className={cn(
+              'relative z-10 inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl font-medium transition-colors select-none',
+              size === 'sm' ? 'px-3 py-1.5 text-xs' : 'px-4 py-1.5 text-sm',
+              active ? '' : 'text-muted-foreground hover:text-foreground',
+            )}
+            style={active ? { color: 'var(--btn-fg, #ffffff)' } : undefined}
+          >
+            {active && (
+              <motion.span
+                layoutId={`seg-${groupId}`}
+                transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                className="absolute inset-0 -z-10 rounded-xl shadow-md"
+                style={{
+                  background: 'var(--accent-gradient)',
+                  boxShadow: '0 6px 18px -4px rgba(var(--accent-rgb), 0.55)',
+                }}
+              />
+            )}
+            <span>{o.label}</span>
+            {o.badge !== undefined && Number(o.badge) > 0 && (
+              <span
+                className={cn(
+                  'tabular-nums rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none',
+                  active
+                    ? 'bg-white/25 text-white'
+                    : 'bg-[var(--color-primary-soft)] text-primary',
+                )}
+              >
+                {o.badge}
+              </span>
+            )}
+          </button>
+        )
+      })}
     </div>
   )
 }

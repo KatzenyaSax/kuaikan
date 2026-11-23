@@ -1,147 +1,125 @@
-import { useEffect, useRef } from 'react'
 import { Link, useParams } from 'react-router'
-import { usePostList, useUserSummaries, pickAuthor } from '@/features/content/api'
-import { authErrorMessage } from '@/features/auth/auth-error'
+import { Clock, MessageSquareText } from 'lucide-react'
+import { pickAuthor, usePostList, useUserSummaries } from '@/features/content/api'
 import { Avatar } from '@/shared/ui/avatar'
-import { Group, groupRowClass } from '@/shared/ui/group'
+import { Button } from '@/shared/ui/button'
+import { Empty } from '@/shared/ui/empty'
 import { Skeleton } from '@/shared/ui/skeleton'
 import { relativeTime } from '@/shared/lib/time'
 import { cn } from '@/shared/lib/cn'
 
-/**
- * 左栏帖子列表。游标分页，最新在上。
- *
- * 加载更多用 IntersectionObserver 盯住底部哨兵：滚到底自动拉下一页。
- * 同时保留一个显式按钮兜底 —— 观察器在"容器高度为 0""列表不足一屏"等
- * 情况下不会触发，那时没有按钮就彻底没入口了。
- *
- * 列表项是真实路由（`<Link>`），所以要支持 cmd+click 开新标签；
- * 用它而不是 onClick 也顺手拿到了键盘可达性。
- *
- * 形态是 inset grouped：白色分组里的内缩 hairline 行。左栏是“导航”，
- * 不是“清单”——所以当前帖子用淡底标出来，而不是加一条左边线。
- */
-export function PostList({ communityId }: { communityId: string | undefined }) {
-  const { name, postId: activePostId } = useParams<{ name: string; postId?: string }>()
-  const sentinel = useRef<HTMLDivElement | null>(null)
-  const query = usePostList(communityId)
+export function PostList({
+  communityId,
+  communityName,
+}: {
+  communityId: string | undefined
+  communityName: string
+}) {
+  const { postId: activePostId } = useParams()
+  const { data, isPending, isError, fetchNextPage, hasNextPage, isFetchingNextPage, refetch } =
+    usePostList(communityId)
 
-  // 把所有页摊平成一个列表。这是 useInfiniteQuery 存在的理由：
-  // 手写"每页一个 query"时 data 只有最后一页，加载更多会替换而不是追加。
-  const items = (query.data?.pages ?? []).flatMap((page) => page.items ?? [])
-  const authors = useUserSummaries(items.map((p) => p.authorId))
+  const items = data?.pages.flatMap((p) => p.items ?? []) ?? []
+  const { data: authors, isPending: authorsPending } = useUserSummaries(items.map((p) => p.authorId))
 
-  // 观察器只在"还有下一页且当前不在请求中"时挂上。
-  // 触发后立刻 disconnect —— 否则滚到底会连续触发多次 fetchNextPage。
-  useEffect(() => {
-    const el = sentinel.current
-    if (!el || !query.hasNextPage || query.isFetchingNextPage) return
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) {
-          observer.disconnect()
-          void query.fetchNextPage()
-        }
-      },
-      { rootMargin: '120px' },
-    )
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [query.hasNextPage, query.isFetchingNextPage, query])
-
-  if (query.isPending) {
+  if (isPending) {
     return (
-      <Group>
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="px-4 py-4">
-            <Skeleton className="mb-2 h-[15px] w-[78%]" />
-            <Skeleton className="h-3 w-[42%]" />
-          </div>
+      <div className="space-y-2.5">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <Skeleton key={i} className="h-20 w-full rounded-2xl" />
         ))}
-      </Group>
+      </div>
     )
   }
 
-  if (query.isError) {
+  if (isError) {
     return (
-      <p className="px-4 py-3 text-aux text-danger" data-testid="post-list-error">
-        {authErrorMessage(query.error)}
-      </p>
+      <Empty
+        testId="post-list-error"
+        title="帖子列表加载失败"
+        description="请稍后重试。"
+        action={
+          <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+            重新加载
+          </Button>
+        }
+      />
     )
   }
 
   if (items.length === 0) {
     return (
-      <p className="px-4 py-8 text-center text-aux text-faint" data-testid="post-list-empty">
-        还没有帖子
-      </p>
+      <Empty
+        testId="post-list-empty"
+        title="还没有帖子"
+        description="加入社群后发布第一篇讨论帖吧。"
+        icon={<MessageSquareText className="h-5 w-5" />}
+      />
     )
   }
 
   return (
-    <div data-testid="post-list">
-      <Group>
-        <ul className="m-0 list-none p-0">
-          {items.map((post) => {
-            const author = pickAuthor(authors.data, post.authorId)
-            return (
-              <li
-                key={post.id}
-                className={groupRowClass({ interactive: true, className: 'block p-0' })}
-                style={{ animation: 'fade-in var(--duration-base) var(--ease-out-soft) both' }}
-              >
-                <Link
-                  to={`/c/${encodeURIComponent(name ?? '')}/p/${post.id ?? ''}`}
-                  // 当前正在读的帖子要高亮：左栏是"导航"，不是"清单"，
-                  // 不标出当前位置，用户会不知道自己在看哪一篇。
-                  aria-current={activePostId === post.id ? 'true' : undefined}
-                  className={cn(
-                    'block px-4 py-3',
-                    'transition-colors duration-[var(--duration-fast)]',
-                    'aria-[current=true]:bg-fill',
-                  )}
-                  data-testid="post-list-item"
-                >
-                  <div
-                    className="line-clamp-2 text-body font-medium leading-[1.45]"
-                    data-testid="post-list-title"
-                  >
-                    {post.title}
-                  </div>
-                  {/* 作者 · 时间：扇视列表时人关心的是"谁写的、新不新" */}
-                  <div className="mt-1 flex items-center gap-1.5 text-caption text-faint">
-                    {author ? (
-                      <>
-                        <Avatar url={author.avatarUrl ?? null} name={author.nickname ?? ''} size={14} />
-                        <span className="truncate">{author.nickname}</span>
-                      </>
-                    ) : (
-                      <span>…</span>
-                    )}
-                    <span>·</span>
-                    <span>{relativeTime(post.createdAt)}</span>
-                  </div>
-                </Link>
-              </li>
-            )
-          })}
-        </ul>
-      </Group>
+    <div data-testid="post-list" className="space-y-2">
+      {items.map((post) => {
+        const author = pickAuthor(authors, post.authorId)
+        const nick = author?.nickname ?? (authorsPending ? '…' : '已注销用户')
+        const isActive = Boolean(activePostId && activePostId === post.id)
+        const href = `/c/${encodeURIComponent(communityName)}/p/${encodeURIComponent(post.id ?? '')}`
 
-      <div ref={sentinel} className="h-1" />
+        return (
+          <Link
+            key={post.id}
+            to={href}
+            data-testid="post-list-item"
+            className={cn(
+              'group relative block overflow-hidden rounded-2xl border p-3.5 transition-all duration-200',
+              isActive
+                ? 'border-[rgba(var(--accent-rgb),0.55)] bg-[var(--color-primary-soft)] shadow-md'
+                : 'border-[var(--border-glass)] bg-[var(--bg-surface)] hover:border-[rgba(var(--accent-rgb),0.35)] hover:bg-[var(--bg-surface-hover)]',
+            )}
+          >
+            {isActive && (
+              <span
+                className="absolute inset-y-2 left-0 w-1 rounded-r-full"
+                style={{ background: 'var(--accent-gradient)' }}
+              />
+            )}
+            <h3
+              data-testid="post-list-title"
+              className={cn(
+                'line-clamp-2 font-display text-sm font-bold leading-snug transition-colors',
+                isActive ? 'text-foreground' : 'text-foreground group-hover:text-primary',
+              )}
+            >
+              {post.title}
+            </h3>
+            <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                <Avatar name={nick} src={author?.avatarUrl} size="xs" />
+                <span className="truncate">{nick}</span>
+              </span>
+              <span className="tabular-nums inline-flex shrink-0 items-center gap-1">
+                <Clock className="h-3 w-3 opacity-70" />
+                {relativeTime(post.createdAt)}
+              </span>
+            </div>
+          </Link>
+        )
+      })}
 
-      {query.hasNextPage ? (
-        <button
-          type="button"
-          onClick={() => void query.fetchNextPage()}
-          disabled={query.isFetchingNextPage}
-          className="w-full py-3 text-aux text-muted-foreground transition-colors duration-[var(--duration-fast)] hover:text-foreground disabled:opacity-50"
-          data-testid="btn-load-more"
-        >
-          {query.isFetchingNextPage ? '加载中…' : '加载更多'}
-        </button>
-      ) : (
-        <p className="py-3 text-center text-caption text-faint">没有更多了</p>
+      {hasNextPage && (
+        <div className="pt-2 text-center">
+          <Button
+            variant="secondary"
+            size="sm"
+            data-testid="btn-load-more"
+            disabled={isFetchingNextPage}
+            onClick={() => void fetchNextPage()}
+            className="w-full"
+          >
+            {isFetchingNextPage ? '加载中…' : '加载更多帖子'}
+          </Button>
+        </div>
       )}
     </div>
   )

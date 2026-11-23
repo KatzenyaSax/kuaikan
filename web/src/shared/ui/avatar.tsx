@@ -1,87 +1,73 @@
 import { useState } from 'react'
 import { cn } from '@/shared/lib/cn'
+import { getCommunityChroma } from '@/shared/theme/community-chroma'
 
-/**
- * 头像。有 URL 就显示图片，没有（或加载失败）就显示昵称首字。
- *
- * 没有头像时**不用灰底**，用一层柔和的渐变 + 首字：满屏灰圆点会让
- * 列表看起来没做完，而渐变能形成色块节奏（这是"没有素材也要有视觉重量"的办法）。
- *
- * 渐变外面加一圈 0.5px 的内描边：纯色块在白底上边缘会发虚，
- * 一条几乎看不见的线就能把它"钉"住（Apple 的头像和图标都这么处理）。
- *
- * 客户端也做一次协议白名单：后端已校验 `^https?://`，但头像是直接塞进 `<img src>` 的，
- * 多一层检查成本为零。`data:` URI 可以当追踪像素、可以超长内联，没必要放行。
- */
-export function Avatar({
-  url,
-  name,
-  size = 24,
-  className,
-  tone,
-}: {
-  url: string | null
+export type AvatarProps = {
   name: string
-  size?: number
+  src?: string | null | undefined
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl'
+  /** 社群头像使用圆角方形，用户头像使用圆形 */
+  shape?: 'circle' | 'rounded'
+  /** 带极光流光外环 */
+  ring?: boolean
   className?: string
-  /** 决定渐变配色。不传则按昵称散列，保证同一个人颜色稳定 */
-  tone?: number
-}) {
-  const [failed, setFailed] = useState(false)
-  const safe = typeof url === 'string' && /^https?:\/\//i.test(url) ? url : null
-  const showImage = safe !== null && !failed
-  const initial = name.trim().charAt(0).toUpperCase() || '?'
+  testId?: string
+}
 
-  const seed = tone ?? hash(name)
-  // noUncheckedIndexedAccess：下标访问返回可能 undefined，给一个兜底
-  const [from, to] = GRADIENTS[seed % GRADIENTS.length] ?? GRADIENTS[0]!
+const SIZE_MAP: Record<NonNullable<AvatarProps['size']>, string> = {
+  xs: 'h-6 w-6 text-[11px]',
+  sm: 'h-8 w-8 text-xs',
+  md: 'h-10 w-10 text-sm',
+  lg: 'h-14 w-14 text-lg',
+  xl: 'h-20 w-20 text-2xl',
+}
+
+export function Avatar({
+  name,
+  src,
+  size = 'md',
+  shape = 'circle',
+  ring = false,
+  className,
+  testId,
+}: AvatarProps) {
+  const [failedSrc, setFailedSrc] = useState<string | null>(null)
+  const cleanSrc = src?.trim() || null
+  const showImg = Boolean(cleanSrc && failedSrc !== cleanSrc)
+  const chroma = getCommunityChroma(name)
+  const initial = (name.trim().charAt(0) || '?').toUpperCase()
+  const radius = shape === 'rounded' ? 'rounded-2xl' : 'rounded-full'
 
   return (
     <span
+      data-testid={testId ?? 'avatar'}
       className={cn(
-        'inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-semibold text-white select-none',
-        // 内描边：给色块一个确定的边界，不改变尺寸
-        'shadow-[inset_0_0_0_0.5px_rgba(0,0,0,0.10)]',
+        'relative inline-flex shrink-0 items-center justify-center overflow-hidden font-display font-bold text-white select-none',
+        SIZE_MAP[size],
+        radius,
+        ring && 'ring-2 ring-[rgba(var(--accent-rgb),0.55)] ring-offset-2 ring-offset-[var(--bg-canvas)]',
         className,
       )}
-      style={{
-        width: size,
-        height: size,
-        fontSize: Math.round(size * 0.42),
-        background: showImage ? undefined : `linear-gradient(140deg, ${from}, ${to})`,
-      }}
-      data-testid="avatar"
+      style={
+        showImg
+          ? undefined
+          : {
+              background: chroma.gradient,
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.38)',
+            }
+      }
     >
-      {showImage ? (
+      {showImg && cleanSrc ? (
         <img
-          src={safe}
-          alt=""
-          width={size}
-          height={size}
-          className="h-full w-full object-cover"
-          onError={() => setFailed(true)}
+          src={cleanSrc}
+          alt={name}
           data-testid="avatar-image"
+          className="h-full w-full object-cover"
+          onError={() => setFailedSrc(cleanSrc)}
         />
       ) : (
-        <span aria-hidden>{initial}</span>
+        <span className="drop-shadow-sm">{initial}</span>
       )}
     </span>
   )
-}
-
-/* 取色偏灰蓝、饱和度收一点：满屏高饱和色块会盖过正文，这组能形成节奏又不吵 */
-const GRADIENTS: Array<[string, string]> = [
-  ['#6b7280', '#3a4048'],
-  ['#3d8bfd', '#1c5bb8'],
-  ['#34a06a', '#1d6b45'],
-  ['#c8794a', '#91491f'],
-  ['#b4518f', '#7a2a63'],
-  ['#8a6cf0', '#5136c4'],
-  ['#d0a43a', '#96700f'],
-]
-
-function hash(s: string): number {
-  let h = 0
-  for (let i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) >>> 0
-  return h
 }

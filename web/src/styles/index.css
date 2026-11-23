@@ -1,249 +1,525 @@
-@import 'tailwindcss';
+@import "tailwindcss";
 
-/*
- * ============================================================
- * 设计令牌。改这里就能改全站 —— 这是"克制"能被守住的唯一办法。
- *
- * 三条规矩：
- *   1. 字号只有 7 档。想用第 8 种，说明层级设计有问题。
- *   2. 颜色以中性为主；蓝色只用于**交互态**（链接、已赞、focus），
- *      不用来装饰。
- *   3. 动效只有 3 档时长 + 1 条缓动，且全部只动 transform / opacity。
- * ============================================================
- */
-@theme {
-  /* ---------- 字体 ----------
-   * 系统无衬线。**不要用等宽字体排正文**（中英文都不合适）。
-   * 等宽只留给雪花 ID、代码、命令行。 */
-  --font-sans:
-    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Hiragino Sans GB',
-    'Microsoft YaHei', sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+/* ============================================================================
+   KUAIKAN — AURORA GLASS GALLERY DESIGN SYSTEM
+   双主题（深邃暗夜极光 Obsidian Aurora + 亮色冰晶琉璃 Prismatic Crystal）
+   + 动态社群极光换肤（--aurora-1 / --aurora-2 / --aurora-3 / --accent-rgb）
+   ============================================================================ */
 
-  /* ---------- 字号阶梯（7 档） ----------
-   * 中文行高比拉丁更需要：正文 1.75~1.8，标题 1.3。
-   * 标题的字距随字号一起收紧（Apple 的标题是负字距的，正文不动）。*/
-  --text-caption: 12px;
-  --text-caption--line-height: 1.5;
-  --text-aux: 14px;
-  --text-aux--line-height: 1.6;
-  --text-body: 15px;
-  --text-body--line-height: 1.75;
-  --text-read: 17px;
-  --text-read--line-height: 1.8;
-  --text-sub: 21px;
-  --text-sub--line-height: 1.35;
-  --text-sub--letter-spacing: -0.01em;
-  --text-title: 32px;
-  --text-title--line-height: 1.25;
-  --text-title--letter-spacing: -0.015em;
-  --text-title--font-weight: 600;
-  /* 展示字：营销 hero 专用。clamp 让 390px 窄屏不让字挤成一团，
-   * 宽屏能到 64px。行高/字距按展示字收紧，正文的 1.75 在这里是灾难。*/
-  --text-display: clamp(40px, 6vw, 64px);
-  --text-display--line-height: 1.08;
-  --text-display--letter-spacing: -0.025em;
-  --text-display--font-weight: 700;
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
 
-  /* ---------- 颜色 ---------- */
-  --color-background: #ffffff;
-  /* 正文色：Apple 的 #1d1d1f，比纯黑柔一档，长文更耐看 */
-  --color-foreground: #1d1d1f;
-  /* 次要 / 更弱：Apple 的灰阶。不要用纯灰，带一点冷调更耐看 */
-  --color-muted-foreground: #6e6e73;
-  --color-faint: #86868b;
-  /* 页面浅底（inset grouped 的底色）/ 输入框 / hover */
-  --color-surface: #f5f5f7;
-  --color-surface-strong: #ececee;
-  /* 分组卡片、弹窗、抽屉的白色面 */
-  --color-card: #ffffff;
-  --color-border: rgba(0, 0, 0, 0.08);
-  --color-border-strong: rgba(0, 0, 0, 0.14);
-  --color-muted: #f5f5f7;
-  /* 轻填充：次级按钮、segmented 轨道、小标签、hover 底。
-   * 对应 Apple 的 systemFill —— 比 surface 更淡，白底上也能看见。*/
-  --color-fill: rgba(0, 0, 0, 0.05);
-  --color-fill-strong: rgba(0, 0, 0, 0.09);
+  /* 社群动态极光三色（默认值，进入社群后由 theme-store 动态切换） */
+  --aurora-1: #8b5cf6;
+  --aurora-2: #22d3ee;
+  --aurora-3: #fb7185;
+  --accent-rgb: 139, 92, 246;
+  --accent-gradient: linear-gradient(135deg, #8b5cf6 0%, #0ea5e9 100%);
+  --btn-fg: #ffffff;
 
-  /* 深色带：营销页的深浅交替。只在这些色带上用，产品页不用 */
-  --color-ink: #000000;
-  --color-ink-2: #1d1d1f;
-  /* 深带之上的文字（不用 text-background —— 那与字号命名空间撞车）*/
-  --color-on-ink: #f5f5f7;
-  --color-on-ink-faint: #a1a1a6;
+  /* 动态字体变量（由 font-presets 驱动） */
+  --app-font-sans: "Plus Jakarta Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --app-font-display: "Space Grotesk", "Plus Jakarta Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --display-tracking: -0.025em;
 
-  /* 强调色：沉稳蓝。只用于交互态（链接、主按钮、已赞、focus）*/
-  --color-primary: #0071e3;
-  --color-primary-hover: #0077ed;
-  --color-primary-foreground: #ffffff;
-  --color-primary-soft: rgba(0, 113, 227, 0.08);
+  /* 画布与琉璃层级 */
+  --bg-canvas: #070913;
+  --bg-surface: rgba(15, 20, 38, 0.62);
+  --bg-surface-strong: rgba(19, 25, 48, 0.78);
+  --bg-surface-elevated: rgba(24, 31, 58, 0.88);
+  --bg-surface-hover: rgba(34, 44, 78, 0.72);
+  --bg-input: rgba(10, 14, 28, 0.65);
 
-  --color-success: #16a34a;
-  --color-danger: #c81e1e;
-  --color-warning: #b45309;
+  /* 文字层级 */
+  --fg-primary: #f4f7ff;
+  --fg-secondary: #b4c2e0;
+  --fg-muted: #7b8ab0;
 
-  /* ---------- 圆角（4 档 + pill） ---------- */
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 18px;
-  --radius-xl: 28px;
-  --radius-pill: 980px;
+  /* 琉璃边框与高光 */
+  --border-glass: rgba(255, 255, 255, 0.09);
+  --border-glass-strong: rgba(255, 255, 255, 0.16);
+  --border-specular: rgba(255, 255, 255, 0.22);
+  --ring-glow: rgba(var(--accent-rgb), 0.45);
 
-  /* ---------- 阴影（3 档，都很淡） ----------
-   * 分层主要靠 1px hairline 和留白，不靠阴影。分组卡片干脆不用阴影。*/
-  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-card: 0 4px 14px rgba(0, 0, 0, 0.07);
-  --shadow-float: 0 18px 48px rgba(0, 0, 0, 0.18);
+  /* 语义色 */
+  --color-primary: var(--aurora-1);
+  --color-primary-soft: rgba(var(--accent-rgb), 0.18);
+  --color-success: #34d399;
+  --color-success-soft: rgba(52, 211, 153, 0.16);
+  --color-warning: #fbbf24;
+  --color-warning-soft: rgba(251, 191, 36, 0.16);
+  --color-danger: #fb7185;
+  --color-danger-soft: rgba(251, 113, 133, 0.16);
 
-  /* ---------- 动效 ----------
-   * 一条缓动解决全站：Apple 常用的 cubic-bezier(0.28, 0.11, 0.32, 1)。
-   * --default-* 让不带 ease-* 的 transition 也吃到这条曲线，
-   * 组件里就不用到处写 ease-[...]。*/
-  --ease-out-soft: cubic-bezier(0.28, 0.11, 0.32, 1);
-  --default-transition-duration: 150ms;
-  --default-transition-timing-function: var(--ease-out-soft);
-  --duration-fast: 150ms;
-  --duration-base: 250ms;
-  --duration-slow: 400ms;
+  /* 投影 */
+  --shadow-glass:
+    0 12px 40px -12px rgba(2, 4, 14, 0.65),
+    0 1px 0 0 rgba(255, 255, 255, 0.08) inset;
+  --shadow-float:
+    0 24px 64px -16px rgba(2, 4, 14, 0.8),
+    0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+  --shadow-glow: 0 0 32px -6px rgba(var(--accent-rgb), 0.5);
+
+  /* 极光背景透明度 */
+  --aurora-orb-opacity: 0.34;
+  --grid-line-color: rgba(255, 255, 255, 0.025);
 }
 
-:root {
+:root[data-theme="light"] {
   color-scheme: light;
-  --topbar-h: 48px;
-  --tabbar-h: 56px;
+
+  --aurora-1: #6d28d9;
+  --aurora-2: #0284c7;
+  --aurora-3: #e11d48;
+  --accent-rgb: 109, 40, 217;
+  --accent-gradient: linear-gradient(135deg, #6d28d9 0%, #0284c7 55%, #e11d48 100%);
+
+  --bg-canvas: #f3f6ff;
+  --bg-surface: rgba(255, 255, 255, 0.72);
+  --bg-surface-strong: rgba(255, 255, 255, 0.88);
+  --bg-surface-elevated: rgba(255, 255, 255, 0.96);
+  --bg-surface-hover: rgba(246, 248, 255, 0.94);
+  --bg-input: rgba(255, 255, 255, 0.86);
+
+  --fg-primary: #0f172a;
+  --fg-secondary: #334155;
+  --fg-muted: #64748b;
+
+  --border-glass: rgba(15, 23, 42, 0.08);
+  --border-glass-strong: rgba(15, 23, 42, 0.14);
+  --border-specular: rgba(255, 255, 255, 0.95);
+  --ring-glow: rgba(var(--accent-rgb), 0.32);
+
+  --color-primary: var(--aurora-1);
+  --color-primary-soft: rgba(var(--accent-rgb), 0.11);
+  --color-success: #059669;
+  --color-success-soft: rgba(5, 150, 105, 0.12);
+  --color-warning: #d97706;
+  --color-warning-soft: rgba(217, 119, 6, 0.12);
+  --color-danger: #e11d48;
+  --color-danger-soft: rgba(225, 29, 72, 0.12);
+
+  --shadow-glass:
+    0 12px 36px -14px rgba(59, 68, 128, 0.14),
+    0 1px 0 0 rgba(255, 255, 255, 0.9) inset;
+  --shadow-float:
+    0 24px 60px -16px rgba(45, 55, 110, 0.2),
+    0 1px 0 0 rgba(255, 255, 255, 0.95) inset;
+  --shadow-glow: 0 10px 28px -8px rgba(var(--accent-rgb), 0.34);
+
+  --aurora-orb-opacity: 0.22;
+  --grid-line-color: rgba(99, 102, 241, 0.045);
 }
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
+@theme inline {
+  --color-background: var(--bg-canvas);
+  --color-foreground: var(--fg-primary);
+  --color-secondary-foreground: var(--fg-secondary);
+  --color-muted-foreground: var(--fg-muted);
+  --color-primary: var(--color-primary);
+  --color-danger: var(--color-danger);
+  --color-success: var(--color-success);
+  --color-warning: var(--color-warning);
+  --color-border: var(--border-glass);
+  --font-sans: var(--app-font-sans);
+  --font-display: var(--app-font-display);
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
 
+.font-display {
+  font-family: var(--app-font-display);
+  letter-spacing: var(--display-tracking, -0.025em);
+}
+
+h1,
+h2 {
+  text-wrap: balance;
+}
+
+/* 基础重置与顺滑排版 */
 html {
+  background-color: var(--bg-canvas);
+  color: var(--fg-primary);
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  scroll-behavior: smooth;
+  transition: background-color 0.45s cubic-bezier(0.22, 1, 0.36, 1), color 0.3s ease;
 }
 
 body {
   margin: 0;
-  background: var(--color-background);
-  color: var(--color-foreground);
-  font-family: var(--font-sans);
-  font-size: var(--text-body);
-  line-height: 1.75;
+  min-height: 100dvh;
+  background-color: var(--bg-canvas);
+  color: var(--fg-primary);
+  overflow-x: hidden;
 }
 
 ::selection {
-  background: var(--color-primary-soft);
+  background: rgba(var(--accent-rgb), 0.32);
+  color: var(--fg-primary);
 }
 
-#root {
-  min-height: 100vh;
+/* 精致滚动条 */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-glass-strong);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--accent-rgb), 0.55);
 }
 
-/*
- * 键盘可达性：所有焦点都看得见。不用粗 ring，用一点点 offset 的描边。
- *
- * **必须放在 @layer base 里**：不用 layer 的 CSS 永远胜于 utilities，
- * 于是组件里的 `focus:outline-none` 会被这条静默压掉，想“把指示器画在外层胶囊/
- * 输入框光晕上”的写法全部失效（搜索层就是这么被套了一个方框）。
- */
-@layer base {
-  :focus-visible {
-    outline: 2px solid var(--color-primary);
-    outline-offset: 2px;
-    border-radius: var(--radius-sm);
+/* ============================================================================
+   AURORA GLASS 材质工具类
+   ============================================================================ */
+
+.glass-panel {
+  background: var(--bg-surface);
+  backdrop-filter: blur(24px) saturate(165%);
+  -webkit-backdrop-filter: blur(24px) saturate(165%);
+  border: 1px solid var(--border-glass);
+  box-shadow: var(--shadow-glass);
+  transition:
+    background-color 0.3s ease,
+    border-color 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+.glass-panel-strong {
+  background: var(--bg-surface-strong);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid var(--border-glass-strong);
+  box-shadow: var(--shadow-float);
+}
+
+/* 鼠标追踪流光琉璃卡片（仅写 CSS 变量，零 React 重渲染） */
+.spotlight-card {
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-surface);
+  backdrop-filter: blur(22px) saturate(165%);
+  -webkit-backdrop-filter: blur(22px) saturate(165%);
+  border: 1px solid var(--border-glass);
+  box-shadow: var(--shadow-glass);
+  transition:
+    border-color 0.3s ease,
+    box-shadow 0.35s ease,
+    transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 0.3s ease;
+}
+
+.spotlight-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  background: radial-gradient(
+    420px circle at var(--mx, 50%) var(--my, 50%),
+    rgba(var(--accent-rgb), 0.16),
+    transparent 68%
+  );
+  z-index: 0;
+}
+
+.spotlight-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  background: radial-gradient(
+    260px circle at var(--mx, 50%) var(--my, 50%),
+    var(--aurora-1),
+    var(--aurora-2) 45%,
+    transparent 75%
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  z-index: 1;
+}
+
+.spotlight-card:hover::before,
+.spotlight-card:hover::after {
+  opacity: 1;
+}
+
+.spotlight-card:hover {
+  border-color: rgba(var(--accent-rgb), 0.28);
+}
+
+/* 极光文字渐变 */
+.text-aurora {
+  background: linear-gradient(120deg, var(--aurora-1) 0%, var(--aurora-2) 52%, var(--aurora-3) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* 极光按钮微光扫描（适配纯色/拼色/极光全部风格与反色文字） */
+.btn-aurora {
+  position: relative;
+  overflow: hidden;
+  background: var(--accent-gradient);
+  color: var(--btn-fg, #ffffff);
+  box-shadow: var(--shadow-glow);
+  transition: transform 0.2s ease, box-shadow 0.25s ease, filter 0.25s ease, background 0.35s ease;
+}
+.btn-aurora::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    110deg,
+    transparent 20%,
+    rgba(255, 255, 255, 0.32) 48%,
+    transparent 76%
+  );
+  transform: translateX(-120%);
+  transition: transform 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.btn-aurora:hover::before {
+  transform: translateX(120%);
+}
+.btn-aurora:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 0 38px -4px rgba(var(--accent-rgb), 0.65);
+}
+
+/* 极光呼吸动画 */
+@keyframes aurora-float-1 {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
+  }
+  33% {
+    transform: translate3d(6vw, 4vh, 0) scale(1.12) rotate(8deg);
+  }
+  66% {
+    transform: translate3d(-4vw, 7vh, 0) scale(0.94) rotate(-6deg);
   }
 }
 
-/*
- * 尊重系统设置。这条必须在，否则前庭功能敏感的用户会因为动效不适。
- * 用 0.01ms 而不是 0：0 会让某些依赖 animationend 的逻辑永远等不到事件。
- */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
-}
-
-/* 入场：只用于首屏，翻页不重复 */
-@keyframes rise {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-/*
- * 营销 hero 的进入渐显：只动 opacity + translateY，不缩放、不位移很远。
- *
- * 用它代替「逐元素写一段 animation」—— 一处定义，S2/S3 直接挂类。
- * 变量 --hero-delay 让多行内容能错开（80ms 一档，不要更多）。
- */
-@keyframes hero-rise {
-  from {
-    opacity: 0;
-    transform: translateY(16px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@utility hero-in {
-  animation: hero-rise 600ms var(--ease-out-soft) both;
-  animation-delay: var(--hero-delay, 0ms);
-}
-
-/*
- * 前庭功能敏感的用户必须能关掉它：resize/移动带来的位移是真正会让人不适的那类动效。
- * 只写在那条全局 reduce 规则里不够明确（那条是"压到 0.01ms"），这里直接置空。
- */
-@media (prefers-reduced-motion: reduce) {
-  .hero-in {
-    animation: none !important;
-  }
-}
-
-@keyframes fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-/* 点赞的一次脉冲 */
-@keyframes pop {
-  0% {
-    transform: scale(1);
+@keyframes aurora-float-2 {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
   }
   40% {
-    transform: scale(1.16);
+    transform: translate3d(-7vw, -5vh, 0) scale(1.15) rotate(-10deg);
   }
-  100% {
-    transform: scale(1);
+  75% {
+    transform: translate3d(5vw, -3vh, 0) scale(0.92) rotate(5deg);
   }
 }
 
-/* 骨架屏：缓慢脉冲，不要生硬地闪 */
-@keyframes soft-pulse {
-  0%,
-  100% {
-    opacity: 1;
+@keyframes aurora-float-3 {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
   }
   50% {
-    opacity: 0.45;
+    transform: translate3d(4vw, -6vh, 0) scale(1.1);
+  }
+}
+
+@keyframes shimmer-sweep {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-aurora-1 {
+  animation: aurora-float-1 22s ease-in-out infinite;
+}
+.animate-aurora-2 {
+  animation: aurora-float-2 27s ease-in-out infinite;
+}
+.animate-aurora-3 {
+  animation: aurora-float-3 19s ease-in-out infinite;
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--border-glass) 20%,
+    rgba(var(--accent-rgb), 0.18) 50%,
+    var(--border-glass) 80%
+  );
+  background-size: 200% 100%;
+  animation: shimmer-sweep 1.8s ease-in-out infinite;
+}
+
+/* 评论锚点跳转高亮（2 秒极光脉冲淡出） */
+@keyframes comment-highlight-pulse {
+  0% {
+    box-shadow: 0 0 0 2px var(--aurora-1), 0 0 32px rgba(var(--accent-rgb), 0.45);
+    background-color: rgba(var(--accent-rgb), 0.18);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+    background-color: transparent;
+  }
+}
+.comment-anchor-flash {
+  animation: comment-highlight-pulse 2.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* 数字等宽 */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================================
+   MARKDOWN 沉浸阅读排版（Prose Aurora）
+   ============================================================================ */
+
+.prose-aurora {
+  color: var(--fg-primary);
+  font-size: 0.96875rem;
+  line-height: 1.85;
+  word-break: break-word;
+}
+.prose-aurora > *:first-child {
+  margin-top: 0;
+}
+.prose-aurora > *:last-child {
+  margin-bottom: 0;
+}
+.prose-aurora h1,
+.prose-aurora h2,
+.prose-aurora h3,
+.prose-aurora h4 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--fg-primary);
+  margin-top: 1.6em;
+  margin-bottom: 0.65em;
+}
+.prose-aurora h1 { font-size: 1.55rem; }
+.prose-aurora h2 {
+  font-size: 1.28rem;
+  padding-bottom: 0.35em;
+  border-bottom: 1px solid var(--border-glass);
+}
+.prose-aurora h3 { font-size: 1.1rem; }
+.prose-aurora p {
+  margin: 0.9em 0;
+  color: var(--fg-secondary);
+}
+.prose-aurora strong {
+  color: var(--fg-primary);
+  font-weight: 600;
+}
+.prose-aurora a {
+  color: var(--aurora-2);
+  text-decoration: underline;
+  text-decoration-color: rgba(var(--accent-rgb), 0.4);
+  text-underline-offset: 3px;
+  transition: color 0.2s ease;
+}
+.prose-aurora a:hover {
+  color: var(--aurora-1);
+}
+.prose-aurora ul,
+.prose-aurora ol {
+  margin: 0.9em 0;
+  padding-left: 1.5em;
+  color: var(--fg-secondary);
+}
+.prose-aurora ul { list-style: disc; }
+.prose-aurora ol { list-style: decimal; }
+.prose-aurora li { margin: 0.35em 0; }
+.prose-aurora blockquote {
+  margin: 1.15em 0;
+  padding: 0.75em 1.1em;
+  border-left: 3px solid var(--aurora-1);
+  border-radius: 0 12px 12px 0;
+  background: rgba(var(--accent-rgb), 0.08);
+  color: var(--fg-secondary);
+}
+.prose-aurora code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  padding: 0.16em 0.42em;
+  border-radius: 6px;
+  background: rgba(var(--accent-rgb), 0.14);
+  color: var(--fg-primary);
+  border: 1px solid var(--border-glass);
+}
+.prose-aurora pre {
+  margin: 1.15em 0;
+  padding: 1rem 1.15rem;
+  border-radius: 14px;
+  overflow-x: auto;
+  background: rgba(6, 9, 20, 0.85);
+  border: 1px solid var(--border-glass-strong);
+  color: #e2e8f0;
+}
+:root[data-theme="light"] .prose-aurora pre {
+  background: #0f172a;
+  color: #f1f5f9;
+}
+.prose-aurora pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font-size: 0.84rem;
+}
+.prose-aurora hr {
+  margin: 1.6em 0;
+  border: none;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border-glass-strong), transparent);
+}
+.prose-aurora table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.1em 0;
+  font-size: 0.88rem;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border-glass);
+}
+.prose-aurora th,
+.prose-aurora td {
+  padding: 0.6rem 0.85rem;
+  border-bottom: 1px solid var(--border-glass);
+  text-align: left;
+}
+.prose-aurora th {
+  background: rgba(var(--accent-rgb), 0.1);
+  color: var(--fg-primary);
+  font-weight: 600;
+}
+.prose-aurora img {
+  max-width: 100%;
+  border-radius: 14px;
+  margin: 1em 0;
+  border: 1px solid var(--border-glass);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-aurora-1,
+  .animate-aurora-2,
+  .animate-aurora-3,
+  .skeleton-shimmer {
+    animation: none !important;
   }
 }

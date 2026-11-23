@@ -1,257 +1,213 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
-import { ApiError } from '@/shared/api/api-error'
+import { ArrowRight, KeyRound, Lock, Mail, Sparkles, User } from 'lucide-react'
 import { useRegister, useSendRegisterCode } from '@/features/auth/api'
+import { authErrorMessage } from '@/features/auth/auth-error'
+import { BrandMark } from '@/shared/ui/brand-mark'
 import { Button } from '@/shared/ui/button'
-import { Input } from '@/shared/ui/field'
-
-const RESEND_SECONDS = 60
-const PASSWORD_MIN = 8
-const PASSWORD_MAX = 72
-
-type FieldErrors = Partial<Record<'email' | 'password' | 'confirm' | 'nickname' | 'code', string>>
-
-/** 客户端校验：明显的问题不必往返一次后端。后端仍然会再校验一遍（信任边界在服务端） */
-function validate(values: {
-  email: string
-  password: string
-  confirm: string
-  nickname: string
-  code: string
-}): FieldErrors {
-  const errors: FieldErrors = {}
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)) {
-    errors.email = '邮箱格式不正确'
-  }
-  if (values.nickname.trim().length < 2 || values.nickname.trim().length > 32) {
-    errors.nickname = '昵称长度需在 2~32 之间'
-  }
-  if (values.password.length < PASSWORD_MIN || values.password.length > PASSWORD_MAX) {
-    errors.password = `密码长度需在 ${PASSWORD_MIN}~${PASSWORD_MAX} 之间`
-  }
-  if (values.confirm !== values.password) {
-    errors.confirm = '两次输入的密码不一致'
-  }
-  if (!/^\d{6}$/.test(values.code)) {
-    errors.code = '验证码为 6 位数字'
-  }
-  return errors
-}
+import { Card } from '@/shared/ui/card'
+import { Field, Input } from '@/shared/ui/field'
+import { Toast } from '@/shared/ui/toast'
 
 export function RegisterForm() {
   const navigate = useNavigate()
-  const [values, setValues] = useState({ email: '', nickname: '', password: '', confirm: '', code: '' })
-  const [errors, setErrors] = useState<FieldErrors>({})
-  const [formError, setFormError] = useState<string | null>(null)
-  const [info, setInfo] = useState<string | null>(null)
-  const [countdown, setCountdown] = useState(0)
-  const timerRef = useRef<number | null>(null)
-
   const sendCode = useSendRegisterCode()
-  const registerMutation = useRegister()
+  const register = useRegister()
+
+  const [email, setEmail] = useState('')
+  const [code, setCode] = useState('')
+  const [nickname, setNickname] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [cooldown, setCooldown] = useState(0)
+  const [error, setError] = useState<string | null>(null)
+  const [info, setInfo] = useState<string | null>(null)
 
   useEffect(() => {
-    return () => {
-      if (timerRef.current !== null) window.clearInterval(timerRef.current)
-    }
-  }, [])
+    if (cooldown <= 0) return
+    const t = window.setInterval(() => setCooldown((c) => Math.max(0, c - 1)), 1000)
+    return () => window.clearInterval(t)
+  }, [cooldown])
 
-  const setField = (key: keyof typeof values) => (e: React.ChangeEvent<HTMLInputElement>) => {
-    const next = e.target.value
-    setValues((v) => ({ ...v, [key]: next }))
-    setErrors((prev) => ({ ...prev, [key]: undefined }))
-  }
-
-  const startCountdown = () => {
-    setCountdown(RESEND_SECONDS)
-    if (timerRef.current !== null) window.clearInterval(timerRef.current)
-    timerRef.current = window.setInterval(() => {
-      setCountdown((c) => {
-        if (c <= 1) {
-          if (timerRef.current !== null) window.clearInterval(timerRef.current)
-          return 0
-        }
-        return c - 1
-      })
-    }, 1000)
-  }
-
-  const onSendCode = () => {
-    setFormError(null)
+  const handleSendCode = () => {
+    setError(null)
     setInfo(null)
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)) {
-      setErrors((prev) => ({ ...prev, email: '请先填写正确的邮箱' }))
+    const cleanEmail = email.trim()
+    if (!cleanEmail) {
+      setError('请先填写邮箱地址')
       return
     }
     sendCode.mutate(
-      { email: values.email },
+      { email: cleanEmail },
       {
         onSuccess: () => {
-          setInfo('验证码已发送，请到邮箱查看（开发环境请打开 MailHog）')
-          startCountdown()
+          setCooldown(60)
+          setInfo('验证码已发送，请检查你的邮箱收件箱')
         },
-        onError: (err) => setFormError(messageOf(err)),
+        onError: (err) => {
+          setError(authErrorMessage(err))
+        },
       },
     )
   }
 
-  const onSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    setFormError(null)
-    setInfo(null)
-    const found = validate(values)
-    if (Object.values(found).some(Boolean)) {
-      setErrors(found)
+    setError(null)
+    if (password.length < 8) {
+      setError('密码长度至少 8 位')
       return
     }
-    setErrors({})
-    registerMutation.mutate(
+    if (password !== confirm) {
+      setError('两次输入的密码不一致')
+      return
+    }
+    register.mutate(
       {
-        email: values.email,
-        password: values.password,
-        nickname: values.nickname,
-        code: values.code,
+        email: email.trim(),
+        code: code.trim(),
+        nickname: nickname.trim(),
+        password,
       },
       {
         onSuccess: () => {
-          // P1.1 不自动登录：先引导到登录页（P1.2 再决定是否改成自动登录）
-          navigate(`/login?registered=${encodeURIComponent(values.email)}`)
+          void navigate('/login', { replace: true })
         },
-        onError: (err) => setFormError(messageOf(err)),
+        onError: (err) => {
+          setError(authErrorMessage(err))
+        },
       },
     )
   }
 
   return (
-    <div className="mx-auto w-full max-w-[400px] px-6 pb-24 pt-16 md:pt-24">
-      <h1 className="m-0 text-title">注册</h1>
-      <p className="m-0 mt-2 text-aux leading-[1.7] text-muted-foreground">
-        注册后可以发帖、评论与关注。注册功能是否开放由服务端配置控制；若提示“暂未开放”，请联系管理员。
-      </p>
+    <Card padding="lg" strong className="mx-auto w-full max-w-md rounded-3xl">
+      <div className="mb-6 flex flex-col items-center text-center">
+        <BrandMark size={48} className="mb-3" />
+        <h1 className="font-display text-2xl font-extrabold tracking-tight text-foreground">
+          加入 <span className="text-aurora">kuaikan</span>
+        </h1>
+        <p className="mt-1 text-xs text-muted-foreground">注册后即可加入社群、发帖互动与接收实时推送</p>
+      </div>
 
-      <form className="mt-8" onSubmit={onSubmit} data-testid="register-form" noValidate>
-        <div className="space-y-5">
-          <Field label="邮箱" error={errors.email}>
-            <div className="flex gap-2">
+      <div className="mb-4 space-y-2">
+        {info && <Toast tone="success" message={info} onClose={() => setInfo(null)} />}
+        {error && <Toast tone="danger" message={error} testId="toast-error" />}
+      </div>
+
+      <form data-testid="register-form" onSubmit={handleSubmit} className="space-y-4">
+        <Field label="邮箱地址" htmlFor="reg-email">
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Mail className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                data-testid="field-email"
-                className="h-11"
+                id="reg-email"
                 type="email"
-                value={values.email}
-                onChange={setField('email')}
+                data-testid="field-email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
-                aria-invalid={Boolean(errors.email)}
-                autoComplete="email"
+                className="pl-10"
+                required
               />
-              <Button
-                variant="outline"
-                className="h-11 shrink-0 px-4 text-aux"
-                onClick={onSendCode}
-                disabled={countdown > 0 || sendCode.isPending}
-                data-testid="btn-send-code"
-              >
-                {countdown > 0 ? `${countdown}s` : sendCode.isPending ? '发送中' : '获取验证码'}
-              </Button>
+            </div>
+            <Button
+              variant="secondary"
+              data-testid="btn-send-code"
+              disabled={cooldown > 0 || sendCode.isPending}
+              onClick={handleSendCode}
+              className="shrink-0"
+            >
+              {cooldown > 0 ? `${String(cooldown)}s` : sendCode.isPending ? '发送中' : '发验证码'}
+            </Button>
+          </div>
+        </Field>
+
+        <Field label="邮箱验证码" htmlFor="reg-code">
+          <div className="relative">
+            <KeyRound className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              id="reg-code"
+              data-testid="field-code"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              placeholder="6 位数字验证码"
+              className="pl-10 font-mono"
+              required
+            />
+          </div>
+        </Field>
+
+        <Field label="昵称" htmlFor="reg-nick">
+          <div className="relative">
+            <User className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              id="reg-nick"
+              data-testid="field-nickname"
+              value={nickname}
+              onChange={(e) => setNickname(e.target.value)}
+              placeholder="大家将如何称呼你"
+              className="pl-10"
+              maxLength={32}
+              required
+            />
+          </div>
+        </Field>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="设置密码" htmlFor="reg-pwd">
+            <div className="relative">
+              <Lock className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                id="reg-pwd"
+                type="password"
+                data-testid="field-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="至少 8 位"
+                className="pl-10"
+                minLength={8}
+                required
+              />
             </div>
           </Field>
 
-          <Field label="验证码" error={errors.code}>
-            <Input
-              data-testid="field-code"
-              className="h-11"
-              inputMode="numeric"
-              value={values.code}
-              onChange={setField('code')}
-              placeholder="6 位数字"
-              aria-invalid={Boolean(errors.code)}
-            />
-          </Field>
-
-          <Field label="昵称" error={errors.nickname}>
-            <Input
-              data-testid="field-nickname"
-              className="h-11"
-              value={values.nickname}
-              onChange={setField('nickname')}
-              placeholder="2~32 个字符"
-              aria-invalid={Boolean(errors.nickname)}
-            />
-          </Field>
-
-          <Field label="密码" error={errors.password}>
-            <Input
-              data-testid="field-password"
-              className="h-11"
-              type="password"
-              value={values.password}
-              onChange={setField('password')}
-              placeholder={`${PASSWORD_MIN}~${PASSWORD_MAX} 位`}
-              aria-invalid={Boolean(errors.password)}
-              autoComplete="new-password"
-            />
-          </Field>
-
-          <Field label="确认密码" error={errors.confirm}>
-            <Input
-              data-testid="field-confirm"
-              className="h-11"
-              type="password"
-              value={values.confirm}
-              onChange={setField('confirm')}
-              aria-invalid={Boolean(errors.confirm)}
-              autoComplete="new-password"
-            />
+          <Field label="确认密码" htmlFor="reg-confirm">
+            <div className="relative">
+              <Sparkles className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                id="reg-confirm"
+                type="password"
+                data-testid="field-confirm"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                placeholder="再输入一次"
+                className="pl-10"
+                minLength={8}
+                required
+              />
+            </div>
           </Field>
         </div>
-
-        {info ? <p className="m-0 mt-4 text-caption text-success">{info}</p> : null}
-        {formError ? (
-          <p className="m-0 mt-4 text-aux text-danger" data-testid="toast-error">
-            {formError}
-          </p>
-        ) : null}
 
         <Button
           type="submit"
           size="lg"
-          className="mt-7 w-full"
-          disabled={registerMutation.isPending}
           data-testid="btn-submit"
+          disabled={register.isPending}
+          className="mt-2 w-full"
         >
-          {registerMutation.isPending ? '提交中…' : '注册'}
+          <span>{register.isPending ? '正在注册…' : '完成注册'}</span>
+          <ArrowRight className="h-4 w-4" />
         </Button>
-
-        <p className="m-0 mt-6 border-t border-border pt-6 text-center text-aux text-muted-foreground">
-          已经有账号？
-          <Link to="/login" className="ml-1 text-primary underline-offset-[3px] hover:underline">
-            去登录
-          </Link>
-        </p>
       </form>
-    </div>
-  )
-}
 
-function Field({
-  label,
-  error,
-  children,
-}: {
-  label: string
-  error: string | undefined
-  children: React.ReactNode
-}) {
-  return (
-    <label className="block">
-      <span className="mb-2 block text-caption text-muted-foreground">{label}</span>
-      {children}
-      {error ? <span className="mt-1.5 block text-caption text-danger">{error}</span> : null}
-    </label>
+      <p className="mt-6 text-center text-xs text-muted-foreground">
+        已有账号？{' '}
+        <Link to="/login" className="font-semibold text-primary hover:underline">
+          直接登录
+        </Link>
+      </p>
+    </Card>
   )
-}
-
-/** 把 ApiError 转成用户能看懂的一句话 */
-function messageOf(err: unknown): string {
-  if (err instanceof ApiError) return err.message
-  return err instanceof Error ? err.message : '未知错误'
 }
