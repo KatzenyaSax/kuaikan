@@ -21,7 +21,7 @@
 #
 # 服务简称映射：gw→gateway、user→user-service、community→community-service、
 # content→content-service、interaction→interaction-service、notification→notification-service、
-# search→search-service、rank→rank-service、rmq→rmq-broker、namesrv→rmq-namesrv。
+# search→search-service、rank→rank-service、rmq→rmq-broker、namesrv→rmq-namesrv、es→elasticsearch。
 set -euo pipefail
 
 SSH_HOST="${SSH_HOST:-root@206.237.30.147}"
@@ -60,7 +60,7 @@ kuaikan 云端运维工具（./deploy/bin/ops.sh）
   ps                              docker compose ps -a
   top                             docker stats --no-stream（按内存降序）
 
-容器与发布（支持简称：gw/user/community/content/interaction/notification/search/rank/rmq/namesrv）：
+容器与发布（支持简称：gw/user/community/content/interaction/notification/search/rank/rmq/namesrv/es）：
   logs <svc> [args...]            查看日志（默认 --tail 100；支持 -f、--tail N、--since 10m）
   restart <svc...>                重启一个或多个服务
   up <target>                     远程执行 deploy/bin/up.sh（core / app / all / 单服务）
@@ -118,6 +118,7 @@ resolve_service() {
     search|search-service)      echo "search-service" ;;
     rank|rank-service)          echo "rank-service" ;;
     rmq|broker|rmq-broker)      echo "rmq-broker" ;;
+    es|elasticsearch)           echo "elasticsearch" ;;
     namesrv|rmq-namesrv)        echo "rmq-namesrv" ;;
     *)                          echo "${1:-}" ;;
   esac

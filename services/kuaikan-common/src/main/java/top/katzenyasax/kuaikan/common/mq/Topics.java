@@ -60,6 +60,33 @@ public final class Topics {
      */
     public static final String USER_FOLLOWED = "kuaikan_user_followed";
 
+    /**
+     * 帖子发布（P6.0）。载荷见 {@link PostCreated}。
+     *
+     * <b>为什么要有它</b>：搜索索引是 content 的读模型，靠事件异步刷新。
+     * 让 content 在发帖事务里同步写 ES 会把发帖的成功率绑在 ES 的可用性上，
+     * 而这正是要避免的：ES 挂了，帖子照样要能发出去。
+     *
+     * <b>为什么不与互动/评论合流</b>：消费方不同（search 只关心帖子的增删改），
+     * 且载荷形状差得远。合并只会让 search 把不属于它的消息全收下来再丢掉。
+     */
+    public static final String POST_CREATED = "kuaikan_post_created";
+
+    /**
+     * 帖子删除（P6.0）。载荷见 {@link PostDeleted}。
+     *
+     * 删帖必须有事件：否则索引里留下“能搜到但点进去 404”的脏数据。
+     */
+    public static final String POST_DELETED = "kuaikan_post_deleted";
+
+    /**
+     * 用户资料变更（P6.0）。载荷见 {@link UserProfileUpdated}。
+     *
+     * 目前唯一目的是同步索引里反范式拷贝的 {@code authorNickname}：
+     * 改昵称后，历史帖子必须在新名字下也能被搜到。
+     */
+    public static final String USER_PROFILE_UPDATED = "kuaikan_user_profile_updated";
+
     private Topics() {
     }
 }

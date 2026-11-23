@@ -136,8 +136,16 @@ git -C "$REPO" fetch -q origin
 git -C "$REPO" reset -q --hard origin/main
 git -C "$REPO" log --oneline -1
 
-CORE="mysql redis nacos rmq-namesrv rmq-broker"
+CORE="mysql redis nacos rmq-namesrv rmq-broker elasticsearch"
 APP="gateway user-service community-service content-service interaction-service notification-service search-service rank-service"
+
+# ES 的数据目录必须**预先存在且属主为 1000:0**（镜像内 elasticsearch 用户的 uid）。
+# 不预建的话 Docker 会自己建一个 root:root 的目录，ES 启动时写日志目录就报
+# AccessDeniedException，而容器只是反复重启。属主必须复制 uid，不能依赖名字（宿主机无此用户）。
+ES_DATA="${ES_DATA_DIR:-/opt/kuaikan/data/elasticsearch}"
+mkdir -p "$ES_DATA"
+chown 1000:0 "$ES_DATA"
+chmod 775 "$ES_DATA"
 
 case "$TARGET" in
   core)

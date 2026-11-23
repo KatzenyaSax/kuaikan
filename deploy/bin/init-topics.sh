@@ -30,6 +30,12 @@ TOPICS=(
   # 它必须在 notification-service **启动之前**就存在：消费者在 topic 创建前
   # 订阅的话拿不到路由，要重启才能把积压的消息读走（见文件头的实测记录）。
   "kuaikan_user_followed"
+  # P6.0：全文搜索的索引同步事件（content/user → search-service）。
+  # 同样必须在 search-service 启动前存在，否则消费者拿不到路由、
+  # 要重启才能把积压的建索引消息读走（结果就是“新帖搜不到”）。
+  "kuaikan_post_created"
+  "kuaikan_post_deleted"
+  "kuaikan_user_profile_updated"
 )
 
 mqadmin() {

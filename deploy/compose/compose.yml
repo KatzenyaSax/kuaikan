@@ -1,6 +1,6 @@
 # kuaikan 中间件 / 服务编排
 #
-#   core : MySQL 8.4 + Redis 7.4 + Nacos 3.0.3 + RocketMQ 5.3.4
+#   core : MySQL 8.4 + Redis 7.4 + Nacos 3.0.3 + RocketMQ 5.3.4 + Elasticsearch 8.17.4(IK)
 #   app  : 网关 + 7 个服务
 #   observe / extra : 可观测性与可选组件（P0 不启用，留位）
 #
@@ -176,6 +176,59 @@ services:
       timeout: 5s
       retries: 15
       start_period: 40s
+
+  elasticsearch:
+    profiles: ["core"]
+    # 自定义镜像：构建期预装 analysis-ik（见 deploy/docker/elasticsearch/Dockerfile）。
+    # 两个版本号必须**成对**修改：IK 是 ES 内部插件，小版本不匹配会在启动时炸。
+    build:
+      context: ../docker/elasticsearch
+      dockerfile: Dockerfile
+      args:
+        ES_VERSION: 8.17.4
+        IK_VERSION: 8.17.4
+    image: kuaikan/elasticsearch:8.17.4-ik8.17.4
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      TZ: Asia/Shanghai
+      # 单节点、纯内网：不开安全认证。ES 8 默认开 security 并生成随机密码，
+      # 那会让所有客户端都要带凭证，而这里根本没有第二个信任边界。
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      xpack.security.enrollment.enabled: "false"
+      xpack.ml.enabled: "false"
+      # 不要联网下 GeoIP 库（本机没有 geo 场景，下载失败只会刷一屏 WARN）
+      ingest.geoip.downloader.enabled: "false"
+      cluster.name: kuaikan-es
+      node.name: kuaikan-es-1
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+      # 锁住堆内存，避免被换出后出现长时间的 GC 抖动
+      bootstrap.memory_lock: "true"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    # 堆 512m + Lucene 堆外（索引缓冲、mmap）留 512m
+    mem_limit: 1024m
+    volumes:
+      # 属主必须是 1000:0（镜像内的 elasticsearch 用户），由 up.sh 预先创建
+      - /opt/kuaikan/data/elasticsearch:/usr/share/elasticsearch/data
+    networks:
+      kuaikan:
+        ipv4_address: 172.30.10.15
+    healthcheck:
+      # 用 curl 打 _cluster/health。
+      # 阈值用 yellow 而不是 green：单节点 + 所有索引 replicas=0 时本来就是 green，
+      # 但一旦将来某个索引带了副本，单节点永远只能到 yellow ——
+      # 那时等 green 会把"ES 完全正常、只是副本无处分配"误判成不健康。
+      test:
+        - CMD-SHELL
+        - curl -fsS 'http://127.0.0.1:9200/_cluster/health?wait_for_status=yellow&timeout=5s' >/dev/null || exit 1
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
 
   # ============================================================
   # devtools（仅开发期启用，生产 up.sh all 不带它）
