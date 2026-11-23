@@ -2,6 +2,7 @@ package top.katzenyasax.kuaikan.content.web;
 
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -126,6 +127,22 @@ public class PostController {
         // 内部是 Redis INCR，失败只记 WARN，不会让详情页 500。
         viewCounter.recordView(postId);
         return Result.ok(detail);
+    }
+
+    /**
+     * 删帖。只有作者本人可以删；幂等（重复删返回成功）。
+     *
+     * <b>删除与 {@code PostDeleted} 事件同事务</b>：搜索索引依赖它清除文档，
+     * 否则会留下「搜得到但点进去 404」的脏数据。
+     *
+     * 需要登录（不标 {@link PublicEndpoint}）：网关默认拦截写请求，
+     * 作者身份只来自 UserContext。
+     */
+    @Operation(operationId = "deletePost")
+    @DeleteMapping("/{postId}")
+    public Result<Void> delete(@PathVariable("postId") Long postId) {
+        postService.delete(UserContext.requireUserId(), postId);
+        return Result.ok();
     }
 
     /**

@@ -209,8 +209,9 @@ services:
       memlock:
         soft: -1
         hard: -1
-    # 堆 512m + Lucene 堆外（索引缓冲、mmap）留 512m
-    mem_limit: 1024m
+    # 堆 512m + Lucene 堆外（索引缓冲、mmap）。P6.0 实测 1024m 下闲置占 98.7%，
+    # 一旦触发 merge / 首次 bulk 回填就会 OOM，所以上限提到 1536m（堆不变）。
+    mem_limit: 1536m
     volumes:
       # 属主必须是 1000:0（镜像内的 elasticsearch 用户），由 up.sh 预先创建
       - /opt/kuaikan/data/elasticsearch:/usr/share/elasticsearch/data

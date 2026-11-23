@@ -1,5 +1,6 @@
 package top.katzenyasax.kuaikan.content.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -12,12 +13,19 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import top.katzenyasax.kuaikan.common.api.CursorCodec;
+import top.katzenyasax.kuaikan.common.api.PageResult;
 import top.katzenyasax.kuaikan.common.api.Result;
 import top.katzenyasax.kuaikan.common.error.BizException;
 import top.katzenyasax.kuaikan.common.error.CommonErrorCode;
 import top.katzenyasax.kuaikan.common.error.CommunityErrorCode;
 import top.katzenyasax.kuaikan.common.error.ContentErrorCode;
+import top.katzenyasax.kuaikan.common.mq.PostCreated;
+import top.katzenyasax.kuaikan.common.mq.PostDeleted;
+import top.katzenyasax.kuaikan.common.mq.Topics;
+import top.katzenyasax.kuaikan.common.outbox.OutboxEvent;
+import top.katzenyasax.kuaikan.common.outbox.OutboxMapper;
 import top.katzenyasax.kuaikan.content.config.ContentProperties;
 import top.katzenyasax.kuaikan.content.domain.Post;
 import top.katzenyasax.kuaikan.content.feign.CommunityMembershipClient;
@@ -25,6 +33,7 @@ import top.katzenyasax.kuaikan.content.feign.MembershipView;
 import top.katzenyasax.kuaikan.content.mapper.PostMapper;
 import top.katzenyasax.kuaikan.content.web.dto.BatchPostsRequest;
 import top.katzenyasax.kuaikan.content.web.dto.CreatePostRequest;
+import top.katzenyasax.kuaikan.content.web.dto.InternalSearchPostItem;
 import top.katzenyasax.kuaikan.content.web.dto.PostDetail;
 import top.katzenyasax.kuaikan.content.web.dto.PostPage;
 import top.katzenyasax.kuaikan.content.web.dto.PostSummary;
@@ -49,8 +58,20 @@ public class PostService {
     /** 多作者时间线（/following 全部关注）的排序标记 */
     private static final String SORT_BY_AUTHORS = "authors-posts";
 
+    /**
+     * 内部全量索引游标的排序标记。
+     *
+     * 与所有对外列表都不同：拿对外列表的游标喂给全量回填（或反过来）
+     * 会被 CursorCodec 明确报 40010，而不是静默按另一套顺序翻出一段歪数据。
+     */
+    private static final String SORT_SEARCH_INDEX = "post-search-index";
+
     private static final int DEFAULT_LIMIT = 20;
     private static final int MAX_LIMIT = 50;
+
+    /** 内部全量回填默认页大小（P6 方案 §4.3 的 200）；上限 500 防止一次拉爆内存 */
+    private static final int DEFAULT_INDEX_LIMIT = 200;
+    private static final int MAX_INDEX_LIMIT = 500;
 
     /**
      * {@code POST /posts/batch} 的单次上限（p55-social.md §3.3）。
@@ -63,13 +84,19 @@ public class PostService {
     private final PostMapper postMapper;
     private final CommunityMembershipClient membershipClient;
     private final ContentProperties contentProperties;
+    private final OutboxMapper outboxMapper;
+    private final ObjectMapper objectMapper;
 
     public PostService(PostMapper postMapper,
                        CommunityMembershipClient membershipClient,
-                       ContentProperties contentProperties) {
+                       ContentProperties contentProperties,
+                       OutboxMapper outboxMapper,
+                       ObjectMapper objectMapper) {
         this.postMapper = postMapper;
         this.membershipClient = membershipClient;
         this.contentProperties = contentProperties;
+        this.outboxMapper = outboxMapper;
+        this.objectMapper = objectMapper;
     }
 
     /**
@@ -94,9 +121,51 @@ public class PostService {
         post.setStatus(Post.STATUS_NORMAL);
         postMapper.insert(post);
 
+        // 索引刷新事件与帖子插入在**同一个本地事务**里：
+        // 事务提交 = 事件一定被记住；回滚 = 事件也不会留下。
+        enqueuePostCreated(post);
+
         log.info("帖子已发布 id={} communityId={} authorId={}",
                 post.getId(), post.getCommunityId(), userId);
         return PostDetail.of(post);
+    }
+
+    /**
+     * 删帖。只有作者本人可以删（版主权限是 P7 的新概念）。
+     *
+     * <b>软删，且事件与删除同事务</b>：搜索索引是派生读模型，删帖必须发
+     * {@code PostDeleted} —— 否则会出现「搜得到但点进去 404」的脏数据。
+     *
+     * <b>只有真的改了行才发事件</b>：重复删、并发双删都返回幂等成功，
+     * 但 {@code UPDATE ... WHERE status = 1} 影响 0 行时不写 outbox，
+     * 避免同一事实被重复广播（消费方虽然幂等，但没必要制造噪音）。
+     */
+    @Transactional
+    public void delete(Long userId, Long postId) {
+        Post post = postMapper.selectById(postId);
+        // 已删除的帖子对外一律「不存在」，不区分 404 与 403
+        if (post == null) {
+            throw new BizException(ContentErrorCode.POST_NOT_FOUND);
+        }
+        if (!post.getAuthorId().equals(userId)) {
+            throw new BizException(CommonErrorCode.FORBIDDEN, "只能删除自己的帖子");
+        }
+        if (post.getStatus() == null || post.getStatus() != Post.STATUS_NORMAL) {
+            return; // 幂等：已经删过了，重复删不报错也不重复发事件
+        }
+        if (postMapper.softDelete(postId) == 0) {
+            // 并发下另一个事务刚删掉：本事务没改到行，也就不该发第二个事件
+            log.info("删帖未改到行（已被并发删除），跳过事件 postId={} userId={}", postId, userId);
+            return;
+        }
+
+        PostDeleted event = new PostDeleted(
+                UUID.randomUUID().toString(),
+                System.currentTimeMillis(),
+                String.valueOf(postId));
+        enqueue(Topics.POST_DELETED, event.eventId(), event);
+
+        log.info("帖子已删除 id={} authorId={}", postId, userId);
     }
 
     /** 全站最新帖。首页"最新帖子"用，游客可读 */
@@ -256,6 +325,33 @@ public class PostService {
         return new ArrayList<>(unique);
     }
 
+    /**
+     * 全量拉帖（P6.1 内部接口）。给 search-service 重建索引用。
+     *
+     * <b>按 id 升序的游标分页</b>：id 单调且不变，一次全量遍历不重不漏。
+     * 游标不透明（Base64 编码，前端/调用方不许解析）；排序标记独立，
+     * 拿错列表的游标会被明确拒绝。
+     *
+     * {@code limit} 默认 200、上限 500：回填是服务对服务的批量读，
+     * 单批太小会把一次全量变成上百次往返，太大则单次响应可达数十 MB。
+     */
+    public PageResult<InternalSearchPostItem> indexPage(String cursor, Integer limit) {
+        int size = normalizeIndexLimit(limit);
+        CursorCodec.Cursor c = CursorCodec.decode(cursor, SORT_SEARCH_INDEX);
+        List<Post> rows = postMapper.indexPage(c == null ? null : c.id(), size + 1);
+
+        List<InternalSearchPostItem> items = new ArrayList<>();
+        for (int i = 0; i < rows.size() && i < size; i++) {
+            items.add(InternalSearchPostItem.of(rows.get(i)));
+        }
+        String next = null;
+        if (rows.size() > size) {
+            Post last = rows.get(size - 1);
+            next = CursorCodec.encode(SORT_SEARCH_INDEX, toMillis(last), last.getId());
+        }
+        return PageResult.of(items, next);
+    }
+
     /** 把「多取的那一条」剥掉，并按同一套排序标记编下一页游标 */
     private static PostPage toPage(List<Post> rows, int size, String sort) {
         List<PostSummary> items = new ArrayList<>();
@@ -283,6 +379,47 @@ public class PostService {
             return DEFAULT_LIMIT;
         }
         return Math.min(limit, MAX_LIMIT);
+    }
+
+    private static int normalizeIndexLimit(Integer limit) {
+        if (limit == null || limit <= 0) {
+            return DEFAULT_INDEX_LIMIT;
+        }
+        return Math.min(limit, MAX_INDEX_LIMIT);
+    }
+
+    /**
+     * 发帖事件。快照进载荷（含完整正文），消费方不回查 content。
+     * 序列化失败直接抛，让整个发帖事务回滚 —— 宁可发帖失败，也不要「帖子在但索引永远不知道」。
+     */
+    private void enqueuePostCreated(Post post) {
+        PostCreated event = new PostCreated(
+                UUID.randomUUID().toString(),
+                System.currentTimeMillis(),
+                String.valueOf(post.getId()),
+                String.valueOf(post.getCommunityId()),
+                String.valueOf(post.getAuthorId()),
+                post.getTitle(),
+                post.getBody(),
+                toMillis(post));
+        enqueue(Topics.POST_CREATED, event.eventId(), event);
+    }
+
+    /** 写一条 outbox 行。调用方保证它在业务事务内 */
+    private void enqueue(String topic, String eventId, Object event) {
+        OutboxEvent row = new OutboxEvent();
+        row.setEventId(eventId);
+        row.setTopic(topic);
+        try {
+            row.setPayload(objectMapper.writeValueAsString(event));
+        } catch (Exception e) {
+            // 序列化失败说明契约本身有问题，不能静默吞掉：整个事务回滚
+            throw new IllegalStateException("事件序列化失败", e);
+        }
+        row.setStatus(OutboxEvent.STATUS_PENDING);
+        row.setRetryCount(0);
+        row.setNextRetryAt(LocalDateTime.now());
+        outboxMapper.insert(row);
     }
 
     private void requireMembership(Long communityId, Long userId) {

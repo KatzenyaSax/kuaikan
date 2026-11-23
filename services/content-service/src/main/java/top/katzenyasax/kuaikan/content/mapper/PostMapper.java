@@ -159,6 +159,37 @@ public interface PostMapper extends BaseMapper<Post> {
             """)
     int decrementCommentCount(@Param("id") Long id);
 
+    /**
+     * 软删帖。**条件里带 {@code status = 1}**，返回受影响行数——
+     * 只有真的从 1 改成 0 才算「这次删帖生效了」。
+     *
+     * 幂等重复删（行已是 0）与并发双删（一方先提交）都返回 0，
+     * 调用方据此决定要不要写 {@code PostDeleted} 事件：重复删不该重复发事件。
+     */
+    @Update("UPDATE t_post SET status = 0 WHERE id = #{id} AND status = 1")
+    int softDelete(@Param("id") Long id);
+
+    /**
+     * 全量索引回填的游标分页（P6.1，供 search-service 重建索引）。
+     *
+     * 按**主键升序**翻页而不是 {@code (created_at, id)}：全量遍历只要求
+     * 「不重不漏」，主键是唯一单调且不变的键；按时间排会在有人发帖时
+     * 把新帖插到已翻过的区间，导致重复或跳过。
+     *
+     * 不走 offset（不变量 11）；{@code id > cursor} 直接续在主键上。
+     * 只返回 {@code status = 1}：已删帖不该进索引。
+     */
+    @Select("""
+            <script>
+            SELECT * FROM t_post
+            WHERE status = 1
+            <if test="cursor != null"> AND id &gt; #{cursor} </if>
+            ORDER BY id ASC
+            LIMIT #{limit}
+            </script>
+            """)
+    List<Post> indexPage(@Param("cursor") Long cursor, @Param("limit") int limit);
+
     /** 浏览量批量回写。由 PostViewCounter 定时调用，一次一批增量 */
     @Update("UPDATE t_post SET view_count = view_count + #{delta} WHERE id = #{id}")
     int addViewCount(@Param("id") Long id, @Param("delta") int delta);
