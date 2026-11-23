@@ -10,8 +10,8 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    // scripts/ 是 Node 环境（生成器与冒烟脚本），需要 Node 全局量
-    files: ['scripts/**/*.{js,mjs,mts,ts}'],
+    // scripts/ 与 e2e/ 都是 Node 环境（生成器、冒烟、浏览器验收脚本），需要 Node 全局量
+    files: ['scripts/**/*.{js,mjs,mts,ts}', 'e2e/**/*.{js,mjs}'],
     languageOptions: {
       // 脚本跑在 Node 里，但 e2e 脚本里 page.addInitScript(() => { ... }) 的
       // 回调体是**浏览器代码**（window / document / MutationObserver /
