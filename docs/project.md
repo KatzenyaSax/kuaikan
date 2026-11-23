@@ -442,6 +442,20 @@ V2 上线后的一段时间里，评论/@ 消息仍然点不动——因为**那
 2. **目标若是回复**，它藏在「展开 N 条回复」里 → 退化为停在帖子页，
    **不自动展开**。自动展开别人没要求的回复比不滚过去更打扰
 
+### P7 社群权限与治理（已完成）
+
+`deploy/bin/verify-p7.sh` **158 条断言全绿**（L0 12 / L1 9 / L2 64 / L3 50 / L4 23，0 失败 / 0 跳过 / 0 产品缺陷）。前端产物 `index-J07HVlU6.js` 711.79 KB（gzip 209.43 KB）/ `index-v67Y6yS4.css` 42.05 KB（gzip 8.50 KB）已发布上线；全站 **14 个核心容器**（外加 `mailhog` 共 15 个）全部 healthy，线上首页、MySQL（`t_community_ban=0`）与 ES（55 条 == MySQL `status=1` 55 条）零测试残留。原计划的压测、可观测栈与上线运维整体后置至 `P100`。
+
+#### 落地事实一览
+
+| 维度 | 实测落地状态 |
+|---|---|
+| 错误码契约 | 26 → **30 码**（新增 `41006 COMMUNITY_BANNED` [403]、`41007 NOT_COMMUNITY_ADMIN` [403]、`41008 CANNOT_BAN_ADMIN` [200]、`41009 TRANSFER_TARGET_INVALID` [200]）；`CommunityErrorCode` 位于 `kuaikan-common`，`community-service` 与 `content-service` 共用 |
+| OpenAPI 与白名单 | 全站 **77 个 operationId**（+9 个社群治理端点），精确白名单 **7 条**，公开端点 **21 个**；网关 `public-patterns` 仅追加 2 条只放行 GET 的正则（`/communities/[^/]+/history$` 与 `/communities/[^/]+/admins/history$`），其余 7 个登录/管理端点均受保护 |
+| 库表与回填 | `community` `V2__community_admin_governance.sql` 为 `t_community` 追加 `avatar_url`/`announcement`，新建 `t_community_ban`（按 `(community_id, user_id)` 唯一，支持封禁已退群用户防逃避，自然到期失效）与 `t_community_history`（按分类与事件建索引），并一次性回填全部存量 8 个 `status=1` 社群的 `COMMUNITY_CREATED` 首条历史记录 |
+| 治理与权限联动 | 单一社群管理员制（复用 `t_community.owner_id`）；`community-service` 落地编辑社群信息（`null` 不改、`""` 清空，头像协议白名单 `http/https`）、管理员直接转让（原管理员降为普通成员并解除 `41005` 限制）、踢出并禁入（1/7/30 天或永久 + 原因 + 幂等解封）、成员与封禁名单游标分页、三分类编年史（跨分类游标返 `40010`）与历代管理员脉络；`/internal/memberships` 向后兼容追加 `admin`/`banned`/`banReason`/`bannedUntil`；`content-service` 通过 `MembershipGuard` 统一拦截被封禁用户发帖/评论（`41006`）并放行社群管理员删除他人帖子（同步清 ES）与评论（保持 tombstone/计数），作者删自己仍免查 `community-service` |
+| 前端全链路 | 社群首页（`/c/:name`）展示真实社群头像、当前管理员（批量拉取昵称头像，可跳 `/u/:ownerId`）、社群公告、封禁提示条以及「社群历史 / 管理社群」入口；新增独立单栏路由 `/c/:name/history`（游客可读，历代管理员 + 全部/大事记/治理记录筛选）与 `/c/:name/manage`（信息编辑 / 封禁与成员管理 / 管理员转让）；帖子详情与评论区支持管理员快捷删帖、删评与封禁作者；全站社群卡片/切换器/用户主页同步展示真实社群头像 |
+
 ### P6 全文搜索（已完成）
 
 `deploy/bin/verify-p6.sh` **100 条断言全绿**（L0 14 / L1 13 / L2 35 / L3 14 / L4 24，0 产品缺陷）。前端产物 `index-Dwu52Y5r.js` 680.51 KB / `index-*.css` 41.38 KB 已发布上线；全站 **14 个容器**（core 6 + app 8）全部 healthy，线上首页与 ES（19 条 == MySQL `status=1` 19 条）零测试残留。

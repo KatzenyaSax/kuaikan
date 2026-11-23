@@ -1,6 +1,6 @@
 # P7 社群权限与治理技术方案
 
-> 状态：已定稿，按 P7.0 ~ P7.4 分阶段落地。
+> 状态：已完成并全量验收通过（`deploy/bin/verify-p7.sh` 158 条断言全绿）。
 > 架构不变量见 [`architecture.md`](./architecture.md)，版本与运行事实见 [`../project.md`](../project.md)。
 > 注：原 P7 的压测、可观测（SkyWalking/Prometheus/Grafana/Loki）、限流与上线运维整体后置至 **P100**。
 
