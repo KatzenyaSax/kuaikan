@@ -117,7 +117,7 @@ export interface paths {
         get: operations["getPost"];
         put?: never;
         post?: never;
-        delete?: never;
+        delete: operations["deletePost"];
         options?: never;
         head?: never;
         patch?: never;
@@ -612,6 +612,28 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ResultPostDetail"];
+                };
+            };
+        };
+    };
+    deletePost: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                postId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultVoid"];
                 };
             };
         };

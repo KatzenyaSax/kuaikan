@@ -87,6 +87,11 @@ kuaikan:
       - GET /api/community/communities
       # P2.3：批量作者摘要（帖子列表显示作者昵称头像用）
       - GET /api/user/users
+      # P6.3：全站搜索游客可读。搜索是「把公开内容带出去」，与浏览列表同性质。
+      # P6.0 时 search-service 还没有 /posts，先放在 public-patterns 避免规则先于实现；
+      # 端点就位后挪回这里，接受 check-openapi 的存在性校验（路径与方法都被钉死，
+      # /api/search/posts/xxx 与写方法都不会被顺带放行）。
+      - GET /api/search/posts
     # 正则放行：P0/P0.5 的探针端点，不返回任何用户数据。
     # 这是 P1 的已知债务，见 docs/project.md「P0 期间已知的公开面」。
     public-patterns:
@@ -114,15 +119,6 @@ kuaikan:
       - POST ^/api/content/posts/[0-9]+/share$
       # P5.2：热榜游客可读。字面量路径，不会被其他规则误伤
       - GET /api/rank/hot
-      # P6.0：全站搜索游客可读（端点本体在 P6.3 落地）。
-      # 搜索是「把公开内容带出去」，与浏览列表同性质，不该要求登录。
-      # 为什么放在这条正则列表而不是 whitelist：whitelist 会被 check-openapi 当作
-      # 「必须已存在于 spec 的端点」校验，P6.0 时 search-service 还没有 /posts，
-      # 放进去会让 T0 闸门连红两个阶段（规则先于实现，不是真漂移）。
-      # 两头锚定 ^...$ 保证是精确匹配：/api/search/posts/xxx 不会顺带放行；
-      # 面向内部/AI 的检索走 /internal/**，网关根本不路由。
-      # P6.3 端点就位后，可一行把它挪回 whitelist（那时才值得被存在性校验）。
-      - GET ^/api/search/posts$
       # P5.5：用户主页只读三件套（profile / following / followers）。
       # 用户主页全量对游客公开（docs/design/p55-social.md §3.6）。
       # 三条都用 [^/]+ 把路径形状钉死：只能匹配「/users/{id}/<字面量尾巴>」，

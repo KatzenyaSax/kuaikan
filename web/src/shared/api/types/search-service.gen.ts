@@ -10,6 +10,23 @@
  */
 
 export interface paths {
+    "/posts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 全站帖子搜索（游客可读） */
+        get: operations["searchPosts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ping": {
         parameters: {
             query?: never;
@@ -30,6 +47,36 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        PageResultSearchPostItem: {
+            items?: components["schemas"]["SearchPostItem"][];
+            nextCursor?: string;
+            hasMore?: boolean;
+        };
+        ResultPageResultSearchPostItem: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: components["schemas"]["PageResultSearchPostItem"];
+        };
+        SearchPostItem: {
+            /** @description 帖子 id（雪花 id，字符串化） */
+            postId?: string;
+            /** @description 社群 id（雪花 id，字符串化） */
+            communityId?: string;
+            /** @description 社群名（索引里的反范式字段，创建后不可改） */
+            communityName?: string;
+            /** @description 作者 id（雪花 id，字符串化） */
+            authorId?: string;
+            /** @description 作者昵称（索引里的反范式字段，改昵称时由事件同步） */
+            authorNickname?: string;
+            title?: string;
+            /** @description 标题高亮；命中词由 \uE000 / \uE001 包裹，未命中回落到原 title */
+            titleHighlight?: string;
+            /** @description 正文摘要；优先高亮片段，未命中取正文前 160 字 */
+            bodySnippet?: string;
+            /** Format: date-time */
+            createdAt?: string;
+        };
         ResultMapStringObject: {
             /** Format: int32 */
             code?: number;
@@ -47,6 +94,32 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    searchPosts: {
+        parameters: {
+            query?: {
+                q?: string;
+                communityId?: string;
+                sort?: string;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultPageResultSearchPostItem"];
+                };
+            };
+        };
+    };
     searchPing: {
         parameters: {
             query?: never;

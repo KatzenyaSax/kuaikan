@@ -5,6 +5,7 @@ import { HomePage } from '@/routes/home'
 import { FollowingPage } from '@/routes/following'
 import { CommunityLanding } from '@/routes/community-landing'
 import { HotPage } from '@/routes/hot'
+import { SearchPage } from '@/routes/search'
 import { CommunityLayout } from '@/features/community/community-layout'
 import { CommunityOverview } from '@/features/community/community-overview'
 import { NewPostPage } from '@/routes/new-post'
@@ -45,6 +46,9 @@ const routes: RouteObject[] = [
       { index: true, element: <HomePage /> },
       { path: 'following', element: <FollowingPage /> },
       { path: 'hot', element: <HotPage /> },
+      // 全站搜索：**公开路由**（游客可读）。状态全部住在查询参数里（q / sort / communityId），
+      // 刷新与分享都能还原；不套 RequireAuth —— 搜索是"把公开内容带出去"。
+      { path: 'search', element: <SearchPage /> },
       // 社群入口：没带具体社群时由这个页面自己决定去哪
       { path: 'c', element: <CommunityLanding /> },
       // 社群名本身就是标识（没有 slug），服务端按规范化后的名称查找

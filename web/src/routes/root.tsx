@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link, NavLink, Outlet, ScrollRestoration, useMatch, useNavigate } from 'react-router'
+import { TopbarSearch } from '@/features/search/topbar-search'
 import { useSession } from '@/features/auth/session'
 import {
   MESSAGE_TABS,
@@ -40,19 +41,20 @@ const GLASS = 'bg-[rgba(255,255,255,0.72)] backdrop-blur-[20px] backdrop-saturat
  *
  * 导航结构：
  *   左：品牌 + 主导航（首页 / 社群 / 关注 / 热榜 / 搜索）
- *   右：消息（带未读数）+ 头像昵称
+ *   右：搜索框 + 消息（带未读数）+ 头像昵称
  *
  * **「我的」不占顶栏位置** —— 点昵称进入。顶栏是最贵的位置，
- * 只留给需要"随时可达"的东西：切换场景（主导航）、看消息、确认身份。
+ * 只留给需要"随时可达"的东西：切换场景（主导航）、搜索、看消息、确认身份。
  *
- * 搜索是全屏覆盖层而不是页面：搜索是瞬时任务，不该丢掉当前上下文。
+ * 搜索是**页面**（/search）而不是覆盖层（P6.4）：搜索结果要能被分享、被刷新、
+ * 被浏览器后退找回。覆盖层做不到这三件事，它只适合"瞬时的、不需要结果存活"的任务。
+ * 顶栏的输入框只是入口，回车把关键词交给 /search。
  * 消息是右侧抽屉：读帖子时"瞥一眼消息"是轻任务。
  */
 export function RootLayout() {
   const status = useSession((s) => s.status)
   const user = useSession((s) => s.user)
   const navigate = useNavigate()
-  const [searchOpen, setSearchOpen] = useState(false)
   const [msgOpen, setMsgOpen] = useState(false)
   const authed = status === 'authenticated'
   const unread = useUnread()
@@ -87,17 +89,19 @@ export function RootLayout() {
                 {n.label}
               </NavLink>
             ))}
-            <button
-              type="button"
-              onClick={() => setSearchOpen(true)}
-              className={NAV_TEXT}
+            <NavLink
+              to="/search"
+              className={({ isActive }) =>
+                cn(NAV_TEXT, isActive && 'font-semibold text-foreground')
+              }
               data-testid="nav-search"
             >
               搜索
-            </button>
+            </NavLink>
           </nav>
 
           <div className="ml-auto flex items-center gap-5">
+            <TopbarSearch />
             <button
               type="button"
               onClick={() => setMsgOpen(true)}
@@ -189,75 +193,25 @@ export function RootLayout() {
               <span className="h-[3px] w-[3px] rounded-full bg-current opacity-0 [.font-semibold_&]:opacity-100 aria-[current=page]:opacity-100" />
             </NavLink>
           ))}
-          <button
-            type="button"
-            onClick={() => setSearchOpen(true)}
-            className="flex flex-col items-center justify-center gap-1 text-caption text-faint"
+          <NavLink
+            to="/search"
+            className={({ isActive }) =>
+              cn(
+                'flex flex-col items-center justify-center gap-1 text-caption text-faint transition-colors duration-[var(--duration-fast)]',
+                isActive && 'font-semibold text-foreground',
+              )
+            }
           >
             搜索
-            <span className="h-[3px] w-[3px] rounded-full bg-current opacity-0" />
-          </button>
+            <span className="h-[3px] w-[3px] rounded-full bg-current opacity-0 aria-[current=page]:opacity-100" />
+          </NavLink>
         </div>
       </nav>
 
-      <SearchLayer open={searchOpen} onClose={() => setSearchOpen(false)} />
       <MessageDrawer open={msgOpen} onClose={() => setMsgOpen(false)} />
 
       <ScrollRestoration />
       <Toaster />
-    </div>
-  )
-}
-
-/**
- * 全屏搜索层。
- *
- * 搜索还没做（P6），所以这里**只定形态、给一句诚实说明**，
- * 不摆一个假的搜索结果。
- */
-function SearchLayer({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [q, setQ] = useState('')
-
-  if (!open) return null
-
-  return (
-    <div
-      className="fixed inset-0 z-[60] bg-[rgba(255,255,255,0.86)] backdrop-blur-[30px] backdrop-saturate-[180%]"
-      style={{ animation: 'fade-in var(--duration-base) var(--ease-out-soft) both' }}
-      role="dialog"
-      aria-modal="true"
-      aria-label="搜索"
-      data-testid="search-layer"
-    >
-      <div className="mx-auto max-w-[40rem] px-6 py-10">
-        {/* 胶囊搜索框：与按钮同一种形状，一眼就知道这是"输入一条命令"的地方。
-            focus 的指示器画在整条胶囊上（与外层一致），不用 input 自带的描边矩形 ——
-            那会在胶囊里再套一个方框，形状打架。 */}
-        <div className="flex h-12 items-center gap-3 rounded-full bg-fill px-5 transition-[background-color,box-shadow] duration-[var(--duration-fast)] focus-within:bg-background focus-within:shadow-[0_0_0_3px_var(--color-primary-soft)]">
-          <input
-            autoFocus
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="搜索帖子、社群、用户"
-            aria-label="搜索"
-            className="min-w-0 flex-1 bg-transparent text-read text-foreground outline-none placeholder:text-faint focus-visible:outline-none"
-            data-testid="search-input"
-          />
-          <button
-            type="button"
-            onClick={onClose}
-            className="shrink-0 text-aux text-primary transition-colors duration-[var(--duration-fast)] hover:text-primary-hover"
-            data-testid="search-close"
-          >
-            取消
-          </button>
-        </div>
-        <p className="mt-4 text-aux text-muted-foreground">
-          {q.trim()
-            ? `「${q.trim()}」—— 搜索功能在后续版本开放`
-            : '搜索功能在后续版本开放。这里先定下它的位置与形态。'}
-        </p>
-      </div>
     </div>
   )
 }
