@@ -188,7 +188,7 @@ export function HomePage() {
                     className="flex items-center gap-3 rounded-[var(--radius-lg)] bg-card px-4 py-3.5 text-left transition-colors duration-[var(--duration-fast)] hover:bg-fill"
                     data-testid="community-card"
                   >
-                    <Avatar url={null} name={c.name ?? ''} size={36} />
+                    <Avatar url={c.avatarUrl ?? null} name={c.name ?? ''} size={36} />
                     <span className="block min-w-0">
                       <span
                         className="block truncate text-body font-medium"

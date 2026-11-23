@@ -88,7 +88,7 @@ export function PostPage() {
         <span data-testid="post-time">{relativeTime(data.createdAt)}</span>
       </div>
 
-      <PostContent post={data} />
+      <PostContent post={data} communityName={name} />
 
       {/*
         互动条：一条 hairline 收口，下面是评论区。
@@ -126,6 +126,7 @@ export function PostPage() {
         postId={data.id ?? ''}
         commentCount={data.commentCount ?? 0}
         postAuthorId={data.authorId ?? undefined}
+        communityName={name}
       />
       </div>
     </div>

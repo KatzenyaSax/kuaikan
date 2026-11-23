@@ -289,7 +289,7 @@ function CommunitiesTab({ userId }: { userId: string }) {
                 className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 transition-opacity duration-[var(--duration-fast)] hover:opacity-80"
                 data-testid="user-community-item"
               >
-                <Avatar url={null} name={c.name ?? ''} size={32} />
+                <Avatar url={c.avatarUrl ?? null} name={c.name ?? ''} size={32} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-body font-medium">{c.name}</span>
                   {c.description ? (

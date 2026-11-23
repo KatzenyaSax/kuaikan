@@ -162,6 +162,23 @@ export function useCreatePost() {
 }
 
 /**
+ * 删帖（软删）。作者删自己、社群管理员删本社群内任意帖子走的是同一个端点（P7.2）。
+ *
+ * 清 ES 与扣减计数在服务端，前端只需要把两处缓存弄脏：帖子详情与列表。
+ * 收藏列表用「返回的 Map 里缺席」判已删（见 useBatchPosts），所以也要失效。
+ */
+export function useDeletePost(postId: string | undefined) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.del<void>(`${BASE}/${encodeURIComponent(postId ?? '')}`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['post', postId] })
+      void queryClient.invalidateQueries({ queryKey: ['posts'] })
+    },
+  })
+}
+
+/**
  * 批量取作者摘要。
  *
  * 帖子详情里**只有 authorId**（ADR 0009），昵称头像要靠这个接口现取。

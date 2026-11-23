@@ -83,7 +83,7 @@ export function CommunitySwitcher({ activeName }: { activeName: string | undefin
                   )}
                   data-testid="community-sheet-item"
                 >
-                  <Avatar url={null} name={c.name ?? ''} size={40} />
+                  <Avatar url={c.avatarUrl ?? null} name={c.name ?? ''} size={40} />
                   <span className="block min-w-0">
                     <span className="block truncate text-body font-medium">{c.name}</span>
                     <span className="block text-caption text-faint">{c.memberCount} 成员</span>

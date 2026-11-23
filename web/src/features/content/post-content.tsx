@@ -1,10 +1,17 @@
+import { useState } from 'react'
 import Markdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Link } from 'react-router'
-import { pickAuthor, useUserSummaries, type PostDetail } from '@/features/content/api'
+import { Link, useNavigate } from 'react-router'
+import { pickAuthor, useDeletePost, useUserSummaries, type PostDetail } from '@/features/content/api'
+import { useMyCommunityStatus } from '@/features/community/api'
+import { BanMemberDialog } from '@/features/community/ban-member-dialog'
+import { ConfirmDialog } from '@/features/community/dialog'
 import { FollowButton } from '@/features/social/follow-button'
+import { authErrorMessage } from '@/features/auth/auth-error'
+import { useSession } from '@/features/auth/session'
 import { Avatar } from '@/shared/ui/avatar'
 import { relativeTime } from '@/shared/lib/time'
+import { toast } from '@/shared/ui/toast'
 
 /**
  * 帖子正文。
@@ -113,12 +120,31 @@ const MD_COMPONENTS: Components = {
   ),
 }
 
-export function PostContent({ post }: { post: PostDetail }) {
+export function PostContent({
+  post,
+  communityName,
+}: {
+  post: PostDetail
+  /** 社群名。管理员的快捷治理入口靠它判权限（`/my-status`）*/
+  communityName?: string | undefined
+}) {
   // 作者摘要与帖子详情是两个请求：`authorId` 是跨服务引用（ADR 0009），
   // 后端不会在帖子 DTO 里拼昵称头像。
   const authors = useUserSummaries([post.authorId])
   const author = pickAuthor(authors.data, post.authorId)
   const authorId = post.authorId ?? undefined
+
+  const navigate = useNavigate()
+  const me = useSession((s) => s.user?.userId)
+  const authed = useSession((s) => s.status) === 'authenticated'
+  const myStatus = useMyCommunityStatus(communityName, authed)
+  const del = useDeletePost(post.id)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [banning, setBanning] = useState(false)
+
+  // 管理员**看别人的帖子**才有快捷治理：自己的帖子用普通删除
+  // （后端两边都能过，但给作者看"封禁作者"是荒谬的）
+  const canGovern = myStatus.data?.admin === true && Boolean(authorId) && authorId !== me
 
   return (
     <article>
@@ -164,11 +190,75 @@ export function PostContent({ post }: { post: PostDetail }) {
         </div>
       </div>
 
+      {/*
+        管理员的快捷治理：删帖 + 封禁作者。
+
+        放在作者行下面而不是页面底部：管理员看到违规内容时，
+        想做的就是"把这个人和这条内容处理掉"，位置远了就变成"先记下来回头再说"。
+        用与评论次级动作同一套小胶囊，不抢正文的视线。
+      */}
+      {canGovern ? (
+        <div className="-ml-2 mt-2 flex items-center gap-1 text-caption text-faint">
+          <button
+            type="button"
+            onClick={() => setConfirmingDelete(true)}
+            className="inline-flex h-7 items-center rounded-full px-2 transition-colors duration-[var(--duration-fast)] hover:bg-fill hover:text-foreground"
+            data-testid="admin-delete-post"
+          >
+            删除帖子
+          </button>
+          <button
+            type="button"
+            onClick={() => setBanning(true)}
+            className="inline-flex h-7 items-center rounded-full px-2 transition-colors duration-[var(--duration-fast)] hover:bg-fill hover:text-foreground"
+            data-testid="admin-ban-post-author"
+          >
+            封禁作者
+          </button>
+        </div>
+      ) : null}
+
       <div className="mt-7 break-words text-read text-foreground" data-testid="post-body">
         <Markdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
           {post.body ?? ''}
         </Markdown>
       </div>
+
+      {confirmingDelete ? (
+        <ConfirmDialog
+          title="删除这篇帖子？"
+          description="帖子会从社群列表与搜索结果中消失，评论也会一起隐藏。这是管理员操作，作者不会收到通知。"
+          confirmLabel="删除"
+          danger
+          busy={del.isPending}
+          testId="admin-delete-post-dialog"
+          confirmTestId="btn-confirm-delete-post"
+          onCancel={() => setConfirmingDelete(false)}
+          onConfirm={() => {
+            del.mutate(undefined, {
+              onSuccess: () => {
+                setConfirmingDelete(false)
+                toast('已删除帖子')
+                // 删完停在已经 404 的详情页没有意义，回社群
+                navigate(`/c/${encodeURIComponent(communityName ?? '')}`)
+              },
+              onError: (err) => {
+                setConfirmingDelete(false)
+                toast(authErrorMessage(err))
+              },
+            })
+          }}
+        />
+      ) : null}
+
+      {banning && authorId ? (
+        <BanMemberDialog
+          communityName={communityName}
+          targetUserId={authorId}
+          targetNickname={author?.nickname}
+          onClose={() => setBanning(false)}
+        />
+      ) : null}
     </article>
   )
 }

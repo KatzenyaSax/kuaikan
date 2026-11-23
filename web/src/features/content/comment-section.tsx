@@ -11,6 +11,9 @@ import {
   type CommentSort,
   type CommentView,
 } from '@/features/content/api'
+import { useMyCommunityStatus } from '@/features/community/api'
+import { BanMemberDialog } from '@/features/community/ban-member-dialog'
+import { ConfirmDialog } from '@/features/community/dialog'
 import { authErrorMessage } from '@/features/auth/auth-error'
 import { useSession } from '@/features/auth/session'
 import { useInteractionStates } from '@/features/interaction/api'
@@ -21,6 +24,7 @@ import { Textarea } from '@/shared/ui/field'
 import { relativeTime } from '@/shared/lib/time'
 import { MentionText } from '@/features/content/mention-text'
 import { Segmented } from '@/shared/ui/segmented'
+import { toast } from '@/shared/ui/toast'
 import { cn } from '@/shared/lib/cn'
 
 /**
@@ -32,6 +36,15 @@ import { cn } from '@/shared/lib/cn'
  * context 只在本模块内可见，不污染外部。
  */
 const PostAuthorContext = createContext<string | undefined>(undefined)
+
+/**
+ * 当前社群名。评论行的快捷治理（删除 / 封禁作者）靠它判"我是不是这个社群的管理员"，
+ * 与帖子正文用同一个 `/my-status` 缓存（同一个 queryKey，不会多一个请求）。
+ *
+ * 同样只在本模块内可见：多传一个 prop 会穿过 `CommentSection → TopLevelComment →
+ * ReplyList → ReplyItem` 四层签名。
+ */
+const CommunityNameContext = createContext<string | undefined>(undefined)
 
 /**
  * 评论行的次级动作（回复 / 删除 / 展开）的胶囊形态。
@@ -70,10 +83,13 @@ export function CommentSection({
   postId,
   commentCount,
   postAuthorId,
+  communityName,
 }: {
   postId: string
   commentCount: number
   postAuthorId?: string | undefined
+  /** 社群名。管理员的快捷治理入口靠它判权限 */
+  communityName?: string | undefined
 }) {
   const status = useSession((s) => s.status)
   const authed = status === 'authenticated'
@@ -83,7 +99,8 @@ export function CommentSection({
   const items = (list.data?.pages ?? []).flatMap((p) => p.items ?? [])
 
   return (
-    <PostAuthorContext.Provider value={postAuthorId}>
+    <CommunityNameContext.Provider value={communityName}>
+      <PostAuthorContext.Provider value={postAuthorId}>
       <section className="mt-16" data-testid="comment-section">
       <div className="mb-6 flex items-center gap-2.5">
         <h2 className="m-0 text-sub font-semibold">评论</h2>
@@ -145,7 +162,8 @@ export function CommentSection({
         </button>
       ) : null}
       </section>
-    </PostAuthorContext.Provider>
+      </PostAuthorContext.Provider>
+    </CommunityNameContext.Provider>
   )
 }
 
@@ -218,6 +236,13 @@ function TopLevelComment({ comment, postId }: { comment: CommentView; postId: st
   const postAuthorId = useContext(PostAuthorContext)
   const isPostAuthor = !!comment.authorId && comment.authorId === postAuthorId
   const states = useInteractionStates(comment.id ? [`comment:${comment.id}`] : [], authed)
+  // 快捷治理：当前用户是这个社群的管理员、且这条不是自己的
+  const communityName = useContext(CommunityNameContext)
+  const myStatus = useMyCommunityStatus(communityName, authed)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [banAuthor, setBanAuthor] = useState(false)
+  const canGovern =
+    myStatus.data?.admin === true && !isMine && !comment.deleted && Boolean(comment.authorId)
 
   return (
     <div
@@ -291,6 +316,27 @@ function TopLevelComment({ comment, postId }: { comment: CommentView; postId: st
             删除
           </button>
         ) : null}
+        {/* 社群管理员的快捷治理。删除要二次确认，封禁走与管理台同一个弹窗 */}
+        {canGovern ? (
+          <>
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(true)}
+              className={ACTION_CLASS}
+              data-testid="admin-delete-comment"
+            >
+              删除
+            </button>
+            <button
+              type="button"
+              onClick={() => setBanAuthor(true)}
+              className={ACTION_CLASS}
+              data-testid="admin-ban-comment-author"
+            >
+              封禁作者
+            </button>
+          </>
+        ) : null}
         {/* 展开 N 条回复：N 是后代总数（不是直接子节点数），与展开后条数一致 */}
         {(comment.replyCount ?? 0) > 0 ? (
           <button
@@ -321,6 +367,40 @@ function TopLevelComment({ comment, postId }: { comment: CommentView; postId: st
       ) : null}
 
       {expanded ? <ReplyList rootCommentId={comment.id ?? null} postId={postId} /> : null}
+
+      {confirmDelete ? (
+        <ConfirmDialog
+          title="删除这条评论？"
+          description="删除后评论位置会留为「该评论已删除」，已有回复不受影响。这是管理员操作。"
+          confirmLabel="删除"
+          danger
+          busy={del.isPending}
+          testId="admin-delete-comment-dialog"
+          confirmTestId="btn-confirm-delete-comment"
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={() => {
+            del.mutate(comment.id ?? '', {
+              onSuccess: () => {
+                setConfirmDelete(false)
+                toast('已删除评论')
+              },
+              onError: (err) => {
+                setConfirmDelete(false)
+                toast(authErrorMessage(err))
+              },
+            })
+          }}
+        />
+      ) : null}
+
+      {banAuthor && comment.authorId ? (
+        <BanMemberDialog
+          communityName={communityName}
+          targetUserId={comment.authorId}
+          targetNickname={author?.nickname}
+          onClose={() => setBanAuthor(false)}
+        />
+      ) : null}
     </div>
   )
 }
@@ -373,6 +453,12 @@ function ReplyItem({ comment, postId }: { comment: CommentView; postId: string }
   const isMine = session?.userId === comment.authorId
   const postAuthorId = useContext(PostAuthorContext)
   const isPostAuthor = !!comment.authorId && comment.authorId === postAuthorId
+  const communityName = useContext(CommunityNameContext)
+  const myStatus = useMyCommunityStatus(communityName, authed)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [banAuthor, setBanAuthor] = useState(false)
+  const canGovern =
+    myStatus.data?.admin === true && !isMine && !comment.deleted && Boolean(comment.authorId)
 
   return (
     <div
@@ -454,6 +540,26 @@ function ReplyItem({ comment, postId }: { comment: CommentView; postId: string }
               删除
             </button>
           ) : null}
+          {canGovern ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(true)}
+                className={ACTION_CLASS}
+                data-testid="admin-delete-reply"
+              >
+                删除
+              </button>
+              <button
+                type="button"
+                onClick={() => setBanAuthor(true)}
+                className={ACTION_CLASS}
+                data-testid="admin-ban-comment-author"
+              >
+                封禁作者
+              </button>
+            </>
+          ) : null}
         </div>
       ) : null}
 
@@ -466,6 +572,40 @@ function ReplyItem({ comment, postId }: { comment: CommentView; postId: string }
             onDone={() => setReplying(false)}
           />
         </div>
+      ) : null}
+
+      {confirmDelete ? (
+        <ConfirmDialog
+          title="删除这条回复？"
+          description="删除后回复位置会留为「该回复已删除」。这是管理员操作。"
+          confirmLabel="删除"
+          danger
+          busy={del.isPending}
+          testId="admin-delete-reply-dialog"
+          confirmTestId="btn-confirm-delete-reply"
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={() => {
+            del.mutate(comment.id ?? '', {
+              onSuccess: () => {
+                setConfirmDelete(false)
+                toast('已删除回复')
+              },
+              onError: (err) => {
+                setConfirmDelete(false)
+                toast(authErrorMessage(err))
+              },
+            })
+          }}
+        />
+      ) : null}
+
+      {banAuthor && comment.authorId ? (
+        <BanMemberDialog
+          communityName={communityName}
+          targetUserId={comment.authorId}
+          targetNickname={author?.nickname}
+          onClose={() => setBanAuthor(false)}
+        />
       ) : null}
     </div>
   )

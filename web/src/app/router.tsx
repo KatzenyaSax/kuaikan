@@ -8,6 +8,8 @@ import { HotPage } from '@/routes/hot'
 import { SearchPage } from '@/routes/search'
 import { CommunityLayout } from '@/features/community/community-layout'
 import { CommunityOverview } from '@/features/community/community-overview'
+import { CommunityHistoryPage } from '@/routes/community-history'
+import { CommunityManagePage } from '@/routes/community-manage'
 import { NewPostPage } from '@/routes/new-post'
 import { PostPage } from '@/routes/post'
 import { RegisterPage } from '@/routes/register'
@@ -66,6 +68,20 @@ const routes: RouteObject[] = [
           <NewPostPage />
         </RequireAuth>
       ) },
+      // 社群历史：**公开**单栏页，不套双栏（历史是这个社群的档案，不是“读帖子”）。
+      // 与 /c/:name 并列而不是它的子路由：子路由会继承双栏布局，
+      // 而历史页需要整页 980px。
+      { path: 'c/:name/history', element: <CommunityHistoryPage /> },
+      // 管理台：需登录。非管理员由页面自己渲染「无权限」+ 返回链接——
+      // 比直接 404 或跳走更诚实（他确实有权知道这个社群有管理台）。
+      {
+        path: 'c/:name/manage',
+        element: (
+          <RequireAuth>
+            <CommunityManagePage />
+          </RequireAuth>
+        ),
+      },
       { path: 'register', element: <RegisterPage /> },
       { path: 'login', element: <LoginPage /> },
       {
