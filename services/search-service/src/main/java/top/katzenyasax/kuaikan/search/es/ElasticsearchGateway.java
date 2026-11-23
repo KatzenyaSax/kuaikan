@@ -16,6 +16,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -29,7 +30,7 @@ import java.util.function.Function;
  *
  * 这里用到的端点只有 {@code PUT /{index}}、{@code POST /_aliases}、
  * {@code PUT /{alias}/_doc/{id}}、{@code POST /_bulk}、{@code POST /_update_by_query}、
- * {@code POST /{index}/_refresh}、{@code DELETE /{index}}。
+ * {@code POST /{alias}/_search}、{@code POST /{index}/_refresh}、{@code DELETE /{index}}。
  * 全部是"发一段 JSON、读一段 JSON"，官方客户端的对象模型在这里只增加依赖与版本风险。
  *
  * <h2>失败怎么处理</h2>
@@ -95,6 +96,34 @@ public class ElasticsearchGateway {
               }
             }
             """;
+
+    /**
+     * 检索时的字段权重（p6-search.md §5.1）：标题 &gt; 昵称/社群名 &gt; 正文。
+     *
+     * 标题权重最高是因为搜索框的行为是"找那篇帖子"；正文只用来兜住
+     * "记得内容不记得标题"的场景，权重 1 已经能让它进结果集。
+     */
+    private static final List<String> MULTI_MATCH_FIELDS = List.of(
+            "title^3", "authorNickname^2", "communityName^2", "body^1");
+
+    /** 检索只取这些字段：索引文档里就这些，显式列出来免得 mapping 加字段后响应悄悄变大 */
+    private static final List<String> SEARCH_SOURCE_FIELDS = List.of(
+            "postId", "communityId", "authorId", "title", "body",
+            "authorNickname", "communityName", "createdAt");
+
+    /**
+     * 高亮占位符：U+E000 / U+E001（Unicode 私有使用区）。
+     *
+     * <b>绝不用 {@code <mark>}</b>：ES 高亮会把索引里的原文原样带出来，
+     * 一旦后端输出 HTML 标签，帖子里写的 {@code <img onerror=...>} 就会跟着进浏览器。
+     * 用私有区字符，前端按它切分文本节点与 {@code <mark>} 元素，XSS 面彻底消失。
+     */
+    public static final String HIGHLIGHT_PRE_TAG = "\uE000";
+
+    public static final String HIGHLIGHT_POST_TAG = "\uE001";
+
+    /** 正文摘要片段长度。与对外 DTO 的"前 160 字摘要"回落保持一致 */
+    private static final int BODY_FRAGMENT_SIZE = 160;
 
     private final RestClient rest;
     private final ObjectMapper json;
@@ -300,6 +329,115 @@ public class ElasticsearchGateway {
             }
         }
         return "（未定位到具体 item）";
+    }
+
+    // ------------------------------------------------------------------ 检索
+
+    /**
+     * 检索帖子（读 {@code post_read} 别名）。
+     *
+     * 请求体走 {@link #write} + {@link #utf8}、响应走 {@link #decode}，
+     * 与写入路径同一条 UTF-8 通道 —— P6.2 踩过 ISO-8859-1 把中文变成 {@code ?} 的坑，
+     * 检索侧同样必须自己管编码。
+     *
+     * 异常<b>不吞</b>：ES 不可达 / 超时 / 5xx 都以运行时异常冒到 service 层，
+     * 由它翻译成受控 50300（不把 {@code connection refused} 之类的裸异常泄露给前端）。
+     */
+    public PostSearchPage searchPosts(PostSearchQuery query) {
+        String payload = write(searchBody(query), "序列化检索请求 sort=" + query.sort().wireName());
+        String response = postForBody(
+                uri -> uri.path("/{index}/_search").build(IndexNames.READ_ALIAS),
+                payload, "检索帖子 sort=" + query.sort().wireName());
+        return parseSearchResponse(response, query);
+    }
+
+    private static Map<String, Object> searchBody(PostSearchQuery query) {
+        Map<String, Object> bool = new LinkedHashMap<>();
+        if (query.keyword() != null && !query.keyword().isEmpty()) {
+            bool.put("must", List.of(Map.of("multi_match", Map.of(
+                    "query", query.keyword(),
+                    "fields", MULTI_MATCH_FIELDS,
+                    "type", "best_fields"))));
+        }
+        if (!query.filters().isEmpty()) {
+            bool.put("filter", query.filters());
+        }
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        // 多取一条判 hasMore，省掉一次没人会看的 count
+        body.put("size", query.limit() + 1);
+        body.put("track_total_hits", false);
+        body.put("query", Map.of("bool", bool));
+        body.put("sort", sortClauses(query.sort()));
+        body.put("_source", SEARCH_SOURCE_FIELDS);
+        if (!query.searchAfter().isEmpty()) {
+            body.put("search_after", query.searchAfter());
+        }
+        if (query.highlight()) {
+            body.put("highlight", Map.of(
+                    "pre_tags", List.of(HIGHLIGHT_PRE_TAG),
+                    "post_tags", List.of(HIGHLIGHT_POST_TAG),
+                    "fields", Map.of(
+                            // 标题整段返回（0 片段），前端要的是完整标题而不是标题里的一小截
+                            "title", Map.of("number_of_fragments", 0),
+                            // 正文只要一段 160 字的最佳片段，整篇正文进列表响应会膨胀几十倍
+                            "body", Map.of(
+                                    "fragment_size", BODY_FRAGMENT_SIZE,
+                                    "number_of_fragments", 1))));
+        }
+        return body;
+    }
+
+    private static List<Map<String, Object>> sortClauses(SearchSort sort) {
+        Map<String, Object> byCreatedAt = Map.of("createdAt", Map.of("order", "desc"));
+        Map<String, Object> byPostId = Map.of("postId", Map.of("order", "desc"));
+        if (sort == SearchSort.RELEVANCE) {
+            return List.of(Map.of("_score", Map.of("order", "desc")), byCreatedAt, byPostId);
+        }
+        return List.of(byCreatedAt, byPostId);
+    }
+
+    private PostSearchPage parseSearchResponse(String response, PostSearchQuery query) {
+        JsonNode root = readTree(response, "检索响应");
+        JsonNode rawHits = root.path("hits").path("hits");
+
+        List<PostSearchHit> hits = new ArrayList<>(Math.min(query.limit(), rawHits.size()));
+        for (JsonNode hit : rawHits) {
+            if (hits.size() >= query.limit()) {
+                break;
+            }
+            JsonNode source = hit.path("_source");
+            JsonNode highlight = hit.path("highlight");
+            hits.add(new PostSearchHit(
+                    text(source, "postId"),
+                    text(source, "communityId"),
+                    text(source, "communityName"),
+                    text(source, "authorId"),
+                    text(source, "authorNickname"),
+                    text(source, "title"),
+                    // body 总是取回：对内 includeBody=false 时也要靠它拼 excerpt，
+                    // 是否对外暴露由 service 层决定
+                    text(source, "body"),
+                    firstHighlight(highlight, "title"),
+                    firstHighlight(highlight, "body"),
+                    source.path("createdAt").asLong(0L),
+                    hit.path("sort")));
+        }
+        return new PostSearchPage(hits, rawHits.size() > query.limit());
+    }
+
+    private static String text(JsonNode node, String field) {
+        JsonNode value = node.path(field);
+        return value.isMissingNode() || value.isNull() ? null : value.asText();
+    }
+
+    private static String firstHighlight(JsonNode highlight, String field) {
+        JsonNode fragments = highlight.path(field);
+        if (!fragments.isArray() || fragments.isEmpty()) {
+            return null;
+        }
+        String text = fragments.get(0).asText();
+        return text == null || text.isBlank() ? null : text;
     }
 
     // ------------------------------------------------------------------ HTTP 原语
