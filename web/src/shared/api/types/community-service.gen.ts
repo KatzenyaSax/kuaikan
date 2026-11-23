@@ -10,6 +10,23 @@
  */
 
 export interface paths {
+    "/communities/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getCommunity"];
+        /** 编辑社群信息（仅管理员） */
+        put: operations["updateCommunityInfo"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/communities": {
         parameters: {
             query?: never;
@@ -20,6 +37,23 @@ export interface paths {
         get: operations["listCommunities"];
         put?: never;
         post: operations["createCommunity"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/communities/{name}/transfer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 转让社群管理员（仅管理员） */
+        post: operations["transferCommunityAdmin"];
         delete?: never;
         options?: never;
         head?: never;
@@ -37,6 +71,24 @@ export interface paths {
         put?: never;
         post: operations["joinCommunity"];
         delete: operations["leaveCommunity"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/communities/{name}/bans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 生效中的封禁名单（仅管理员） */
+        get: operations["listCommunityBans"];
+        put?: never;
+        /** 封禁社群用户（仅管理员） */
+        post: operations["banCommunityMember"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -138,17 +190,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/communities/{name}": {
+    "/communities/{name}/my-status": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["getCommunity"];
+        /** 我在该社群的状态 */
+        get: operations["getMyCommunityStatus"];
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/communities/{name}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 社群成员名单（仅管理员） */
+        get: operations["listCommunityMembers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/communities/{name}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 社群历史（游客可读） */
+        get: operations["listCommunityHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/communities/{name}/admins/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 历代社群管理员（游客可读） */
+        get: operations["listCommunityAdminHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/communities/{name}/bans/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** 解除社群封禁（仅管理员） */
+        delete: operations["unbanCommunityMember"];
         options?: never;
         head?: never;
         patch?: never;
@@ -158,18 +279,24 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        CreateCommunityRequest: {
-            name: string;
+        UpdateCommunityInfoRequest: {
             description?: string;
+            /** @description 头像外链；非空时必须以 http:// 或 https:// 开头 */
+            avatarUrl?: string;
+            announcement?: string;
         };
         CommunityDetail: {
             /** @description 雪花 ID，序列化为字符串避免 JS 精度丢失 */
             id?: string;
             name?: string;
             description?: string;
+            /** @description 头像外链；为 null 时前端回落成社群名首字母 */
+            avatarUrl?: string;
+            /** @description 社群公告/规则；为 null 表示没有公告 */
+            announcement?: string;
             /** Format: int64 */
             memberCount?: number;
-            /** @description 所有者用户 id */
+            /** @description 管理员（所有者）用户 id */
             ownerId?: string;
             /** Format: date-time */
             createdAt?: string;
@@ -179,6 +306,45 @@ export interface components {
             code?: number;
             message?: string;
             data?: components["schemas"]["CommunityDetail"];
+        };
+        CreateCommunityRequest: {
+            name: string;
+            description?: string;
+        };
+        TransferCommunityRequest: {
+            /** @description 新管理员用户 id */
+            targetUserId: string;
+        };
+        BanCommunityMemberRequest: {
+            /** @description 被封禁的用户 id */
+            userId: string;
+            /**
+             * Format: int32
+             * @description 封禁天数：1 / 7 / 30；null 表示永久封禁
+             */
+            durationDays?: number;
+            reason?: string;
+        };
+        CommunityBanView: {
+            /** @description 被封禁的用户 id */
+            userId?: string;
+            /** @description 执行封禁的管理员用户 id */
+            bannedBy?: string;
+            /** @description 封禁原因；为 null 表示没填原因 */
+            reason?: string;
+            /** Format: date-time */
+            bannedAt?: string;
+            /**
+             * Format: date-time
+             * @description 封禁到期时间；为 null 表示永久封禁
+             */
+            expiresAt?: string;
+        };
+        ResultCommunityBanView: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: components["schemas"]["CommunityBanView"];
         };
         ResultMapStringObject: {
             /** Format: int32 */
@@ -198,8 +364,12 @@ export interface components {
             id?: string;
             name?: string;
             description?: string;
+            /** @description 头像外链；为 null 时前端回落成社群名首字母 */
+            avatarUrl?: string;
             /** Format: int64 */
             memberCount?: number;
+            /** @description 管理员（所有者）用户 id */
+            ownerId?: string;
             /** Format: date-time */
             createdAt?: string;
         };
@@ -214,12 +384,128 @@ export interface components {
             member?: boolean;
             /** Format: int32 */
             role?: number;
+            admin?: boolean;
+            banned?: boolean;
+            banReason?: string;
+            /** Format: date-time */
+            bannedUntil?: string;
         };
         ResultMembershipResponse: {
             /** Format: int32 */
             code?: number;
             message?: string;
             data?: components["schemas"]["MembershipResponse"];
+        };
+        MyCommunityStatus: {
+            /** @description 是否为在社成员；被封禁时恒为 false */
+            joined?: boolean;
+            /** @description 是否为当前社群管理员（t_community.owner_id） */
+            admin?: boolean;
+            /** @description 是否处在有效封禁中 */
+            banned?: boolean;
+            /** @description 封禁原因；未封禁时为 null */
+            banReason?: string;
+            /**
+             * Format: date-time
+             * @description 封禁到期时间；永久封禁或未封禁时为 null
+             */
+            bannedUntil?: string;
+        };
+        ResultMyCommunityStatus: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: components["schemas"]["MyCommunityStatus"];
+        };
+        CommunityMemberView: {
+            /** @description 成员用户 id */
+            userId?: string;
+            /** Format: date-time */
+            joinedAt?: string;
+            /** @description 是否为当前管理员 */
+            admin?: boolean;
+        };
+        PageResultCommunityMemberView: {
+            items?: components["schemas"]["CommunityMemberView"][];
+            nextCursor?: string;
+            hasMore?: boolean;
+        };
+        ResultPageResultCommunityMemberView: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: components["schemas"]["PageResultCommunityMemberView"];
+        };
+        CommunityHistoryView: {
+            /** @description 事件 id */
+            id?: string;
+            /** @description COMMUNITY_CREATED / ADMIN_TRANSFERRED / INFO_UPDATED / MEMBER_BANNED / MEMBER_UNBANNED */
+            eventType?: string;
+            /** @description MILESTONE（大事记）/ MODERATION（治理记录） */
+            category?: string;
+            /** @description 操作人用户 id */
+            operatorId?: string;
+            /** @description 事件对象用户 id；信息更新事件为 null */
+            targetUserId?: string;
+            /** @description 给人看的一句话 */
+            detail?: string;
+            /** Format: date-time */
+            createdAt?: string;
+        };
+        PageResultCommunityHistoryView: {
+            items?: components["schemas"]["CommunityHistoryView"][];
+            nextCursor?: string;
+            hasMore?: boolean;
+        };
+        ResultPageResultCommunityHistoryView: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: components["schemas"]["PageResultCommunityHistoryView"];
+        };
+        PageResultCommunityBanView: {
+            items?: components["schemas"]["CommunityBanView"][];
+            nextCursor?: string;
+            hasMore?: boolean;
+        };
+        ResultPageResultCommunityBanView: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: components["schemas"]["PageResultCommunityBanView"];
+        };
+        AdminHistoryView: {
+            items?: components["schemas"]["AdminTermView"][];
+        };
+        AdminTermView: {
+            /**
+             * Format: int32
+             * @description 第几任，从 1 开始
+             */
+            term?: number;
+            /** @description 该任管理员用户 id */
+            userId?: string;
+            /** Format: date-time */
+            startedAt?: string;
+            /**
+             * Format: date-time
+             * @description 卸任时间；现任为 null
+             */
+            endedAt?: string;
+            /** @description 是否为现任管理员 */
+            current?: boolean;
+        };
+        ResultAdminHistoryView: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: components["schemas"]["AdminHistoryView"];
+        };
+        ResultVoid: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: unknown;
         };
     };
     responses: never;
@@ -230,6 +516,54 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getCommunity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultCommunityDetail"];
+                };
+            };
+        };
+    };
+    updateCommunityInfo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCommunityInfoRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultCommunityDetail"];
+                };
+            };
+        };
+    };
     listCommunities: {
         parameters: {
             query?: {
@@ -263,6 +597,32 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["CreateCommunityRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultCommunityDetail"];
+                };
+            };
+        };
+    };
+    transferCommunityAdmin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TransferCommunityRequest"];
             };
         };
         responses: {
@@ -317,6 +677,57 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ResultCommunityDetail"];
+                };
+            };
+        };
+    };
+    listCommunityBans: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultPageResultCommunityBanView"];
+                };
+            };
+        };
+    };
+    banCommunityMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BanCommunityMemberRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultCommunityBanView"];
                 };
             };
         };
@@ -454,7 +865,7 @@ export interface operations {
             };
         };
     };
-    getCommunity: {
+    getMyCommunityStatus: {
         parameters: {
             query?: never;
             header?: never;
@@ -471,7 +882,103 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["ResultCommunityDetail"];
+                    "*/*": components["schemas"]["ResultMyCommunityStatus"];
+                };
+            };
+        };
+    };
+    listCommunityMembers: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultPageResultCommunityMemberView"];
+                };
+            };
+        };
+    };
+    listCommunityHistory: {
+        parameters: {
+            query?: {
+                category?: string;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultPageResultCommunityHistoryView"];
+                };
+            };
+        };
+    };
+    listCommunityAdminHistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultAdminHistoryView"];
+                };
+            };
+        };
+    };
+    unbanCommunityMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+                userId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultVoid"];
                 };
             };
         };
