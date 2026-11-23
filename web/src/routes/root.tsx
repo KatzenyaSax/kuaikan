@@ -143,7 +143,7 @@ export function RootLayout() {
                   data-testid={'testId' in item ? item.testId : undefined}
                   className={({ isActive }) =>
                     cn(
-                      'group relative flex items-center gap-3 rounded-2xl px-3.5 py-2.5 text-sm font-medium transition-colors',
+                      'group relative isolate flex items-center gap-3 rounded-2xl px-3.5 py-2.5 text-sm font-medium transition-colors',
                       isActive
                         ? ''
                         : 'text-secondary-foreground hover:bg-[var(--bg-surface-hover)] hover:text-foreground',
@@ -432,7 +432,7 @@ export function RootLayout() {
               end={item.end}
               className={({ isActive }) =>
                 cn(
-                  'relative flex flex-col items-center justify-center gap-0.5 rounded-2xl py-2 text-[10px] font-semibold transition-colors',
+                  'relative isolate flex flex-col items-center justify-center gap-0.5 rounded-2xl py-2 text-[10px] font-semibold transition-colors',
                   isActive ? '' : 'text-muted-foreground',
                 )
               }

@@ -191,7 +191,7 @@ export function getUserChroma(seed?: string | null): AuroraChroma {
   return getCommunityChroma(seed)
 }
 
-/** 五类消息语义色配置 */
+/** 五类消息语义色配置（深浅双主题均保证白色文字高对比清晰可读） */
 export const MESSAGE_SEMANTICS = {
   LIKE: {
     label: '赞',
@@ -199,7 +199,7 @@ export const MESSAGE_SEMANTICS = {
     lightColor: '#E11D48',
     bg: 'rgba(251, 113, 133, 0.14)',
     border: 'rgba(251, 113, 133, 0.35)',
-    gradient: 'linear-gradient(135deg, #FB7185, #F43F5E)',
+    gradient: 'linear-gradient(135deg, #E11D48, #F43F5E)',
   },
   COMMENT: {
     label: '评论',
@@ -207,7 +207,7 @@ export const MESSAGE_SEMANTICS = {
     lightColor: '#0284C7',
     bg: 'rgba(34, 211, 238, 0.14)',
     border: 'rgba(34, 211, 238, 0.35)',
-    gradient: 'linear-gradient(135deg, #22D3EE, #3B82F6)',
+    gradient: 'linear-gradient(135deg, #0284C7, #2563EB)',
   },
   MENTION: {
     label: '@',
@@ -215,7 +215,7 @@ export const MESSAGE_SEMANTICS = {
     lightColor: '#7C3AED',
     bg: 'rgba(167, 139, 250, 0.14)',
     border: 'rgba(167, 139, 250, 0.35)',
-    gradient: 'linear-gradient(135deg, #A78BFA, #EC4899)',
+    gradient: 'linear-gradient(135deg, #7C3AED, #C026D3)',
   },
   FOLLOW: {
     label: '关注',
@@ -223,7 +223,7 @@ export const MESSAGE_SEMANTICS = {
     lightColor: '#059669',
     bg: 'rgba(52, 211, 153, 0.14)',
     border: 'rgba(52, 211, 153, 0.35)',
-    gradient: 'linear-gradient(135deg, #34D399, #06B6D4)',
+    gradient: 'linear-gradient(135deg, #059669, #0D9488)',
   },
   SYSTEM: {
     label: '系统',
@@ -231,6 +231,6 @@ export const MESSAGE_SEMANTICS = {
     lightColor: '#D97706',
     bg: 'rgba(251, 191, 36, 0.14)',
     border: 'rgba(251, 191, 36, 0.35)',
-    gradient: 'linear-gradient(135deg, #FBBF24, #F97316)',
+    gradient: 'linear-gradient(135deg, #D97706, #EA580C)',
   },
 } as const

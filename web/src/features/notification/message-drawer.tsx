@@ -145,7 +145,7 @@ export function MessageDrawer({
               type="button"
               onClick={() => setTab(t.key)}
               className={cn(
-                'relative flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl py-2 text-xs font-medium transition-colors',
+                'relative isolate flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl py-2 text-xs font-semibold transition-colors',
                 active ? 'text-white' : 'text-muted-foreground hover:text-foreground',
               )}
             >
@@ -153,16 +153,18 @@ export function MessageDrawer({
                 <motion.span
                   layoutId="msg-drawer-tab"
                   transition={{ type: 'spring', stiffness: 420, damping: 32 }}
-                  className="absolute inset-0 -z-10 rounded-xl shadow-md"
+                  className="absolute inset-0 z-0 rounded-xl shadow-md"
                   style={{ background: sem.gradient }}
                 />
               )}
-              <MessageTypeIcon type={t.key} className="h-3.5 w-3.5" />
-              <span className="text-[11px]">{t.label}</span>
+              <span className="relative z-10 flex flex-col items-center gap-1">
+                <MessageTypeIcon type={t.key} className="h-3.5 w-3.5" />
+                <span className="text-[11px]">{t.label}</span>
+              </span>
               {count > 0 && (
                 <span
                   className={cn(
-                    'tabular-nums absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold',
+                    'tabular-nums absolute top-1 right-1 z-10 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold',
                     active ? 'bg-white text-slate-900' : 'text-white',
                   )}
                   style={active ? undefined : { background: sem.gradient }}
