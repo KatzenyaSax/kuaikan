@@ -1,6 +1,6 @@
 # P8 AI 社区助手（Community Copilot）技术方案
 
-> 状态：方案已评审（grill-me 2026-11-25），待 P8.0 启动。
+> 状态：已完成（2026-11-25，`deploy/bin/verify-p8.sh` **48/48 通过**，L3 Playwright **13/13 通过**，L4 断服隔离通过；1 跳过因服务器暂未配置 `DEEPSEEK_API_KEY`）。
 > 架构不变量见 [`architecture.md`](./architecture.md)，版本与运行事实见 [`../project.md`](../project.md)。
 
 ---

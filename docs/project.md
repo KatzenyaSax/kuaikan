@@ -35,12 +35,12 @@ services/
 │                          UserContext / Headers / Services / Topics（网关也能用）
 ├── kuaikan-common-web    依赖 Spring Web：Jackson Long→String 等 servlet 侧基础设施
 │                          （网关**不依赖**它，避免 WebFlux 进程被 servlet 栈污染）
-├── gateway + 7 个服务
+├── gateway + 8 个服务
 ```
 
 ## 进程与存储
 
-1 网关 + 7 服务 = 8 个进程，共用一个 MySQL 实例，各自独立 schema（见 ADR 0006）。
+1 网关 + 8 服务 = 9 个进程，共用一个 MySQL 实例，各自独立 schema（见 ADR 0006）。
 
 | 进程 | 拥有的 schema / 投影 |
 |---|---|
@@ -52,6 +52,7 @@ services/
 | `notification-service` | `notification` |
 | `search-service` | ES 索引（投影，无写入事实） |
 | `rank-service` | Redis ZSet（投影，无写入事实） |
+| `ai-service` | `ai`（`kuaikan_ai`） |
 
 各进程的职责与不变量见 `docs/design/architecture.md`。
 
@@ -92,7 +93,7 @@ services/
 | 静态站点 | 全部由 React 应用渲染：`/` 首页入口、`/register` 注册、`/test` 诊断台。发布只走 `deploy/bin/deploy-web.sh` |
 | 前端产物目录 | `/opt/kuaikan/frontend/dist`（唯一目录，含 SPA 全部路由） |
 | 部署根目录 | `/opt/kuaikan/{deploy,data,logs,backup}` |
-| 部署形态 | **全组件容器化**（8 个 Java 服务 + 全部中间件），nginx 除外 |
+| 部署形态 | **全组件容器化**（9 个 Java 服务 + 全部中间件），nginx 除外 |
 | 环境数量 | **1 套**（无本地环境、无预发环境） |
 | 镜像构建位置 | 服务器（x86_64）或 CI；**禁止在 arm64 开发机构建后推送** |
 | 回滚手段 | 保留上一版镜像 tag |
@@ -441,6 +442,20 @@ V2 上线后的一段时间里，评论/@ 消息仍然点不动——因为**那
    而不是"加载完立刻找一次"然后放弃
 2. **目标若是回复**，它藏在「展开 N 条回复」里 → 退化为停在帖子页，
    **不自动展开**。自动展开别人没要求的回复比不滚过去更打扰
+
+### P8 AI 社区助手（已完成）
+
+`deploy/bin/verify-p8.sh` **48 条自动断言通过、0 失败、1 跳过**（L0 契约/静态/网关检查、L1 鉴权与跨用户隔离、L2 容器内 Stub 确定性 + 真实 ES/MySQL/Redis 全链路、L3 Playwright 浏览器 **13/13 通过**、L4 停 `ai-service` 主站首页/读帖/发帖删帖全正常且恢复 healthy；跳过项为「真实 DeepSeek 公网流式冒烟」，因服务器 `/opt/kuaikan/env/kuaikan.env` 尚未配置 `DEEPSEEK_API_KEY`）。前端主包 `index-Dnvy_dEN.js` / `index-CUluepZd.css` 与按需懒加载 AI 分包（`copilot-drawer-4q3iQuO9.js`、`ai-compose-bar-CVoI8Y3-.js`、`api-DFnnp9j2.js`、`ai-spike-panel-U1soZHb6.js`）已发布上线；全站 **16 个容器**（`gateway` + 8 个业务/增值服务 + 6 个基础设施 + `mailhog`）全部 healthy，线上 `kuaikan_ai`（0 行临时会话）与 ES/MySQL（55 条有效帖）零测试残留。
+
+#### 落地事实一览
+
+| 维度 | 实测落地状态 |
+|---|---|
+| 错误码契约 | 30 → **36 码**（新增 `44001 AI_QUOTA_EXCEEDED` [429]、`44002 AI_STREAM_BUSY` [409]、`44003 AI_UNAVAILABLE` [503]、`44004 AI_CONVERSATION_NOT_FOUND` [404]、`44005 AI_ACTION_EXPIRED` [200]、`44006 AI_ACTION_STATE_INVALID` [409]）；`AiErrorCode` 位于 `kuaikan-common`，`Headers.AI_STUB = "X-AI-Stub"`、`Services.AI = "ai-service"` |
+| OpenAPI、网关与 Nginx | 全站 **85 个 operationId**（跨 8 个服务端点，新增 `ai-service` **9 个**公开端点：`aiPing` / `createAiConversation` / `listAiConversations` / `listAiMessages` / `deleteAiConversation` / `getAiQuota` / `streamAiMessage` / `streamAiCompose` / `reportAiActionResult`；另为 `notification-service`、`interaction-service`、`content-service` 追加 3 个 `@Hidden` `/internal/**` 只读端点）；网关新增 `/api/ai/**` 路由（`StripPrefix=2`，不进白名单）并在 `JwtAuthGlobalFilter` 公开与鉴权双分支强剥 `X-AI-Stub`；宿主机 nginx 为 `/api/ai/` 开启 `proxy_buffering off` 与 `proxy_read_timeout 300s` |
+| `ai-service` 与存储 | 独立 Servlet 栈（`port 8088`，`SseEmitter` + Java 21 虚拟线程 + `WebClient` SSE 解析，零引入 Spring AI / LangChain4j），默认对接 OpenAI-compatible DeepSeek（`kuaikan.ai.*` 注入），内网测试可经 `X-AI-Stub` 路由至 `StubLlmClient`；`kuaikan_ai` schema 落地 `V1`（`t_ai_conversation` / `t_ai_message`）与 `V2`（`t_ai_action`），30 天定时清理过期会话与动作记录 |
+| Agent 循环、隔离与限流 | 支持 13 个工具（7 个只读工具 + 6 个写提议 `propose_*`），最多 5 轮工具调用后强制 `tool_choice=none` 收尾；引用校验只允许工具实际检索过的 `postId`，自动剥离伪造 `[^k]`；所有 `/internal/**` 用户态读接口一律取 `UserContext.userId()`；Redis 实现单用户 50 次/日配额、单流并发锁（`ai:lock:stream:{userId}`）、5M/日全站 token 熔断、单帖摘要按 `postId+commentCount` 共享缓存 24h（命中不扣配额） |
+| 确认卡状态机与前端 | 6 类写动作（发帖 / 批量收藏 / 关注作者 / 加入社群 / 改昵称 / 改头像）经 `t_ai_action` 落 `PROPOSED` 并推 SSE `action` 事件，由前端用户二次确认后以本人 JWT 调用既有公开 API 执行，并向 `POST /api/ai/actions/{id}/result` 回传 `EXECUTED` / `FAILED` / `REJECTED` 续写引导（续写不扣配额；`44005`/`44006` 守状态机终态）；全局顶栏入口、`Ctrl/⌘+J` 抽屉（与消息抽屉互斥）、帖子页「AI 总结」、消息抽屉「AI 速览」、发帖/评论「AI 帮写」均已上线且首屏懒加载零 `/api/ai/**` 请求 |
 
 ### P7 社群权限与治理（已完成）
 
