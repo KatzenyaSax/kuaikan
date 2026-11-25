@@ -633,15 +633,37 @@ if want_layer l2; then
       "$(call_http POST "${SITE}/api/ai/actions/${LAST_EXP_ACT}/result" "$TOK_A" '{"status":"EXECUTED"}')"
   fi
 
-  # 8. 并发流锁 44002
+  # 8. 并发流锁 44002（同台宿主机内并发，避免跨境 SSH 握手耗时超过慢流窗）
   CONV_LOCK=$(site_curl -s --max-time 20 -X POST "${SITE}/api/ai/conversations" \
     -H "Authorization: Bearer ${TOK_A}" | json_field 'data.id')
-  ai_internal_sse "$UID_A" "/conversations/${CONV_LOCK}/messages" '{"content":"慢流"}' "slow" >/tmp/p8-slow.log 2>&1 &
-  SLOW_PID=$!
-  sleep 1
-  expect_http_code "同一用户并发第二条流被拦截 → 409/44002" "409" "44002" \
-    "$(call_http POST "${SITE}/api/ai/conversations/${CONV_LOCK}/messages" "$TOK_A" '{"content":"并发"}')"
-  wait "$SLOW_PID" || true
+  lock_script=$(cat <<EOF
+set -a; . ${ENV_FILE}; set +a
+docker exec ${AI_CT} curl -sS -N --max-time 20 \
+  -H 'X-User-Id: ${UID_A}' -H 'X-AI-Stub: slow' -H 'Content-Type: application/json' \
+  -X POST "http://127.0.0.1:8088/api/ai/conversations/${CONV_LOCK}/messages" \
+  -d '{"content":"慢流"}' >/tmp/p8-slow.log 2>&1 &
+slow_pid=\$!
+for _i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+  if [ "\$(docker exec kuaikan-redis-1 redis-cli --no-auth-warning -a "\$REDIS_PASSWORD" EXISTS "ai:lock:${UID_A}" 2>/dev/null | tr -d '\r\n ')" = "1" ]; then
+    break
+  fi
+  sleep 0.1
+done
+c=\$(curl -k -s -o /tmp/p8-c2.json -w '%{http_code}' --max-time 20 \
+  --resolve "${SITE_HOST}:443:127.0.0.1" \
+  -H "Authorization: Bearer ${TOK_A}" -H 'Content-Type: application/json' \
+  -X POST "${SITE}/api/ai/conversations/${CONV_LOCK}/messages" \
+  -d '{"content":"并发"}')
+b=\$(python3 -c 'import json; print(json.load(open("/tmp/p8-c2.json")).get("code","-"))' 2>/dev/null || echo -)
+wait "\$slow_pid" >/dev/null 2>&1 || true
+rm -f /tmp/p8-c2.json /tmp/p8-slow.log
+printf '%s %s' "\${c:-000}" "\${b:--}"
+EOF
+)
+  lock_b64=$(printf '%s\n' "$lock_script" | base64 | tr -d '\n')
+  lock_res=$(ssh_run "echo '${lock_b64}' | base64 -d > /tmp/p8-lock.sh && sh /tmp/p8-lock.sh; rm -f /tmp/p8-lock.sh")
+  expect_http_code "同一用户并发第二条流被拦截 → 409/44002" "409" "44002" "$lock_res"
+  sleep 0.3
 
   # 9. 单用户日配额 44001 与全站每日 token 预算熔断 44003
   redis_exec "redis-cli --no-auth-warning -a \"\$REDIS_PASSWORD\" SET \"ai:quota:${TODAY}:${UID_A}\" 50 EX 3600 >/dev/null"
