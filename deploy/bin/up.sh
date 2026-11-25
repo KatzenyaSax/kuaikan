@@ -137,7 +137,7 @@ git -C "$REPO" reset -q --hard origin/main
 git -C "$REPO" log --oneline -1
 
 CORE="mysql redis nacos rmq-namesrv rmq-broker elasticsearch"
-APP="gateway user-service community-service content-service interaction-service notification-service search-service rank-service"
+APP="gateway user-service community-service content-service interaction-service notification-service search-service rank-service ai-service"
 
 # ES 的数据目录必须**预先存在且属主为 1000:0**（镜像内 elasticsearch 用户的 uid）。
 # 不预建的话 Docker 会自己建一个 root:root 的目录，ES 启动时写日志目录就报

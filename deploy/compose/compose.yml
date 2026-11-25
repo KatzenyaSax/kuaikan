@@ -50,6 +50,7 @@ services:
       MYSQL_PWD_CONTENT: ${MYSQL_PWD_CONTENT:?}
       MYSQL_PWD_INTERACTION: ${MYSQL_PWD_INTERACTION:?}
       MYSQL_PWD_NOTIFICATION: ${MYSQL_PWD_NOTIFICATION:?}
+      MYSQL_PWD_AI: ${MYSQL_PWD_AI:?}
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_0900_ai_ci
@@ -522,6 +523,43 @@ services:
       - kuaikan
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8087/actuator/health/readiness || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  ai-service:
+    profiles: ["app"]
+    build:
+      <<: *default-build
+      args:
+        MODULE: ai-service
+    image: kuaikan/ai-service:${APP_TAG:-dev}
+    restart: unless-stopped
+    logging: *default-logging
+    mem_limit: 512m
+    environment:
+      <<: *default-app-env
+      MYSQL_HOST: mysql
+      MYSQL_USER: u_ai
+      MYSQL_PASSWORD: ${MYSQL_PWD_AI:?}
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?}
+      ID_WORKER_ID: "6"
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      AI_BASE_URL: ${AI_BASE_URL:-https://api.deepseek.com/v1}
+      AI_MODEL: ${AI_MODEL:-deepseek-chat}
+      AI_STUB_ENABLED: ${AI_STUB_ENABLED:-true}
+    depends_on:
+      <<: *default-app-depends
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - kuaikan
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8088/actuator/health/readiness || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 10

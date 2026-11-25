@@ -117,6 +117,7 @@ resolve_service() {
     notification|notification-service) echo "notification-service" ;;
     search|search-service)      echo "search-service" ;;
     rank|rank-service)          echo "rank-service" ;;
+    ai|ai-service)              echo "ai-service" ;;
     rmq|broker|rmq-broker)      echo "rmq-broker" ;;
     es|elasticsearch)           echo "elasticsearch" ;;
     namesrv|rmq-namesrv)        echo "rmq-namesrv" ;;

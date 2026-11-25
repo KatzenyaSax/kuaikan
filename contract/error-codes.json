@@ -29,6 +29,12 @@
     { "code": 41009, "name": "TRANSFER_TARGET_INVALID", "http": 200, "owner": "community", "message": "只能将管理员转让给本社群在社成员" },
     { "code": 42001, "name": "POST_NOT_FOUND",          "http": 404, "owner": "content",   "message": "帖子不存在" },
     { "code": 42002, "name": "COMMENT_NOT_FOUND",       "http": 404, "owner": "content",   "message": "评论不存在" },
+    { "code": 44001, "name": "AI_QUOTA_EXCEEDED",          "http": 429, "owner": "ai", "message": "今日 AI 对话次数已用完" },
+    { "code": 44002, "name": "AI_STREAM_BUSY",             "http": 409, "owner": "ai", "message": "已有正在进行的回答，请稍候" },
+    { "code": 44003, "name": "AI_UNAVAILABLE",             "http": 503, "owner": "ai", "message": "AI 服务暂时不可用" },
+    { "code": 44004, "name": "AI_CONVERSATION_NOT_FOUND",  "http": 404, "owner": "ai", "message": "对话不存在或无权访问" },
+    { "code": 44005, "name": "AI_ACTION_EXPIRED",          "http": 200, "owner": "ai", "message": "该操作提议已过期，请重新发起" },
+    { "code": 44006, "name": "AI_ACTION_STATE_INVALID",    "http": 409, "owner": "ai", "message": "操作提议状态不允许此操作" },
     { "code": 42900, "name": "RATE_LIMITED",          "http": 429, "owner": "common", "message": "请求过于频繁" },
     { "code": 50000, "name": "INTERNAL",              "http": 500, "owner": "common", "message": "服务内部错误" },
     { "code": 50300, "name": "UPSTREAM_UNAVAILABLE",  "http": 503, "owner": "common", "message": "服务暂时不可用" }

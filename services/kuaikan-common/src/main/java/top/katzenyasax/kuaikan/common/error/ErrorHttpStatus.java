@@ -35,6 +35,12 @@ public final class ErrorHttpStatus {
             // 41008 / 41009 是业务规则，HTTP 200，不登记
             Map.entry(42001, 404),  // 帖子不存在
             Map.entry(42900, 429),  // 请求过于频繁
+            Map.entry(44001, 429),  // 今日 AI 对话次数已用完（P8）
+            Map.entry(44002, 409),  // 已有正在进行的回答（P8）
+            Map.entry(44003, 503),  // AI 服务暂时不可用（P8）
+            Map.entry(44004, 404),  // 对话不存在或无权访问（P8）
+            // 44005 AI_ACTION_EXPIRED 是业务规则，HTTP 200，不登记
+            Map.entry(44006, 409),  // 操作提议状态不允许此操作（P8）
             Map.entry(50000, 500),  // 服务内部错误
             Map.entry(50300, 503)   // 依赖不可用（fail-closed）
     );

@@ -23,6 +23,7 @@
         <module>notification-service</module>
         <module>search-service</module>
         <module>rank-service</module>
+        <module>ai-service</module>
     </modules>
 
     <properties>

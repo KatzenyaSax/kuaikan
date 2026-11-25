@@ -34,6 +34,12 @@ export const ERROR_MESSAGES: Readonly<Record<number, string>> = {
   42001: '帖子不存在', // POST_NOT_FOUND
   42002: '评论不存在', // COMMENT_NOT_FOUND
   42900: '请求过于频繁', // RATE_LIMITED
+  44001: '今日 AI 对话次数已用完', // AI_QUOTA_EXCEEDED
+  44002: '已有正在进行的回答，请稍候', // AI_STREAM_BUSY
+  44003: 'AI 服务暂时不可用', // AI_UNAVAILABLE
+  44004: '对话不存在或无权访问', // AI_CONVERSATION_NOT_FOUND
+  44005: '该操作提议已过期，请重新发起', // AI_ACTION_EXPIRED
+  44006: '操作提议状态不允许此操作', // AI_ACTION_STATE_INVALID
   50000: '服务内部错误', // INTERNAL
   50300: '服务暂时不可用', // UPSTREAM_UNAVAILABLE
 } as const
@@ -68,6 +74,12 @@ export const ERROR_HTTP_STATUS: Readonly<Record<number, number>> = {
   42001: 404,
   42002: 404,
   42900: 429,
+  44001: 429,
+  44002: 409,
+  44003: 503,
+  44004: 404,
+  44005: 200,
+  44006: 409,
   50000: 500,
   50300: 503,
 } as const

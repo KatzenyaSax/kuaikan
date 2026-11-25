@@ -1,0 +1,104 @@
+server:
+  port: 8088
+  shutdown: graceful
+
+spring:
+  application:
+    name: ai-service
+  # 与 webflux（仅用于 WebClient）共存时锁定 Servlet 栈，确保 UserContextFilter 与 GlobalExceptionHandler 生效
+  main:
+    web-application-type: servlet
+  threads:
+    virtual:
+      enabled: true
+
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+        namespace: ${NACOS_NAMESPACE:}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
+        metadata:
+          version: ${APP_VERSION:dev}
+    openfeign:
+      client:
+        config:
+          default:
+            connectTimeout: 1000
+            readTimeout: 3000
+
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:mysql}:${MYSQL_PORT:3306}/kuaikan_ai?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USER:u_ai}
+    password: ${MYSQL_PASSWORD:}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 3000
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  data:
+    redis:
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2s
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    banner: false
+    worker-id: ${ID_WORKER_ID:6}
+    datacenter-id: ${ID_DATACENTER_ID:1}
+
+kuaikan:
+  ai:
+    base-url: ${AI_BASE_URL:https://api.deepseek.com/v1}
+    model: ${AI_MODEL:deepseek-chat}
+    api-key: ${DEEPSEEK_API_KEY:}
+    stub-enabled: ${AI_STUB_ENABLED:true}
+    connect-timeout-ms: 5000
+    first-token-timeout-ms: 20000
+    turn-timeout-ms: 90000
+    max-tokens: 2048
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: ai-service
+
+logging:
+  level:
+    root: INFO
+
+springdoc:
+  api-docs:
+    path: /internal/api-docs
+    enabled: true
+  swagger-ui:
+    enabled: false
+  packages-to-scan: top.katzenyasax.kuaikan.ai
+  show-actuator: false

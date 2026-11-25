@@ -13,6 +13,7 @@ public final class Services {
     public static final String NOTIFICATION = "notification-service";
     public static final String SEARCH = "search-service";
     public static final String RANK = "rank-service";
+    public static final String AI = "ai-service";
 
     private Services() {
     }

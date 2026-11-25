@@ -189,6 +189,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
                     h.remove(Headers.USER_ID);
                     h.remove(Headers.USER_ROLES);
                     h.remove(Headers.TOKEN_EXP);
+                    h.remove(Headers.AI_STUB);
                 })
                 .build();
         return exchange.mutate().request(mutated).build();
@@ -212,6 +213,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
                     h.remove(Headers.USER_ID);
                     h.remove(Headers.USER_ROLES);
                     h.remove(Headers.TOKEN_EXP);
+                    h.remove(Headers.AI_STUB);
                     h.set(Headers.USER_ID, userId);
                     h.set(Headers.USER_ROLES, roles);
                     // SSE 长连接要活过 token 有效期，得知道确切过期时刻

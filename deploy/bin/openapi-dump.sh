@@ -14,7 +14,7 @@ set -euo pipefail
 APP_DIR="${APP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 OUT_DIR="$APP_DIR/web/openapi"
 
-SERVICES="user-service:8081 community-service:8082 content-service:8083 interaction-service:8084 notification-service:8085 search-service:8086 rank-service:8087"
+SERVICES="user-service:8081 community-service:8082 content-service:8083 interaction-service:8084 notification-service:8085 search-service:8086 rank-service:8087 ai-service:8088"
 
 SSH_HOST="${SSH_HOST:-root@206.237.30.147}"
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/pi_cloud}"

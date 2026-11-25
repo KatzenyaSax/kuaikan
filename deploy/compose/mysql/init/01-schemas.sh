@@ -24,6 +24,7 @@ mysql_init kuaikan_community    u_community    "${MYSQL_PWD_COMMUNITY}"
 mysql_init kuaikan_content      u_content      "${MYSQL_PWD_CONTENT}"
 mysql_init kuaikan_interaction  u_interaction  "${MYSQL_PWD_INTERACTION}"
 mysql_init kuaikan_notification u_notification "${MYSQL_PWD_NOTIFICATION}"
+mysql_init kuaikan_ai           u_ai           "${MYSQL_PWD_AI}"
 
 mysql --protocol=socket -uroot -p"${MYSQL_ROOT_PASSWORD}" -e "FLUSH PRIVILEGES;"
 echo "[init] 各服务 schema 与受限账号就绪"

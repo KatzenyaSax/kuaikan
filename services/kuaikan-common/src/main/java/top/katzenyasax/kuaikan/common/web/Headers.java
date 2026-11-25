@@ -21,6 +21,9 @@ public final class Headers {
     /** access token 的过期时刻，epoch 秒。只在需要长连接的场景有意义 */
     public static final String TOKEN_EXP = "X-Token-Exp";
 
+    /** AI 测试 Stub 场景头，仅内网直连且 stub-enabled=true 时生效，网关必须剥离 */
+    public static final String AI_STUB = "X-AI-Stub";
+
     private Headers() {
     }
 }
