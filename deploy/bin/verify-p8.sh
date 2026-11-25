@@ -161,12 +161,16 @@ http_code() {
 }
 
 call_http() {  # $1=方法 $2=url $3=token(可空) $4=body(可空) → "HTTP CODE"
-  local method="$1" url="$2" token="${3:-}" body="${4:-}" tmp c b
+  local method="$1" url="$2" token="${3:-}" body="${4:-}" tmp c b _try
   tmp=$(mktemp)
   local args=(-s -o "$tmp" -w '%{http_code}' --max-time 20 -X "$method" "$url")
   [ -n "$token" ] && args+=(-H "Authorization: Bearer ${token}")
   [ -n "$body" ] && args+=(-H 'Content-Type: application/json' -d "$body")
-  c=$(site_curl "${args[@]}" 2>/dev/null)
+  for _try in 1 2; do
+    c=$(site_curl "${args[@]}" 2>/dev/null || true)
+    [ "${c:-000}" != "000" ] && break
+    sleep 0.5
+  done
   b=$(json_field 'code' < "$tmp" 2>/dev/null)
   rm -f "$tmp"
   printf '%s %s' "${c:-000}" "${b:--}"
@@ -644,7 +648,7 @@ docker exec ${AI_CT} curl -sS -N --max-time 20 \
   -d '{"content":"慢流"}' >/tmp/p8-slow.log 2>&1 &
 slow_pid=\$!
 for _i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
-  if [ "\$(docker exec kuaikan-redis-1 redis-cli --no-auth-warning -a "\$REDIS_PASSWORD" EXISTS "ai:lock:${UID_A}" 2>/dev/null | tr -d '\r\n ')" = "1" ]; then
+  if [ "\$(docker exec kuaikan-redis-1 redis-cli --no-auth-warning -a "\$REDIS_PASSWORD" EXISTS "ai:lock:stream:${UID_A}" 2>/dev/null | tr -d '\r\n ')" = "1" ]; then
     break
   fi
   sleep 0.1
