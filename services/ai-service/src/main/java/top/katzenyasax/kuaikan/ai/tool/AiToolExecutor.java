@@ -111,8 +111,8 @@ public class AiToolExecutor {
                 new SearchClient.SearchPostsReq(
                         keyword, null, authorNickname, null, communityName,
                         null, null, null, null, limit, true));
-        List<SearchClient.SearchPostRow> items = (res != null && res.getData() != null && res.getData().items() != null)
-                ? res.getData().items()
+        List<SearchClient.SearchPostRow> items = (res != null && res.data() != null && res.data().items() != null)
+                ? res.data().items()
                 : List.of();
         if (items.isEmpty()) {
             return "未检索到匹配的站内公开帖子。";
@@ -136,7 +136,7 @@ public class AiToolExecutor {
             return "缺少有效的 postId。";
         }
         Result<ContentClient.PostRow> res = contentClient.getPost(postId);
-        ContentClient.PostRow post = res == null ? null : res.getData();
+        ContentClient.PostRow post = res == null ? null : res.data();
         if (post == null) {
             return "帖子不存在或已被删除。";
         }
@@ -161,8 +161,8 @@ public class AiToolExecutor {
             return "缺少有效的 postId。";
         }
         Result<ContentClient.CommentPageRow> res = contentClient.listComments(postId, "hot", MAX_COMMENTS);
-        List<ContentClient.CommentRow> items = (res != null && res.getData() != null && res.getData().items() != null)
-                ? res.getData().items()
+        List<ContentClient.CommentRow> items = (res != null && res.data() != null && res.data().items() != null)
+                ? res.data().items()
                 : List.of();
         if (items.isEmpty()) {
             return "该帖子暂无评论。";
@@ -194,8 +194,8 @@ public class AiToolExecutor {
         int limit = clamp(args.path("limit").asInt(15), 1, 30);
         // userId 严格由后端 UserContext 注入，绝不采信模型入参
         Result<List<NotificationClient.UnreadMessageRow>> res = notificationClient.listUnread(ctx.userId(), limit);
-        List<NotificationClient.UnreadMessageRow> rows = res == null || res.getData() == null
-                ? List.of() : res.getData();
+        List<NotificationClient.UnreadMessageRow> rows = res == null || res.data() == null
+                ? List.of() : res.data();
         if (rows.isEmpty()) {
             return "暂无未读消息。";
         }
@@ -229,8 +229,8 @@ public class AiToolExecutor {
     private String execListMyCommunities(AiToolContext ctx) {
         Result<CommunityClient.CommunityPageRow> res = communityClient.userCommunities(ctx.userId(), 30);
         List<CommunityClient.CommunitySummaryRow> items =
-                (res != null && res.getData() != null && res.getData().items() != null)
-                        ? res.getData().items() : List.of();
+                (res != null && res.data() != null && res.data().items() != null)
+                        ? res.data().items() : List.of();
         if (items.isEmpty()) {
             return "你尚未加入任何社群。";
         }
@@ -249,8 +249,8 @@ public class AiToolExecutor {
     private String execListCommunities() {
         Result<CommunityClient.CommunityPageRow> res = communityClient.listCommunities(30);
         List<CommunityClient.CommunitySummaryRow> items =
-                (res != null && res.getData() != null && res.getData().items() != null)
-                        ? res.getData().items() : List.of();
+                (res != null && res.data() != null && res.data().items() != null)
+                        ? res.data().items() : List.of();
         if (items.isEmpty()) {
             return "全站暂无社群。";
         }
@@ -271,8 +271,8 @@ public class AiToolExecutor {
         Result<PageResult<InteractionClient.FavoriteRow>> favRes =
                 interactionClient.listFavorites(ctx.userId(), limit);
         List<InteractionClient.FavoriteRow> favs =
-                (favRes != null && favRes.getData() != null && favRes.getData().items() != null)
-                        ? favRes.getData().items() : List.of();
+                (favRes != null && favRes.data() != null && favRes.data().items() != null)
+                        ? favRes.data().items() : List.of();
         if (favs.isEmpty()) {
             return "你还没有收藏任何帖子。";
         }
@@ -316,8 +316,8 @@ public class AiToolExecutor {
         List<Map<String, String>> communities = new ArrayList<>();
         try {
             Result<CommunityClient.CommunityPageRow> res = communityClient.userCommunities(ctx.userId(), 30);
-            if (res != null && res.getData() != null && res.getData().items() != null) {
-                for (CommunityClient.CommunitySummaryRow c : res.getData().items()) {
+            if (res != null && res.data() != null && res.data().items() != null) {
+                for (CommunityClient.CommunitySummaryRow c : res.data().items()) {
                     communities.add(Map.of("id", c.id(), "name", c.name()));
                 }
             }
@@ -468,8 +468,8 @@ public class AiToolExecutor {
         if (id == null) return "未知社群";
         try {
             Result<CommunityClient.CommunityRefRow> res = communityClient.getById(id);
-            if (res != null && res.getData() != null && res.getData().exists() && res.getData().name() != null) {
-                return res.getData().name();
+            if (res != null && res.data() != null && res.data().exists() && res.data().name() != null) {
+                return res.data().name();
             }
         } catch (Exception ignored) {
             // fallback
@@ -488,8 +488,8 @@ public class AiToolExecutor {
         if (ids == null || ids.isEmpty()) return map;
         try {
             Result<List<UserClient.UserNameRow>> res = userClient.batch(new UserClient.BatchUsersReq(ids));
-            if (res != null && res.getData() != null) {
-                for (UserClient.UserNameRow u : res.getData()) {
+            if (res != null && res.data() != null) {
+                for (UserClient.UserNameRow u : res.data()) {
                     map.put(u.id(), u.nickname());
                 }
             }
@@ -505,8 +505,8 @@ public class AiToolExecutor {
         try {
             Result<List<CommunityClient.CommunityNameRow>> res =
                     communityClient.batch(new CommunityClient.BatchCommunitiesReq(ids));
-            if (res != null && res.getData() != null) {
-                for (CommunityClient.CommunityNameRow c : res.getData()) {
+            if (res != null && res.data() != null) {
+                for (CommunityClient.CommunityNameRow c : res.data()) {
                     map.put(c.id(), c.name());
                 }
             }
@@ -521,7 +521,7 @@ public class AiToolExecutor {
         try {
             Result<List<ContentClient.PostSummaryRow>> res =
                     contentClient.batchPosts(new ContentClient.BatchPostsReq(postIds));
-            return res != null && res.getData() != null ? res.getData() : List.of();
+            return res != null && res.data() != null ? res.data() : List.of();
         } catch (Exception ignored) {
             return List.of();
         }

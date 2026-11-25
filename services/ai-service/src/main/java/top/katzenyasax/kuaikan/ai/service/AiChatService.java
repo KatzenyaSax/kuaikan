@@ -664,10 +664,10 @@ public class AiChatService {
         try {
             Long postId = Long.valueOf(req.pageContext().postId().trim());
             Result<ContentClient.PostRow> res = contentClient.getPost(postId);
-            if (res == null || res.getData() == null) {
+            if (res == null || res.data() == null) {
                 return null;
             }
-            long commentCount = res.getData().commentCount();
+            long commentCount = res.data().commentCount();
             String cached = quotaService.getCachedSummary(postId, commentCount);
             return new SummaryTarget(postId, commentCount, cached);
         } catch (Exception e) {

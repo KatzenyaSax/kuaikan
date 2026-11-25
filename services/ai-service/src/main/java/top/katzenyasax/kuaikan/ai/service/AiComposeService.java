@@ -158,9 +158,9 @@ public class AiComposeService {
         if ("RECOMMEND_COMMUNITY".equals(req.mode())) {
             try {
                 Result<CommunityClient.CommunityPageRow> res = communityClient.listCommunities(30);
-                if (res != null && res.getData() != null && res.getData().items() != null) {
+                if (res != null && res.data() != null && res.data().items() != null) {
                     StringBuilder sb = new StringBuilder("站内现有社群：\n");
-                    for (CommunityClient.CommunitySummaryRow c : res.getData().items()) {
+                    for (CommunityClient.CommunitySummaryRow c : res.data().items()) {
                         sb.append("- ").append(c.name()).append("：")
                                 .append(c.description() == null ? "" : c.description()).append("\n");
                     }
@@ -175,8 +175,8 @@ public class AiComposeService {
             try {
                 Long pid = Long.valueOf(req.postId().trim());
                 Result<ContentClient.PostRow> res = contentClient.getPost(pid);
-                if (res != null && res.getData() != null) {
-                    ContentClient.PostRow p = res.getData();
+                if (res != null && res.data() != null) {
+                    ContentClient.PostRow p = res.data();
                     String body = p.body() == null ? "" : (p.body().length() > 1500 ? p.body().substring(0, 1500) : p.body());
                     messages.add(LlmMessage.system("原帖标题：《" + p.title() + "》\n原帖正文：\n" + body));
                 }
