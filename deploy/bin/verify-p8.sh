@@ -104,6 +104,22 @@ elif isinstance(v,bool): print('true' if v else 'false')
 else: print(v)
 " "$1" 2>/dev/null; }
 
+sse_text() { python3 -c "
+import json,sys
+out=[]
+ev=None
+for line in sys.stdin:
+    line=line.rstrip('\r\n')
+    if line.startswith('event:'):
+        ev=line[6:].strip()
+    elif line.startswith('data:') and ev=='delta':
+        try: out.append(json.loads(line[5:].strip()).get('text',''))
+        except Exception: pass
+    elif line=='':
+        ev=None
+print(''.join(out))
+" 2>/dev/null; }
+
 json_obj() {
   python3 -c "
 import json,sys
@@ -507,11 +523,12 @@ if want_layer l2; then
   CONV_INF=$(site_curl -s --max-time 20 -X POST "${SITE}/api/ai/conversations" \
     -H "Authorization: Bearer ${TOK_A}" | json_field 'data.id')
   inf_sse=$(ai_internal_sse "$UID_A" "/conversations/${CONV_INF}/messages" '{"content":"无限工具循环测试"}' "infinite_tools")
+  inf_text=$(printf '%s\n' "$inf_sse" | sse_text)
   tool_starts=$(printf '%s\n' "$inf_sse" | grep -c '"phase":"start"' || true)
-  if [ "$tool_starts" = "5" ] && printf '%s' "$inf_sse" | grep -q '步数上限'; then
+  if [ "$tool_starts" = "5" ] && printf '%s' "$inf_text" | grep -q '步数上限'; then
     ok "Agent 循环第 5 步后强制 tool_choice=none 收尾（tool start=${tool_starts}）"
   else
-    ng "Agent 循环步数限制不符合预期" "tool_starts=${tool_starts}"
+    ng "Agent 循环步数限制不符合预期" "tool_starts=${tool_starts} text=${inf_text}"
   fi
 
   # 4. 单帖省流共享缓存命中不扣配额
@@ -537,28 +554,31 @@ if want_layer l2; then
 
   # 5. 未读消息跨用户隔离
   sql_exec "INSERT INTO kuaikan_notification.t_message
-    (id, user_id, type, source_event_id, actor_id, actor_nickname, target_type, target_id, target_title, community_name, post_id, excerpt)
-    VALUES (FLOOR(RAND()*900000000000000000)+100000000000000000, ${UID_A}, 'COMMENT', 'p8-evt-${STAMP}', ${UID_B}, '乙同学', 'POST', ${POST_A_ID}, '测试标题', '${COMM_A}', ${POST_A_ID}, 'P8私密未读内容');"
+    (id, user_id, type, source_event_id, actor_id, actor_nickname, target_type, target_id, target_title, community_name, post_id, excerpt, created_at)
+    VALUES (FLOOR(RAND()*900000000000000000)+100000000000000000, ${UID_A}, 'COMMENT', 'p8-evt-${STAMP}', ${UID_B}, '乙同学', 'POST', ${POST_A_ID}, '测试标题', '${COMM_A}', ${POST_A_ID}, 'P8私密未读内容', NOW(3));"
   CONV_UNREAD_A=$(site_curl -s --max-time 20 -X POST "${SITE}/api/ai/conversations" \
     -H "Authorization: Bearer ${TOK_A}" | json_field 'data.id')
   CONV_UNREAD_B=$(site_curl -s --max-time 20 -X POST "${SITE}/api/ai/conversations" \
     -H "Authorization: Bearer ${TOK_B}" | json_field 'data.id')
   unread_a=$(ai_internal_sse "$UID_A" "/conversations/${CONV_UNREAD_A}/messages" '{"content":"速览未读","intent":"UNREAD_SUMMARY"}' "unread_summary")
   unread_b=$(ai_internal_sse "$UID_B" "/conversations/${CONV_UNREAD_B}/messages" '{"content":"速览未读","intent":"UNREAD_SUMMARY"}' "unread_summary")
-  if printf '%s' "$unread_a" | grep -q '建议回复' && printf '%s' "$unread_b" | grep -q '暂无未读消息'; then
+  unread_a_text=$(printf '%s' "$unread_a" | sse_text)
+  unread_b_text=$(printf '%s' "$unread_b" | sse_text)
+  if printf '%s' "$unread_a_text" | grep -q '建议回复' && printf '%s' "$unread_b_text" | grep -q '暂无未读消息'; then
     ok "未读消息速览严格按 UserContext 隔离（A 读到未读，B 读到暂无未读）"
   else
-    ng "未读消息速览隔离异常" "A=${unread_a} B=${unread_b}"
+    ng "未读消息速览隔离异常" "A=${unread_a_text} B=${unread_b_text}"
   fi
 
   # 6. 内联帮写 compose 零写业务库
   post_cnt_before=$(sql_exec "SELECT COUNT(*) FROM kuaikan_content.t_post;" | tr -d '\r\n ')
   compose_sse=$(ai_internal_sse "$UID_A" "/compose" '{"mode":"POLISH","draft":"这是草稿"}' "compose")
+  compose_text=$(printf '%s' "$compose_sse" | sse_text)
   post_cnt_after=$(sql_exec "SELECT COUNT(*) FROM kuaikan_content.t_post;" | tr -d '\r\n ')
-  if printf '%s' "$compose_sse" | grep -q 'AI 润色建议' && [ "$post_cnt_before" = "$post_cnt_after" ]; then
+  if printf '%s' "$compose_text" | grep -q 'AI 润色建议' && [ "$post_cnt_before" = "$post_cnt_after" ]; then
     ok "/compose 内联帮写流式输出且零写入业务表"
   else
-    ng "/compose 输出或零写库验证失败"
+    ng "/compose 输出或零写库验证失败" "text=${compose_text}"
   fi
 
   # 7. 确认卡全状态机（不静默写库 / 41004 续写不扣配额 / 44006 幂等 / 44005 过期）
@@ -580,12 +600,12 @@ if want_layer l2; then
 
   # 模拟前端执行发帖遇到 41004（非成员）并回传结果，验证续写引导加群且不扣配额
   q_before_follow=$(site_curl -s --max-time 20 -H "Authorization: Bearer ${TOK_A}" "${SITE}/api/ai/quota" | json_field 'data.remaining')
-  followup_sse=$(ai_internal_sse "$UID_A" "/actions/${ACT_POST_ID}/result" '{"status":"FAILED","errorCode":41004}' "action_followup")
+  followup_text=$(ai_internal_sse "$UID_A" "/actions/${ACT_POST_ID}/result" '{"status":"FAILED","errorCode":41004}' "action_followup" | sse_text)
   q_after_follow=$(site_curl -s --max-time 20 -H "Authorization: Bearer ${TOK_A}" "${SITE}/api/ai/quota" | json_field 'data.remaining')
-  if printf '%s' "$followup_sse" | grep -q '加入该社群' && [ "$q_before_follow" = "$q_after_follow" ]; then
+  if printf '%s' "$followup_text" | grep -q '加入该社群' && [ "$q_before_follow" = "$q_after_follow" ]; then
     ok "确认卡失败回传（41004）触发 AI 续写引导且不扣用户配额"
   else
-    ng "确认卡失败回传续写异常" "q=${q_before_follow}->${q_after_follow}"
+    ng "确认卡失败回传续写异常" "q=${q_before_follow}->${q_after_follow} text=${followup_text}"
   fi
 
   # 重复回传同一张确认卡 → 409/44006
@@ -619,14 +639,9 @@ if want_layer l2; then
   ai_internal_sse "$UID_A" "/conversations/${CONV_LOCK}/messages" '{"content":"慢流"}' "slow" >/tmp/p8-slow.log 2>&1 &
   SLOW_PID=$!
   sleep 1
-  busy_res=$(ssh_run "docker exec ${AI_CT} curl -s -o /tmp/p8-busy.json -w '%{http_code}' -X POST 'http://127.0.0.1:8088/conversations/${CONV_LOCK}/messages' \
-    -H 'Content-Type: application/json' -H 'X-User-Id: ${UID_A}' -H 'X-AI-Stub: echo' -d '{\"content\":\"并发\"}' && cat /tmp/p8-busy.json")
+  expect_http_code "同一用户并发第二条流被拦截 → 409/44002" "409" "44002" \
+    "$(call_http POST "${SITE}/api/ai/conversations/${CONV_LOCK}/messages" "$TOK_A" '{"content":"并发"}')"
   wait "$SLOW_PID" || true
-  if printf '%s' "$busy_res" | grep -q '^409' && printf '%s' "$busy_res" | grep -q '44002'; then
-    ok "同一用户并发第二条流被拦截（HTTP 409 / 44002），首条结束后锁释放"
-  else
-    ng "并发流锁未返回 409/44002" "$busy_res"
-  fi
 
   # 9. 单用户日配额 44001 与全站每日 token 预算熔断 44003
   redis_exec "redis-cli --no-auth-warning -a \"\$REDIS_PASSWORD\" SET \"ai:quota:${TODAY}:${UID_A}\" 50 EX 3600 >/dev/null"

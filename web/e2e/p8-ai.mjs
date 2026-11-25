@@ -139,7 +139,7 @@ try {
   await page.getByTestId('ai-privacy-notice').waitFor({ state: 'visible', timeout: 10000 })
   ok('顶栏 AI 按钮可打开 Copilot 抽屉并展示配额与第三方提示')
 
-  // 快捷键 Ctrl/⌘ + J 切换关闭再打开
+  // 快捷键 Ctrl/⌘ + J 切换关闭，再打开消息抽屉验证双向互斥
   const modKey = process.platform === 'darwin' ? 'Meta' : 'Control'
   await page.keyboard.press(`${modKey}+j`)
   await page.getByTestId('copilot-drawer').waitFor({ state: 'hidden', timeout: 10000 })
@@ -147,12 +147,21 @@ try {
   await page.getByTestId('copilot-drawer').waitFor({ state: 'visible', timeout: 10000 })
   ok('快捷键 Ctrl/⌘+J 可切换收起与展开 Copilot 抽屉')
 
-  // 与消息抽屉互斥 + 消息抽屉「AI 速览」切换回 Copilot
+  // 关闭 Copilot 后打开消息抽屉，按 Ctrl/⌘+J 互斥切入 Copilot
+  await page.keyboard.press('Escape')
+  await page.getByTestId('copilot-drawer').waitFor({ state: 'hidden', timeout: 10000 })
   await page.getByTestId('nav-messages').click()
   await page.getByTestId('message-drawer').waitFor({ state: 'visible', timeout: 10000 })
-  await page.getByTestId('copilot-drawer').waitFor({ state: 'hidden', timeout: 10000 })
-  ok('打开消息抽屉时 Copilot 抽屉自动互斥关闭')
+  await page.keyboard.press(`${modKey}+j`)
+  await page.getByTestId('copilot-drawer').waitFor({ state: 'visible', timeout: 10000 })
+  await page.getByTestId('message-drawer').waitFor({ state: 'hidden', timeout: 10000 })
+  ok('快捷键唤起 Copilot 时消息抽屉自动互斥关闭')
 
+  // 关闭 Copilot 后重新打开消息抽屉，点「AI 速览」切入 Copilot
+  await page.keyboard.press('Escape')
+  await page.getByTestId('copilot-drawer').waitFor({ state: 'hidden', timeout: 10000 })
+  await page.getByTestId('nav-messages').click()
+  await page.getByTestId('message-drawer').waitFor({ state: 'visible', timeout: 10000 })
   await page.getByTestId('btn-ai-unread-summary').click()
   await page.getByTestId('copilot-drawer').waitFor({ state: 'visible', timeout: 10000 })
   await page.getByTestId('message-drawer').waitFor({ state: 'hidden', timeout: 10000 })
