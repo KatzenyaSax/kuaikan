@@ -644,7 +644,7 @@ if want_layer l2; then
 set -a; . ${ENV_FILE}; set +a
 docker exec ${AI_CT} curl -sS -N --max-time 20 \
   -H 'X-User-Id: ${UID_A}' -H 'X-AI-Stub: slow' -H 'Content-Type: application/json' \
-  -X POST "http://127.0.0.1:8088/api/ai/conversations/${CONV_LOCK}/messages" \
+  -X POST "http://127.0.0.1:8088/conversations/${CONV_LOCK}/messages" \
   -d '{"content":"慢流"}' >/tmp/p8-slow.log 2>&1 &
 slow_pid=\$!
 for _i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
