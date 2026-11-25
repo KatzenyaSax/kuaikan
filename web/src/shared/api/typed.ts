@@ -1,3 +1,4 @@
+import type { operations as aiOps } from '@/shared/api/types/ai-service.gen'
 import type { operations as communityOps } from '@/shared/api/types/community-service.gen'
 import type { operations as contentOps } from '@/shared/api/types/content-service.gen'
 import type { operations as interactionOps } from '@/shared/api/types/interaction-service.gen'
@@ -28,7 +29,8 @@ export type ApiOperations = userOps &
   interactionOps &
   notificationOps &
   searchOps &
-  rankOps
+  rankOps &
+  aiOps
 
 /**
  * 从生成的 operations 里取出某个接口的**解包后** data 类型。

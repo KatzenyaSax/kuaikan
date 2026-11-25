@@ -1,9 +1,14 @@
+import { Suspense, lazy } from 'react'
 import { REFETCH_SECONDS } from '@/features/status/api'
 import { ServiceStatusGrid } from '@/features/status/service-status-grid'
 import { MqPanel } from '@/features/devtools/mq-panel'
 import { SentinelPanel } from '@/features/devtools/sentinel-panel'
 import { Button } from '@/shared/ui/button'
 import { Card, CardDescription } from '@/shared/ui/card'
+
+const AiSpikePanel = lazy(() =>
+  import('@/features/devtools/ai-spike-panel').then((m) => ({ default: m.AiSpikePanel })),
+)
 
 /**
  * 诊断页。**不属于产品功能**，只用来确认各条链路是否通。
@@ -33,6 +38,12 @@ export function TestPage() {
       <section className="grid gap-3 lg:grid-cols-2">
         <MqPanel />
         <SentinelPanel />
+      </section>
+
+      <section className="space-y-3">
+        <Suspense fallback={null}>
+          <AiSpikePanel />
+        </Suspense>
       </section>
 
       <section className="space-y-3">
