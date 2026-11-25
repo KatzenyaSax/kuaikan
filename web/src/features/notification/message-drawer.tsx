@@ -19,6 +19,7 @@ import {
   useReadAll,
   useUnread,
 } from '@/features/notification/api'
+import { useAiStore } from '@/features/ai/ai-store'
 import type { LiveSseEvent, MessageType, MessageView } from '@/features/notification/api'
 import { MESSAGE_SEMANTICS } from '@/shared/theme/community-chroma'
 import { Avatar } from '@/shared/ui/avatar'
@@ -121,16 +122,34 @@ export function MessageDrawer({
       }
       subtitle={totalUnread > 0 ? `当前共有 ${String(totalUnread)} 条未读消息` : '全部消息已读'}
       headerAction={
-        <Button
-          size="sm"
-          variant="ghost"
-          data-testid="btn-read-all"
-          disabled={totalUnread === 0 || readAll.isPending}
-          onClick={() => readAll.mutate()}
-        >
-          <CheckCheck className="h-3.5 w-3.5" />
-          全部已读
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            size="sm"
+            variant="ghost"
+            data-testid="btn-ai-unread-summary"
+            onClick={() => {
+              onClose()
+              useAiStore.getState().openDrawer({
+                intent: 'UNREAD_SUMMARY',
+                prompt: '请帮我速览当前的未读消息并给出回复建议。',
+                pageContext: { type: 'OTHER' },
+              })
+            }}
+          >
+            <Sparkles className="h-3.5 w-3.5 text-primary" />
+            AI 速览
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            data-testid="btn-read-all"
+            disabled={totalUnread === 0 || readAll.isPending}
+            onClick={() => readAll.mutate()}
+          >
+            <CheckCheck className="h-3.5 w-3.5" />
+            全部已读
+          </Button>
+        </div>
       }
     >
       {/* 五色分类切换栏 */}

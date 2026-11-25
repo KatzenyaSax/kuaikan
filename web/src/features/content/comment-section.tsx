@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import {
   ChevronDown,
@@ -9,6 +9,11 @@ import {
   ShieldBan,
   Trash2,
 } from 'lucide-react'
+import { useAiStore } from '@/features/ai/ai-store'
+
+const AiComposeBar = lazy(() =>
+  import('@/features/ai/ai-compose-bar').then((m) => ({ default: m.AiComposeBar })),
+)
 import { useSession } from '@/features/auth/session'
 import { BanMemberDialog } from '@/features/community/ban-member-dialog'
 import { ConfirmDialog } from '@/features/community/dialog'
@@ -172,6 +177,7 @@ export function CommentSection({
       {/* 发一级评论输入框 */}
       {isAuth ? (
         <CommentComposer
+          postId={postId}
           placeholder="写下你的观点，支持 @昵称 提醒本社群成员…"
           pending={createComment.isPending}
           onSubmit={(body, onDone, onErr) => {
@@ -286,12 +292,14 @@ export function CommentSection({
 }
 
 function CommentComposer({
+  postId,
   replyTo,
   placeholder,
   pending,
   onSubmit,
   onCancel,
 }: {
+  postId?: string | undefined
   replyTo?: { commentId: string; nickname: string } | undefined
   placeholder: string
   pending: boolean
@@ -300,6 +308,19 @@ function CommentComposer({
 }) {
   const [body, setBody] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const draftPrefill = useAiStore((s) => s.draftCommentPrefill)
+  const consumePrefill = useAiStore((s) => s.consumeDraftCommentPrefill)
+
+  useEffect(() => {
+    if (replyTo || !postId || !draftPrefill || draftPrefill.postId !== postId) return
+    const timer = window.setTimeout(() => {
+      const text = consumePrefill(postId)
+      if (text) {
+        setBody(text)
+      }
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [postId, replyTo, draftPrefill, consumePrefill])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -339,6 +360,17 @@ function CommentComposer({
             </button>
           )}
         </div>
+      )}
+      {!replyTo && postId && (
+        <Suspense fallback={null}>
+          <AiComposeBar
+            variant="reply"
+            postId={postId}
+            draft={body}
+            onReplace={(text) => setBody(text)}
+            onInsert={(text) => setBody((prev) => (prev ? `${prev}\n${text}` : text))}
+          />
+        </Suspense>
       )}
       <Textarea
         data-testid={replyTo ? 'field-reply-body' : 'field-comment-body'}

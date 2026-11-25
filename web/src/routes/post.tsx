@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
-import { Check, Share2 } from 'lucide-react'
+import { Check, Share2, Sparkles } from 'lucide-react'
+import { useAiStore } from '@/features/ai/ai-store'
 import { useSession } from '@/features/auth/session'
 import { useCommunityDetail, useMyCommunityStatus } from '@/features/community/api'
 import { BanMemberDialog } from '@/features/community/ban-member-dialog'
@@ -168,6 +169,29 @@ export function PostPage() {
                   </span>
                 </>
               )}
+            </Button>
+            <Button
+              variant="secondary"
+              data-testid="btn-ai-summarize"
+              onClick={() => {
+                if (!isAuth) {
+                  void navigate(`/login?returnTo=${encodeURIComponent(window.location.pathname)}`)
+                  return
+                }
+                useAiStore.getState().openDrawer({
+                  intent: 'SUMMARIZE_POST',
+                  prompt: '请帮我省流总结这篇帖子和热门评论。',
+                  pageContext: {
+                    type: 'POST',
+                    postId,
+                    communityName: resolvedCommunityName,
+                  },
+                })
+              }}
+              className="h-10 rounded-xl px-4"
+            >
+              <Sparkles className="h-4 w-4 text-primary" />
+              <span>AI 总结</span>
             </Button>
           </div>
         </div>

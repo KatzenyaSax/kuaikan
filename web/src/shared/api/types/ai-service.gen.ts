@@ -17,7 +17,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** 查询我的 AI 会话列表（游标分页） */
+        get: operations["listAiConversations"];
         put?: never;
         /** 新建 AI 会话 */
         post: operations["createAiConversation"];
@@ -34,10 +35,62 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** 查询指定会话的消息历史 */
+        get: operations["listAiMessages"];
         put?: never;
         /** 向指定会话发送消息并流式返回 SSE */
         post: operations["streamAiMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/compose": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 编辑器内联 AI 帮写（SSE 流式） */
+        post: operations["streamAiCompose"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/actions/{id}/result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 回传确认卡执行结果并由 AI 续写（SSE） */
+        post: operations["reportAiActionResult"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/quota": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询今日 AI 对话剩余次数 */
+        get: operations["getAiQuota"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -60,6 +113,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/conversations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** 删除指定 AI 会话 */
+        delete: operations["deleteAiConversation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -70,6 +140,8 @@ export interface components {
             title?: string;
             /** Format: date-time */
             createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
         };
         ResultConversationView: {
             /** Format: int32 */
@@ -92,6 +164,32 @@ export interface components {
             /** Format: int64 */
             timeout?: number | null;
         };
+        ComposeRequest: {
+            mode: string;
+            draft?: string;
+            postId?: string;
+            commentId?: string;
+        };
+        ActionResultRequest: {
+            status: string;
+            resultRef?: string;
+            /** Format: int32 */
+            errorCode?: number;
+        };
+        QuotaView: {
+            /** Format: int32 */
+            dailyLimit?: number;
+            /** Format: int32 */
+            used?: number;
+            /** Format: int32 */
+            remaining?: number;
+        };
+        ResultQuotaView: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: components["schemas"]["QuotaView"];
+        };
         ResultMapStringObject: {
             /** Format: int32 */
             code?: number;
@@ -99,6 +197,66 @@ export interface components {
             data?: {
                 [key: string]: unknown;
             };
+        };
+        PageResultConversationView: {
+            items?: components["schemas"]["ConversationView"][];
+            nextCursor?: string;
+            hasMore?: boolean;
+        };
+        ResultPageResultConversationView: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: components["schemas"]["PageResultConversationView"];
+        };
+        ActionProposalView: {
+            actionId?: string;
+            type?: string;
+            payload?: {
+                [key: string]: unknown;
+            };
+            status?: string;
+            result?: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            expiresAt?: string;
+        };
+        CitationItem: {
+            /** Format: int32 */
+            n?: number;
+            postId?: string;
+            title?: string;
+            communityName?: string;
+            authorNickname?: string;
+        };
+        MessageView: {
+            /** @description 消息 ID */
+            id?: string;
+            role?: string;
+            content?: string;
+            citations?: components["schemas"]["CitationItem"][];
+            actions?: components["schemas"]["ActionProposalView"][];
+            pageContext?: components["schemas"]["PageContextDto"];
+            /** Format: date-time */
+            createdAt?: string;
+        };
+        PageResultMessageView: {
+            items?: components["schemas"]["MessageView"][];
+            nextCursor?: string;
+            hasMore?: boolean;
+        };
+        ResultPageResultMessageView: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: components["schemas"]["PageResultMessageView"];
+        };
+        ResultVoid: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: unknown;
         };
     };
     responses: never;
@@ -109,6 +267,29 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listAiConversations: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultPageResultConversationView"];
+                };
+            };
+        };
+    };
     createAiConversation: {
         parameters: {
             query?: never;
@@ -125,6 +306,31 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ResultConversationView"];
+                };
+            };
+        };
+    };
+    listAiMessages: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultPageResultMessageView"];
                 };
             };
         };
@@ -158,6 +364,82 @@ export interface operations {
             };
         };
     };
+    streamAiCompose: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-AI-Stub"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ComposeRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": components["schemas"]["SseEmitter"];
+                    "application/json": components["schemas"]["SseEmitter"];
+                };
+            };
+        };
+    };
+    reportAiActionResult: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-AI-Stub"?: string;
+            };
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActionResultRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": components["schemas"]["SseEmitter"];
+                    "application/json": components["schemas"]["SseEmitter"];
+                };
+            };
+        };
+    };
+    getAiQuota: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultQuotaView"];
+                };
+            };
+        };
+    };
     aiPing: {
         parameters: {
             query?: never;
@@ -174,6 +456,28 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ResultMapStringObject"];
+                };
+            };
+        };
+    };
+    deleteAiConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultVoid"];
                 };
             };
         };

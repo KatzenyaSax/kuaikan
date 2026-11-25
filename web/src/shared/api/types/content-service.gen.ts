@@ -155,22 +155,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/internal/targets": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["target"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/comments/{commentId}/replies": {
         parameters: {
             query?: never;
@@ -368,24 +352,6 @@ export interface components {
             code?: number;
             message?: string;
             data?: components["schemas"]["CommentPage"];
-        };
-        ResultTargetView: {
-            /** Format: int32 */
-            code?: number;
-            message?: string;
-            data?: components["schemas"]["TargetView"];
-        };
-        TargetView: {
-            exists?: boolean;
-            ownerId?: string;
-            /** @description 帖子标题；目标为评论时是它所属帖子的标题 */
-            title?: string;
-            /** @description 正文摘录；目标为评论时是评论正文 */
-            excerpt?: string;
-            /** @description 跳转用的帖子 id；目标为评论时是它所属帖子 */
-            postId?: string;
-            /** @description 跳转用的社群 id；名字由调用方另行解析 */
-            communityId?: string;
         };
         ResultVoid: {
             /** Format: int32 */
@@ -676,29 +642,6 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ResultMapStringObject"];
-                };
-            };
-        };
-    };
-    target: {
-        parameters: {
-            query: {
-                type: string;
-                id: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ResultTargetView"];
                 };
             };
         };

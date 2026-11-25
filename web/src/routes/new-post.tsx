@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { Suspense, lazy, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -16,6 +16,10 @@ import {
   Quote,
   Send,
 } from 'lucide-react'
+
+const AiComposeBar = lazy(() =>
+  import('@/features/ai/ai-compose-bar').then((m) => ({ default: m.AiComposeBar })),
+)
 import { useCommunityDetail } from '@/features/community/api'
 import { useCreatePost } from '@/features/content/api'
 import { ApiError } from '@/shared/api/api-error'
@@ -214,7 +218,15 @@ export function NewPostPage() {
                 </span>
               </div>
 
-              <div className="flex-1 p-4">
+              <div className="flex-1 space-y-3 p-4">
+                <Suspense fallback={null}>
+                  <AiComposeBar
+                    variant="post"
+                    draft={body.trim() ? body : title}
+                    onReplace={(text) => setBody(text)}
+                    onInsert={(text) => setBody((prev) => (prev ? `${prev}\n\n${text}` : text))}
+                  />
+                </Suspense>
                 <Textarea
                   ref={bodyRef}
                   data-testid="field-post-body"

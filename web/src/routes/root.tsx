@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, NavLink, Outlet, useLocation } from 'react-router'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react'
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   Activity,
@@ -16,6 +16,11 @@ import {
   User,
   Users,
 } from 'lucide-react'
+import { useAiStore } from '@/features/ai/ai-store'
+
+const CopilotDrawer = lazy(() =>
+  import('@/features/ai/copilot-drawer').then((m) => ({ default: m.CopilotDrawer })),
+)
 import { useSession } from '@/features/auth/session'
 import { useMyCommunities, useCommunityList } from '@/features/community/api'
 import { useMessageStream, useUnread } from '@/features/notification/api'
@@ -41,6 +46,7 @@ const PRIMARY_NAV = [
 
 export function RootLayout() {
   const location = useLocation()
+  const navigate = useNavigate()
   const status = useSession((s) => s.status)
   const user = useSession((s) => s.user)
   const mode = useTheme((s) => s.mode)
@@ -56,6 +62,17 @@ export function RootLayout() {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [themeOpen, setThemeOpen] = useState(false)
   const [liveToast, setLiveToast] = useState<LiveSseEvent | null>(null)
+  const copilotOpen = useAiStore((s) => s.drawerOpen)
+  const [copilotMounted, setCopilotMounted] = useState(() => useAiStore.getState().drawerOpen)
+
+  useEffect(() => {
+    return useAiStore.subscribe((state) => {
+      if (state.drawerOpen) {
+        setDrawerOpen(false)
+        setCopilotMounted(true)
+      }
+    })
+  }, [])
 
   // 根据当前路由自动同步社群动态极光色系
   useEffect(() => {
@@ -71,17 +88,25 @@ export function RootLayout() {
     }
   }, [location.pathname, setActiveCommunity])
 
-  // 全局 ⌘K / Ctrl+K 唤起琉璃搜索命令面板
+  // 全局 ⌘K / Ctrl+K 搜索面板 + ⌘J / Ctrl+J Copilot 抽屉
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setPaletteOpen((v) => !v)
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j') {
+        e.preventDefault()
+        if (useSession.getState().status !== 'authenticated') {
+          void navigate(`/login?returnTo=${encodeURIComponent(window.location.pathname)}`)
+          return
+        }
+        setDrawerOpen(false)
+        useAiStore.getState().toggleDrawer()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  }, [navigate])
 
   // 实时 SSE 推送事件 → 弹出流光 Toast（5 秒自动消散）
   const handleLiveEvent = useCallback((ev: LiveSseEvent) => {
@@ -322,6 +347,26 @@ export function RootLayout() {
 
             {/* 右侧操作簇 */}
             <div className="flex shrink-0 items-center gap-2">
+              {/* AI 社区副驾驶入口（游客可见，点击跳登录） */}
+              <button
+                type="button"
+                data-testid="nav-ai"
+                onClick={() => {
+                  if (!isAuth) {
+                    void navigate(`/login?returnTo=${encodeURIComponent(window.location.pathname)}`)
+                    return
+                  }
+                  setDrawerOpen(false)
+                  useAiStore.getState().toggleDrawer()
+                }}
+                aria-label="AI 社区助手"
+                title="AI 社区助手 (⌘J)"
+                className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-xl border border-[var(--border-glass)] bg-[var(--bg-input)] px-2.5 text-xs font-semibold text-secondary-foreground transition-all hover:border-[rgba(var(--accent-rgb),0.5)] hover:text-primary"
+              >
+                <Sparkles className="h-3.5 w-3.5 text-primary" />
+                <span className="hidden sm:inline">AI</span>
+              </button>
+
               {/* 顶栏快捷配色工作室入口 */}
               <button
                 type="button"
@@ -350,6 +395,7 @@ export function RootLayout() {
                     type="button"
                     data-testid="nav-messages"
                     onClick={() => {
+                      useAiStore.getState().closeDrawer()
                       setDrawerTab(undefined)
                       setDrawerOpen(true)
                     }}
@@ -472,10 +518,19 @@ export function RootLayout() {
         event={liveToast}
         onDismiss={() => setLiveToast(null)}
         onOpenDrawer={(tab) => {
+          useAiStore.getState().closeDrawer()
           setDrawerTab(tab)
           setDrawerOpen(true)
         }}
       />
+      {copilotMounted && (
+        <Suspense fallback={null}>
+          <CopilotDrawer
+            open={copilotOpen}
+            onClose={() => useAiStore.getState().closeDrawer()}
+          />
+        </Suspense>
+      )}
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       <ThemeStudioSheet open={themeOpen} onClose={() => setThemeOpen(false)} />
     </div>
