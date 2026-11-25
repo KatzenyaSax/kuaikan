@@ -550,6 +550,8 @@ services:
       AI_BASE_URL: ${AI_BASE_URL:-https://api.deepseek.com/v1}
       AI_MODEL: ${AI_MODEL:-deepseek-chat}
       AI_STUB_ENABLED: ${AI_STUB_ENABLED:-true}
+      AI_DAILY_QUOTA: ${AI_DAILY_QUOTA:-50}
+      AI_DAILY_TOKEN_BUDGET: ${AI_DAILY_TOKEN_BUDGET:-5000000}
     depends_on:
       <<: *default-app-depends
       mysql:

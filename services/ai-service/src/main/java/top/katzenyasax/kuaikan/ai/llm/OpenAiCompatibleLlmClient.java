@@ -62,9 +62,13 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
         body.put("stream", true);
         body.put("stream_options", Map.of("include_usage", true));
         body.put("max_tokens", request.maxTokens() > 0 ? request.maxTokens() : props.getMaxTokens());
-        body.put("messages", request.messages().stream()
-                .map(m -> Map.of("role", m.role(), "content", m.content()))
-                .toList());
+        body.put("messages", request.messages().stream().map(this::serializeMessage).toList());
+        if (request.tools() != null && !request.tools().isEmpty()) {
+            body.put("tools", request.tools());
+            if (request.toolChoice() != null && !request.toolChoice().isBlank()) {
+                body.put("tool_choice", request.toolChoice());
+            }
+        }
 
         return webClient.post()
                 .uri(baseUrl + "/chat/completions")
@@ -94,6 +98,34 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
                     log.warn("LLM 流式调用异常: {}", e.toString());
                     return new BizException(AiErrorCode.AI_UNAVAILABLE);
                 });
+    }
+
+    private Map<String, Object> serializeMessage(LlmMessage m) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("role", m.role());
+        if ("tool".equals(m.role())) {
+            map.put("tool_call_id", m.toolCallId());
+            map.put("content", m.content() != null ? m.content() : "");
+            return map;
+        }
+        if ("assistant".equals(m.role()) && m.toolCalls() != null && !m.toolCalls().isEmpty()) {
+            map.put("content", m.content() != null ? m.content() : "");
+            List<Map<String, Object>> tcs = new ArrayList<>(m.toolCalls().size());
+            for (LlmToolCall tc : m.toolCalls()) {
+                tcs.add(Map.of(
+                        "id", tc.id(),
+                        "type", "function",
+                        "function", Map.of(
+                                "name", tc.name(),
+                                "arguments", tc.arguments() != null ? tc.arguments() : "{}"
+                        )
+                ));
+            }
+            map.put("tool_calls", tcs);
+            return map;
+        }
+        map.put("content", m.content() != null ? m.content() : "");
+        return map;
     }
 
     private LlmStreamChunk parseChunk(String json) {

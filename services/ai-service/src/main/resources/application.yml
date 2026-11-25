@@ -66,6 +66,13 @@ kuaikan:
     first-token-timeout-ms: 20000
     turn-timeout-ms: 90000
     max-tokens: 2048
+    daily-quota: ${AI_DAILY_QUOTA:50}
+    daily-token-budget: ${AI_DAILY_TOKEN_BUDGET:5000000}
+    max-tool-steps: 5
+    history-turns: 10
+    action-ttl-minutes: 30
+    summary-cache-hours: 24
+    retention-days: 30
 
 management:
   endpoints:
