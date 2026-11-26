@@ -11,6 +11,8 @@ public record SendMessageRequest(
         @Size(max = 32)
         String intent,
         @Valid
-        PageContextDto pageContext
+        PageContextDto pageContext,
+        @Size(max = 32)
+        String retrievalScope
 ) {
 }

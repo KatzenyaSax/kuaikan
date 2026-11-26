@@ -1,0 +1,12 @@
+CREATE TABLE t_ai_profile_entry (
+  id          BIGINT UNSIGNED NOT NULL,
+  user_id     BIGINT UNSIGNED NOT NULL,
+  category    VARCHAR(24)     NOT NULL COMMENT 'IDENTITY|PREFERENCE|STYLE|OTHER',
+  content     VARCHAR(200)    NOT NULL,
+  enabled     TINYINT         NOT NULL DEFAULT 1 COMMENT '1 启用 / 0 停用',
+  source      VARCHAR(16)     NOT NULL DEFAULT 'MANUAL' COMMENT 'MANUAL|AI_CONFIRMED',
+  created_at  DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at  DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_user_enabled (user_id, enabled, updated_at DESC)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

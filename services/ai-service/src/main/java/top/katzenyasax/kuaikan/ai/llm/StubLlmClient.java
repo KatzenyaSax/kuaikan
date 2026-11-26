@@ -162,6 +162,41 @@ public class StubLlmClient implements LlmClient {
             return streamText("请确认是否更新头像链接。", 8, 15, 20, 16);
         }
 
+        if ("propose_profile".equalsIgnoreCase(scenario)) {
+            if (toolsSinceLastUser == 0 && !forceNoTool) {
+                return singleToolCall("call_prop_profile", "propose_save_profile",
+                        "{\"category\":\"PREFERENCE\",\"content\":\"偏好简洁带代码的 Java 技术回答\"}");
+            }
+            return streamText("已为你准备个人档案确认卡，确认后将长期记住这条偏好。", 8, 15, 22, 20);
+        }
+
+        if ("profile_echo".equalsIgnoreCase(scenario)) {
+            String marker = "【用户个人 AI 档案";
+            int idx = systemJoined.indexOf(marker);
+            String injected = idx >= 0 ? systemJoined.substring(idx).split("\n\n")[0].replace('\n', ' ') : "无档案条目";
+            return streamText("[profile] " + injected, 12, 10, 20, 20);
+        }
+
+        if ("search_my_kb".equalsIgnoreCase(scenario)) {
+            if (toolsSinceLastUser == 0 && !forceNoTool) {
+                String kw = extract(KW_PATTERN, lastUser, "笔记");
+                return singleToolCall("call_my_kb", "search_my_knowledge",
+                        "{\"query\":\"" + escapeJson(kw) + "\"}");
+            }
+            String toolContent = lastMessageContent(request.messages(), "tool");
+            if (toolContent.contains("暂未找到") || toolContent.contains("暂不可用")) {
+                return streamText("个人知识库未命中：" + toolContent.replaceAll("</?tool_result>", "").trim(), 12, 10, 20, 24);
+            }
+            return streamText("已在你的个人知识库中找到匹配内容 [^1]。", 10, 10, 24, 20);
+        }
+
+        if ("scope_check".equalsIgnoreCase(scenario)) {
+            boolean hasSearchPosts = request.tools() != null && request.tools().stream()
+                    .anyMatch(t -> t.get("function") instanceof java.util.Map<?, ?> fn
+                            && "search_posts".equals(fn.get("name")));
+            return streamText("[scope] search_posts=" + hasSearchPosts, 12, 10, 15, 16);
+        }
+
         String reply = "[stub:" + scenario + "] 收到消息：" + lastUser;
         return streamText(reply, 6, 30, 12, Math.max(1, reply.length()));
     }

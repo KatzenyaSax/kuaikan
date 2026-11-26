@@ -10,8 +10,10 @@ import top.katzenyasax.kuaikan.search.config.SearchProperties;
 import top.katzenyasax.kuaikan.search.embedding.EmbeddingClient;
 import top.katzenyasax.kuaikan.search.es.ElasticsearchGateway;
 import top.katzenyasax.kuaikan.search.es.IndexNames;
+import top.katzenyasax.kuaikan.search.es.NoteChunkDocument;
 import top.katzenyasax.kuaikan.search.es.PostChunkDocument;
 import top.katzenyasax.kuaikan.search.es.PostDocument;
+import top.katzenyasax.kuaikan.search.feign.AiNoteClient;
 import top.katzenyasax.kuaikan.search.feign.ContentIndexClient;
 import top.katzenyasax.kuaikan.search.feign.dto.InternalSearchPostItemView;
 import top.katzenyasax.kuaikan.search.web.dto.RebuildResult;
@@ -68,19 +70,22 @@ public class SearchRebuildService {
     private final SearchProperties props;
     private final MarkdownChunker chunker;
     private final EmbeddingClient embeddingClient;
+    private final AiNoteClient aiNoteClient;
 
     public SearchRebuildService(ElasticsearchGateway es,
                                 DirectoryService directory,
                                 ContentIndexClient contentClient,
                                 SearchProperties props,
                                 MarkdownChunker chunker,
-                                EmbeddingClient embeddingClient) {
+                                EmbeddingClient embeddingClient,
+                                AiNoteClient aiNoteClient) {
         this.es = es;
         this.directory = directory;
         this.contentClient = contentClient;
         this.props = props;
         this.chunker = chunker;
         this.embeddingClient = embeddingClient;
+        this.aiNoteClient = aiNoteClient;
     }
 
     public RebuildResult rebuild() {
@@ -157,17 +162,87 @@ public class SearchRebuildService {
         }
     }
 
-    /** P9.0 笔记切片索引初始化/空重建兜底（笔记 CRUD 在 P9.3 落地） */
+    /** P9.3 零停机全量重建个人私密笔记切片向量索引 {@code note_chunk_v*} */
     public RebuildResult ensureNoteChunkIndex() {
         long startedAt = System.currentTimeMillis();
-        Set<String> existing = es.indicesOfAlias(IndexNames.NOTE_CHUNK_READ);
-        if (!existing.isEmpty()) {
-            return new RebuildResult(String.join(",", existing), 0, System.currentTimeMillis() - startedAt);
-        }
         String index = IndexNames.physicalNoteChunkIndexNow();
+        log.info("笔记切片向量重建开始 index={}", index);
         es.createNoteChunkIndex(index);
-        es.attachAliases(index, IndexNames.NOTE_CHUNK_READ, IndexNames.NOTE_CHUNK_WRITE);
-        return new RebuildResult(index, 0, System.currentTimeMillis() - startedAt);
+
+        boolean switched = false;
+        try {
+            long indexed = loadAllNoteChunks(index);
+            es.refresh(index);
+
+            Set<String> oldIndices = new LinkedHashSet<>();
+            oldIndices.addAll(es.indicesOfAlias(IndexNames.NOTE_CHUNK_READ));
+            oldIndices.addAll(es.indicesOfAlias(IndexNames.NOTE_CHUNK_WRITE));
+            oldIndices.remove(index);
+
+            es.switchAliases(index, oldIndices, IndexNames.NOTE_CHUNK_READ, IndexNames.NOTE_CHUNK_WRITE);
+            switched = true;
+
+            for (String old : oldIndices) {
+                es.deleteIndexQuietly(old);
+            }
+
+            long elapsed = System.currentTimeMillis() - startedAt;
+            log.info("笔记切片向量重建完成 index={} chunks={} elapsedMs={}", index, indexed, elapsed);
+            return new RebuildResult(index, indexed, elapsed);
+        } catch (RuntimeException e) {
+            if (!switched) {
+                log.warn("笔记切片向量重建失败，清理新索引 index={}：{}", index, e.toString());
+                es.deleteIndexQuietly(index);
+            }
+            throw e;
+        }
+    }
+
+    private long loadAllNoteChunks(String index) {
+        long indexed = 0;
+        String cursor = null;
+        for (int page = 0; page < MAX_PAGES; page++) {
+            Result<PageResult<AiNoteClient.InternalNoteView>> result = aiNoteClient.batchNotes(cursor, 100);
+            PageResult<AiNoteClient.InternalNoteView> body = result == null ? null : result.data();
+            if (body == null || body.items() == null || body.items().isEmpty()) {
+                break;
+            }
+
+            record PendingNoteChunk(AiNoteClient.InternalNoteView note, MarkdownChunker.Chunk chunk) {}
+            List<PendingNoteChunk> pending = new ArrayList<>();
+            List<String> texts = new ArrayList<>();
+            for (AiNoteClient.InternalNoteView note : body.items()) {
+                if (!note.exists() || !note.enabled()) {
+                    continue;
+                }
+                for (MarkdownChunker.Chunk c : chunker.chunk(note.title(), note.content())) {
+                    pending.add(new PendingNoteChunk(note, c));
+                    texts.add(c.text());
+                }
+            }
+            if (!pending.isEmpty()) {
+                List<float[]> vectors = embeddingClient.embed(texts);
+                List<NoteChunkDocument> docs = new ArrayList<>(pending.size());
+                for (int i = 0; i < pending.size(); i++) {
+                    PendingNoteChunk p = pending.get(i);
+                    docs.add(new NoteChunkDocument(
+                            p.note().noteId() + "_" + p.chunk().index(),
+                            p.note().noteId(),
+                            p.note().ownerId(),
+                            p.chunk().index(),
+                            p.note().title(),
+                            p.chunk().text(),
+                            vectors.get(i),
+                            p.note().updatedAt()));
+                }
+                indexed += es.bulkIndexNoteChunks(index, docs);
+            }
+            if (!body.hasMore() || body.nextCursor() == null || body.nextCursor().isBlank()) {
+                break;
+            }
+            cursor = body.nextCursor();
+        }
+        return indexed;
     }
 
     private long loadAllPostChunks(String index) {

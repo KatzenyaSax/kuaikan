@@ -573,6 +573,7 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PWD_AI:?}
       REDIS_HOST: redis
       REDIS_PASSWORD: ${REDIS_PASSWORD:?}
+      ROCKETMQ_NAMESRV: rmq-namesrv:9876
       ID_WORKER_ID: "6"
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       AI_BASE_URL: ${AI_BASE_URL:-https://api.deepseek.com/v1}
@@ -585,6 +586,8 @@ services:
       mysql:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      rmq-broker:
         condition: service_healthy
     networks:
       - kuaikan

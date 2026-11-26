@@ -7,13 +7,20 @@ import org.springframework.stereotype.Service;
 import top.katzenyasax.kuaikan.common.api.PageResult;
 import top.katzenyasax.kuaikan.common.error.BizException;
 import top.katzenyasax.kuaikan.common.error.CommonErrorCode;
+import top.katzenyasax.kuaikan.search.config.SearchProperties;
+import top.katzenyasax.kuaikan.search.embedding.EmbeddingClient;
+import top.katzenyasax.kuaikan.search.es.ChunkSearchHit;
 import top.katzenyasax.kuaikan.search.es.ElasticsearchGateway;
+import top.katzenyasax.kuaikan.search.es.NoteChunkSearchHit;
 import top.katzenyasax.kuaikan.search.es.PostSearchHit;
 import top.katzenyasax.kuaikan.search.es.PostSearchPage;
 import top.katzenyasax.kuaikan.search.es.PostSearchQuery;
 import top.katzenyasax.kuaikan.search.es.SearchSort;
+import top.katzenyasax.kuaikan.search.web.dto.InternalSearchNoteItem;
+import top.katzenyasax.kuaikan.search.web.dto.InternalSearchNotesRequest;
 import top.katzenyasax.kuaikan.search.web.dto.InternalSearchPostItem;
 import top.katzenyasax.kuaikan.search.web.dto.InternalSearchPostsRequest;
+import top.katzenyasax.kuaikan.search.web.dto.RelatedPostItem;
 import top.katzenyasax.kuaikan.search.web.dto.SearchPostItem;
 
 import java.time.Instant;
@@ -77,10 +84,17 @@ public class SearchService {
 
     private final ElasticsearchGateway es;
     private final SearchCursorCodec cursorCodec;
+    private final EmbeddingClient embeddingClient;
+    private final SearchProperties props;
 
-    public SearchService(ElasticsearchGateway es, SearchCursorCodec cursorCodec) {
+    public SearchService(ElasticsearchGateway es,
+                         SearchCursorCodec cursorCodec,
+                         EmbeddingClient embeddingClient,
+                         SearchProperties props) {
         this.es = es;
         this.cursorCodec = cursorCodec;
+        this.embeddingClient = embeddingClient;
+        this.props = props;
     }
 
     // ------------------------------------------------------------------ 对外
@@ -128,6 +142,36 @@ public class SearchService {
         return PageResult.of(items, nextCursor(page, searchSort));
     }
 
+    /**
+     * P9.1 相关帖子推荐（游客可读，基于既有帖子向量 kNN，不调用 TEI）。
+     * ES 异常或尚未建索引时静默返回空列表，绝不影响帖子详情页渲染。
+     */
+    public List<RelatedPostItem> relatedPosts(String postId, Integer limit) {
+        String safePostId = parseSnowflake(postId, "postId");
+        if (safePostId == null) {
+            throw new BizException(CommonErrorCode.PARAM_INVALID, "postId 不能为空");
+        }
+        int size = clampLimit(limit, 5, 10);
+        try {
+            List<ChunkSearchHit> hits = es.findRelatedPostsByVector(
+                    safePostId, size, props.getEmbedding().getRelatedMinScore());
+            return hits.stream()
+                    .map(h -> new RelatedPostItem(
+                            h.postId(),
+                            h.communityId(),
+                            h.communityName(),
+                            h.authorId(),
+                            h.authorNickname(),
+                            h.title(),
+                            h.createdAt(),
+                            h.score()))
+                    .toList();
+        } catch (RuntimeException e) {
+            log.warn("相关帖子推荐降级为空 postId={} reason={}", safePostId, e.toString());
+            return List.of();
+        }
+    }
+
     // ------------------------------------------------------------------ 对内
 
     /**
@@ -173,6 +217,50 @@ public class SearchService {
         if (createdFrom != null || createdTo != null) {
             filters.add(rangeFilter(createdFrom, createdTo));
         }
+        if (request.postIds() != null) {
+            if (request.postIds().isEmpty()) {
+                return PageResult.of(List.of(), null);
+            }
+            List<String> safeIds = new ArrayList<>(request.postIds().size());
+            for (String pid : request.postIds()) {
+                String parsed = parseSnowflake(pid, "postIds");
+                if (parsed != null) {
+                    safeIds.add(parsed);
+                }
+            }
+            if (safeIds.isEmpty()) {
+                return PageResult.of(List.of(), null);
+            }
+            filters.add(Map.of("terms", Map.of("postId", safeIds)));
+        }
+
+        boolean tryHybrid = keyword != null
+                && !"BM25".equalsIgnoreCase(request.mode())
+                && searchSort == SearchSort.RELEVANCE
+                && (request.cursor() == null || request.cursor().isBlank());
+        if (tryHybrid) {
+            try {
+                float[] vec = embeddingClient.embedOne(keyword);
+                List<ChunkSearchHit> hybridHits = es.searchPostChunksHybridRrf(
+                        keyword, vec, filters, props.getEmbedding().getRrfK(), size);
+                List<InternalSearchPostItem> items = hybridHits.stream().map(hit -> {
+                    String cleanChunk = stripTitlePrefix(hit.chunkText());
+                    return new InternalSearchPostItem(
+                            hit.postId(),
+                            hit.communityId(),
+                            hit.communityName(),
+                            hit.authorId(),
+                            hit.authorNickname(),
+                            hit.title(),
+                            includeBody ? hit.chunkText() : null,
+                            excerpt(cleanChunk),
+                            hit.createdAt());
+                }).toList();
+                return PageResult.of(items, null);
+            } catch (RuntimeException e) {
+                log.warn("混合检索降级为纯 BM25 keyword={} reason={}", keyword, e.toString());
+            }
+        }
 
         PostSearchPage page = execute(new PostSearchQuery(
                 searchSort, keyword, filters, searchAfter, size, false));
@@ -189,6 +277,80 @@ public class SearchService {
                 hit.createdAt())).toList();
 
         return PageResult.of(items, nextCursor(page, searchSort));
+    }
+
+    /** P9.3 对内个人私密笔记混合检索（强制按 ownerId 硬隔离） */
+    public List<InternalSearchNoteItem> searchNotesInternal(InternalSearchNotesRequest request) {
+        if (request == null) {
+            throw new BizException(CommonErrorCode.PARAM_INVALID, "请求体不能为空");
+        }
+        String ownerId = parseSnowflake(request.ownerId(), "ownerId");
+        if (ownerId == null) {
+            throw new BizException(CommonErrorCode.PARAM_INVALID, "ownerId 不能为空");
+        }
+        String query = requireKeyword(request.query());
+        int size = clampLimit(request.limit(), 5, 8);
+        try {
+            float[] vec = embeddingClient.embedOne(query);
+            List<NoteChunkSearchHit> hits = es.searchNoteChunksHybridRrf(
+                    ownerId, query, vec, props.getEmbedding().getRrfK(), size);
+            return hits.stream()
+                    .map(h -> new InternalSearchNoteItem(
+                            h.noteId(),
+                            h.title(),
+                            excerpt(stripTitlePrefix(h.chunkText())),
+                            h.score(),
+                            h.updatedAt()))
+                    .toList();
+        } catch (BizException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            log.warn("笔记语义检索失败 ownerId={} reason={}", ownerId, e.toString());
+            throw new BizException(CommonErrorCode.UPSTREAM_UNAVAILABLE, "个人知识库语义检索暂不可用");
+        }
+    }
+
+    private static String stripTitlePrefix(String chunkText) {
+        if (chunkText == null) {
+            return "";
+        }
+        if (chunkText.startsWith("标题：")) {
+            int nl = chunkText.indexOf('\n');
+            if (nl >= 0 && nl + 1 < chunkText.length()) {
+                return chunkText.substring(nl + 1);
+            }
+        }
+        return chunkText;
+    }
+
+    /**
+     * P9.1 相关帖子推荐（游客可读，基于既有帖子向量 kNN，不调用 TEI）。
+     * ES 异常或尚未建索引时静默返回空列表，绝不影响帖子详情页渲染。
+     */
+    public List<RelatedPostItem> relatedPosts(String postId, Integer limit) {
+        String safePostId = parseSnowflake(postId, "postId");
+        if (safePostId == null) {
+            throw new BizException(CommonErrorCode.PARAM_INVALID, "postId 不能为空");
+        }
+        int size = clampLimit(limit, 5, 10);
+        try {
+            List<ChunkSearchHit> hits = es.findRelatedPostsByVector(
+                    safePostId, size, props.getEmbedding().getRelatedMinScore());
+            return hits.stream()
+                    .map(h -> new RelatedPostItem(
+                            h.postId(),
+                            h.communityId(),
+                            h.communityName(),
+                            h.authorId(),
+                            h.authorNickname(),
+                            h.title(),
+                            h.createdAt(),
+                            h.score()))
+                    .toList();
+        } catch (RuntimeException e) {
+            log.warn("相关帖子推荐降级为空 postId={} reason={}", safePostId, e.toString());
+            return List.of();
+        }
     }
 
     // ------------------------------------------------------------------ ES 调用与降级

@@ -15,6 +15,8 @@ import top.katzenyasax.kuaikan.ai.feign.NotificationClient;
 import top.katzenyasax.kuaikan.ai.feign.SearchClient;
 import top.katzenyasax.kuaikan.ai.feign.UserClient;
 import top.katzenyasax.kuaikan.ai.mapper.AiActionMapper;
+import top.katzenyasax.kuaikan.ai.service.AiNoteService;
+import top.katzenyasax.kuaikan.ai.service.AiProfileService;
 import top.katzenyasax.kuaikan.ai.web.dto.ActionProposalView;
 import top.katzenyasax.kuaikan.common.api.PageResult;
 import top.katzenyasax.kuaikan.common.api.Result;
@@ -24,9 +26,12 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -48,6 +53,7 @@ public class AiToolExecutor {
     private final NotificationClient notificationClient;
     private final InteractionClient interactionClient;
     private final AiActionMapper actionMapper;
+    private final AiNoteService noteService;
     private final AiProperties props;
     private final ObjectMapper objectMapper;
 
@@ -58,6 +64,7 @@ public class AiToolExecutor {
                           NotificationClient notificationClient,
                           InteractionClient interactionClient,
                           AiActionMapper actionMapper,
+                          AiNoteService noteService,
                           AiProperties props,
                           ObjectMapper objectMapper) {
         this.searchClient = searchClient;
@@ -67,6 +74,7 @@ public class AiToolExecutor {
         this.notificationClient = notificationClient;
         this.interactionClient = interactionClient;
         this.actionMapper = actionMapper;
+        this.noteService = noteService;
         this.props = props;
         this.objectMapper = objectMapper;
     }
@@ -80,12 +88,14 @@ public class AiToolExecutor {
 
             String result = switch (name) {
                 case "search_posts" -> execSearchPosts(args, ctx);
+                case "search_my_knowledge" -> execSearchMyKnowledge(args, ctx);
                 case "get_post" -> execGetPost(args, ctx);
                 case "get_comments" -> execGetComments(args);
                 case "list_unread_messages" -> execListUnreadMessages(args, ctx);
                 case "list_my_communities" -> execListMyCommunities(ctx);
                 case "list_my_favorites" -> execListMyFavorites(args, ctx);
                 case "list_communities" -> execListCommunities();
+                case "propose_save_profile" -> execProposeSaveProfile(args, ctx, onAction);
                 case "propose_create_post" -> execProposeCreatePost(args, ctx, onAction);
                 case "propose_favorite_posts" -> execProposeFavoritePosts(args, ctx, onAction);
                 case "propose_follow_user" -> execProposeFollowUser(args, ctx, onAction);
@@ -102,15 +112,24 @@ public class AiToolExecutor {
     }
 
     private String execSearchPosts(JsonNode args, AiToolContext ctx) {
+        if (AiToolContext.SCOPE_MY_ONLY.equals(ctx.retrievalScope())) {
+            return "当前检索范围为「仅我的知识库」，不可搜索全站公开帖子，请使用 search_my_knowledge。";
+        }
         String keyword = textOrNull(args, "keyword");
         String communityName = textOrNull(args, "communityName");
+        if (AiToolContext.SCOPE_CURRENT_COMMUNITY.equals(ctx.retrievalScope())
+                && ctx.pageContext() != null
+                && ctx.pageContext().communityName() != null
+                && !ctx.pageContext().communityName().isBlank()) {
+            communityName = ctx.pageContext().communityName().strip();
+        }
         String authorNickname = textOrNull(args, "authorNickname");
         int limit = clamp(args.path("limit").asInt(5), 1, 8);
 
         Result<PageResult<SearchClient.SearchPostRow>> res = searchClient.searchPosts(
                 new SearchClient.SearchPostsReq(
                         keyword, null, authorNickname, null, communityName,
-                        null, null, null, null, limit, true));
+                        null, null, null, null, limit, true, "HYBRID", null));
         List<SearchClient.SearchPostRow> items = (res != null && res.data() != null && res.data().items() != null)
                 ? res.data().items()
                 : List.of();
@@ -119,7 +138,8 @@ public class AiToolExecutor {
         }
         StringBuilder sb = new StringBuilder();
         for (SearchClient.SearchPostRow row : items) {
-            int n = ctx.registerCitation(row.postId(), row.title(), row.communityName(), row.authorNickname());
+            int n = ctx.registerPostCitation(
+                    row.postId(), "POST", row.title(), row.communityName(), row.authorNickname());
             String body = truncate(row.body() != null ? row.body() : row.excerpt(), MAX_SEARCH_BODY);
             sb.append("[").append(n).append("] 《").append(safe(row.title())).append("》")
                     .append(" (postId=").append(row.postId())
@@ -128,6 +148,123 @@ public class AiToolExecutor {
                     .append(body).append("\n\n");
         }
         return sb.toString().trim();
+    }
+
+    private String execSearchMyKnowledge(JsonNode args, AiToolContext ctx) {
+        String query = textOrNull(args, "query");
+        if (query == null) {
+            return "缺少 query 参数。";
+        }
+        Set<String> sources = new LinkedHashSet<>();
+        JsonNode srcNode = args.path("sources");
+        if (srcNode.isArray()) {
+            for (JsonNode item : srcNode) {
+                if (item.isTextual()) {
+                    sources.add(item.asText().strip().toUpperCase(Locale.ROOT));
+                }
+            }
+        }
+        if (sources.isEmpty()) {
+            sources.add("NOTE");
+            sources.add("FAVORITE");
+            sources.add("MY_POST");
+        }
+
+        StringBuilder sb = new StringBuilder();
+        String uidStr = String.valueOf(ctx.userId());
+
+        if (sources.contains("NOTE")) {
+            try {
+                Result<List<SearchClient.SearchNoteRow>> noteRes = searchClient.searchNotes(
+                        new SearchClient.SearchNotesReq(uidStr, query, 5));
+                List<SearchClient.SearchNoteRow> rawNotes = noteRes != null && noteRes.data() != null
+                        ? noteRes.data() : List.of();
+                List<String> rawIds = rawNotes.stream().map(SearchClient.SearchNoteRow::noteId).toList();
+                Set<String> validIds = noteService.filterValidOwnedNoteIds(ctx.userId(), rawIds);
+                for (SearchClient.SearchNoteRow row : rawNotes) {
+                    if (!validIds.contains(row.noteId())) {
+                        continue;
+                    }
+                    int n = ctx.registerNoteCitation(row.noteId(), row.title());
+                    sb.append("[").append(n).append("] [我的笔记] 《").append(safe(row.title())).append("》")
+                            .append(" (noteId=").append(row.noteId()).append(")\n")
+                            .append(truncate(row.snippet(), MAX_SEARCH_BODY)).append("\n\n");
+                }
+            } catch (Exception e) {
+                log.warn("私密笔记语义检索不可用 userId={} err={}", ctx.userId(), e.toString());
+                sb.append("【提示】个人笔记语义检索服务暂不可用，请如实告知用户。\n\n");
+            }
+        }
+
+        if (sources.contains("FAVORITE")) {
+            try {
+                Result<PageResult<InteractionClient.FavoriteRow>> favRes =
+                        interactionClient.listFavorites(ctx.userId(), 30);
+                List<String> favIds = (favRes != null && favRes.data() != null && favRes.data().items() != null)
+                        ? favRes.data().items().stream().map(InteractionClient.FavoriteRow::postId)
+                                .filter(Objects::nonNull).distinct().toList()
+                        : List.of();
+                if (!favIds.isEmpty()) {
+                    Result<PageResult<SearchClient.SearchPostRow>> postRes = searchClient.searchPosts(
+                            new SearchClient.SearchPostsReq(query, null, null, null, null,
+                                    null, null, null, null, 5, true, "HYBRID", favIds));
+                    List<SearchClient.SearchPostRow> favPosts =
+                            (postRes != null && postRes.data() != null && postRes.data().items() != null)
+                                    ? postRes.data().items() : List.of();
+                    for (SearchClient.SearchPostRow row : favPosts) {
+                        int n = ctx.registerPostCitation(
+                                row.postId(), "FAVORITE", row.title(), row.communityName(), row.authorNickname());
+                        String body = truncate(row.body() != null ? row.body() : row.excerpt(), MAX_SEARCH_BODY);
+                        sb.append("[").append(n).append("] [我的收藏] 《").append(safe(row.title())).append("》")
+                                .append(" (postId=").append(row.postId())
+                                .append(", 社群=").append(safe(row.communityName())).append(")\n")
+                                .append(body).append("\n\n");
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("我的收藏检索异常 userId={} err={}", ctx.userId(), e.toString());
+            }
+        }
+
+        if (sources.contains("MY_POST")) {
+            try {
+                Result<PageResult<SearchClient.SearchPostRow>> myRes = searchClient.searchPosts(
+                        new SearchClient.SearchPostsReq(query, uidStr, null, null, null,
+                                null, null, null, null, 5, true, "HYBRID", null));
+                List<SearchClient.SearchPostRow> myPosts =
+                        (myRes != null && myRes.data() != null && myRes.data().items() != null)
+                                ? myRes.data().items() : List.of();
+                for (SearchClient.SearchPostRow row : myPosts) {
+                    int n = ctx.registerPostCitation(
+                            row.postId(), "MY_POST", row.title(), row.communityName(), row.authorNickname());
+                    String body = truncate(row.body() != null ? row.body() : row.excerpt(), MAX_SEARCH_BODY);
+                    sb.append("[").append(n).append("] [我的帖子] 《").append(safe(row.title())).append("》")
+                            .append(" (postId=").append(row.postId())
+                            .append(", 社群=").append(safe(row.communityName())).append(")\n")
+                            .append(body).append("\n\n");
+                }
+            } catch (Exception e) {
+                log.warn("我的帖子检索异常 userId={} err={}", ctx.userId(), e.toString());
+            }
+        }
+
+        String out = sb.toString().trim();
+        return out.isEmpty() ? "在你的个人笔记、收藏与历史发帖中暂未找到相关内容。" : out;
+    }
+
+    private String execProposeSaveProfile(JsonNode args, AiToolContext ctx,
+                                          Consumer<ActionProposalView> onAction) throws Exception {
+        if (!ctx.markProfileProposed()) {
+            return "本轮已提议过一条个人档案条目（每轮最多 1 条），请等待用户确认。";
+        }
+        String category = AiProfileService.normalizeCategory(textOrNull(args, "category"));
+        String content = AiProfileService.normalizeContent(textOrNull(args, "content"));
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("category", category);
+        payload.put("content", content);
+        ActionProposalView view = saveAndEmitAction(AiAction.TYPE_SAVE_PROFILE_ENTRY, payload, ctx, onAction);
+        return "已生成个人 AI 档案保存确认卡（actionId=" + view.actionId() + "），等待用户确认后写入档案。";
     }
 
     private String execGetPost(JsonNode args, AiToolContext ctx) {

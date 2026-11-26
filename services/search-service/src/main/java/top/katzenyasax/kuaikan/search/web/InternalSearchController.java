@@ -8,8 +8,12 @@ import org.springframework.web.bind.annotation.RestController;
 import top.katzenyasax.kuaikan.common.api.PageResult;
 import top.katzenyasax.kuaikan.common.api.Result;
 import top.katzenyasax.kuaikan.search.service.SearchService;
+import top.katzenyasax.kuaikan.search.web.dto.InternalSearchNoteItem;
+import top.katzenyasax.kuaikan.search.web.dto.InternalSearchNotesRequest;
 import top.katzenyasax.kuaikan.search.web.dto.InternalSearchPostItem;
 import top.katzenyasax.kuaikan.search.web.dto.InternalSearchPostsRequest;
+
+import java.util.List;
 
 /**
  * 对内检索（p6-search.md §5.2）。服务未来 AI 助手 / 运维工具。
@@ -43,5 +47,11 @@ public class InternalSearchController {
     public Result<PageResult<InternalSearchPostItem>> posts(
             @RequestBody(required = false) InternalSearchPostsRequest request) {
         return Result.ok(searchService.searchPostsInternal(request));
+    }
+
+    @PostMapping("/notes")
+    public Result<List<InternalSearchNoteItem>> notes(
+            @RequestBody(required = false) InternalSearchNotesRequest request) {
+        return Result.ok(searchService.searchNotesInternal(request));
     }
 }

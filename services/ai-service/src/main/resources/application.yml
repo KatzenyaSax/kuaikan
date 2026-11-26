@@ -57,6 +57,10 @@ mybatis-plus:
     datacenter-id: ${ID_DATACENTER_ID:1}
 
 kuaikan:
+  mq:
+    namesrv-addr: ${ROCKETMQ_NAMESRV:127.0.0.1:9876}
+  outbox:
+    enabled: true
   ai:
     base-url: ${AI_BASE_URL:https://api.deepseek.com/v1}
     model: ${AI_MODEL:deepseek-chat}

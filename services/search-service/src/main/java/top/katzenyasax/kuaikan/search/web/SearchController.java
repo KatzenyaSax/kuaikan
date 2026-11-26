@@ -3,13 +3,17 @@ package top.katzenyasax.kuaikan.search.web;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import top.katzenyasax.kuaikan.common.api.PageResult;
 import top.katzenyasax.kuaikan.common.api.Result;
 import top.katzenyasax.kuaikan.common.web.annotation.PublicEndpoint;
 import top.katzenyasax.kuaikan.search.service.SearchService;
+import top.katzenyasax.kuaikan.search.web.dto.RelatedPostItem;
 import top.katzenyasax.kuaikan.search.web.dto.SearchPostItem;
+
+import java.util.List;
 
 /**
  * 全站帖子搜索（p6-search.md §5.1）。游客可读。
@@ -56,5 +60,14 @@ public class SearchController {
             @RequestParam(value = "cursor", required = false) String cursor,
             @RequestParam(value = "limit", required = false) Integer limit) {
         return Result.ok(searchService.searchPosts(q, communityId, sort, cursor, limit));
+    }
+
+    @Operation(operationId = "relatedPosts", summary = "帖子页相关帖子推荐（游客可读）")
+    @PublicEndpoint
+    @GetMapping("/posts/{postId}/related")
+    public Result<List<RelatedPostItem>> related(
+            @PathVariable("postId") String postId,
+            @RequestParam(value = "limit", required = false) Integer limit) {
+        return Result.ok(searchService.relatedPosts(postId, limit));
     }
 }

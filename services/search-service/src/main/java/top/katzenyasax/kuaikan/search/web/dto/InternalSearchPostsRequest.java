@@ -2,6 +2,8 @@ package top.katzenyasax.kuaikan.search.web.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
+import java.util.List;
+
 /**
  * 对内检索的入参（p6-search.md §5.2）。给未来的 AI 助手 / 运维工具用。
  *
@@ -56,6 +58,17 @@ public record InternalSearchPostsRequest(
         @Schema(description = "每页条数，默认 20，最大 100")
         Integer limit,
         @Schema(description = "是否返回完整正文，默认 false")
-        Boolean includeBody
+        Boolean includeBody,
+        @Schema(description = "检索模式（P9）：BM25 | HYBRID，默认 HYBRID")
+        String mode,
+        @Schema(description = "限定帖子 ID 集合（用于我的收藏内混合检索）")
+        List<String> postIds
 ) {
+    public InternalSearchPostsRequest(String keyword, String authorId, String authorNickname,
+                                      String communityId, String communityName, String createdFrom,
+                                      String createdTo, String sort, String cursor,
+                                      Integer limit, Boolean includeBody) {
+        this(keyword, authorId, authorNickname, communityId, communityName, createdFrom, createdTo,
+                sort, cursor, limit, includeBody, null, null);
+    }
 }

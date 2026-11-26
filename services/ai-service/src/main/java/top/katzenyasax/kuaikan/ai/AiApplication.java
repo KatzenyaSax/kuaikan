@@ -10,7 +10,10 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 import top.katzenyasax.kuaikan.ai.config.AiProperties;
 
 @SpringBootApplication
-@MapperScan("top.katzenyasax.kuaikan.ai.mapper")
+@MapperScan({
+        "top.katzenyasax.kuaikan.ai.mapper",
+        "top.katzenyasax.kuaikan.common.outbox"
+})
 @EnableDiscoveryClient
 @EnableScheduling
 @EnableFeignClients

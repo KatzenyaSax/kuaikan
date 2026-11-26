@@ -23,6 +23,7 @@ public class AiAction {
     public static final String TYPE_JOIN_COMMUNITY = "JOIN_COMMUNITY";
     public static final String TYPE_UPDATE_NICKNAME = "UPDATE_NICKNAME";
     public static final String TYPE_UPDATE_AVATAR = "UPDATE_AVATAR";
+    public static final String TYPE_SAVE_PROFILE_ENTRY = "SAVE_PROFILE_ENTRY";
 
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;

@@ -748,6 +748,169 @@ public class ElasticsearchGateway {
                 .toList();
     }
 
+    // ------------------------------------------------------------------ P9.1 / P9.3 切片删除与私密笔记检索
+
+    /** 按 postId 删除 {@code post_chunk_write} 下全部切片 */
+    public void deletePostChunks(String postId) {
+        deleteChunksByTerm(IndexNames.POST_CHUNK_WRITE, "postId", postId);
+    }
+
+    /** 按 noteId 删除 {@code note_chunk_write} 下全部切片 */
+    public void deleteNoteChunks(String noteId) {
+        deleteChunksByTerm(IndexNames.NOTE_CHUNK_WRITE, "noteId", noteId);
+    }
+
+    private void deleteChunksByTerm(String alias, String field, String value) {
+        if (value == null || value.isBlank()) {
+            return;
+        }
+        String payload = write(Map.of("query", Map.of("term", Map.of(field, value))),
+                "序列化切片删除 " + field + "=" + value);
+        try {
+            postForBody(uri -> uri.path("/{alias}/_delete_by_query")
+                            .queryParam("conflicts", "proceed")
+                            .build(alias),
+                    payload, "删除切片 " + alias + " " + field + "=" + value);
+        } catch (IllegalStateException e) {
+            if (e.getCause() instanceof RestClientResponseException rce && rce.getStatusCode().value() == 404) {
+                log.debug("切片索引尚未创建，跳过删除 alias={} {}={}", alias, field, value);
+                return;
+            }
+            throw e;
+        }
+    }
+
+    /** 批量写入私密笔记切片（{@code _id = chunkId}） */
+    public int bulkIndexNoteChunks(String index, List<NoteChunkDocument> docs) {
+        if (docs == null || docs.isEmpty()) {
+            return 0;
+        }
+        int written = 0;
+        int chunk = Math.max(1, props.getBulkSize());
+        for (int from = 0; from < docs.size(); from += chunk) {
+            List<NoteChunkDocument> slice = docs.subList(from, Math.min(from + chunk, docs.size()));
+            written += bulkNoteChunkSlice(index, slice);
+        }
+        return written;
+    }
+
+    private int bulkNoteChunkSlice(String index, List<NoteChunkDocument> docs) {
+        StringBuilder ndjson = new StringBuilder(docs.size() * 2048);
+        for (NoteChunkDocument doc : docs) {
+            ndjson.append("{\"index\":{\"_index\":")
+                    .append(quote(index))
+                    .append(",\"_id\":")
+                    .append(quote(doc.chunkId()))
+                    .append("}}\n")
+                    .append(write(doc, "序列化笔记切片 chunkId=" + doc.chunkId()))
+                    .append('\n');
+        }
+        String response;
+        try {
+            response = decode(rest.post().uri("/_bulk")
+                    .contentType(MediaType.APPLICATION_NDJSON)
+                    .body(utf8(ndjson.toString()))
+                    .retrieve().body(byte[].class));
+        } catch (RestClientResponseException e) {
+            throw wrapped("bulk 写入笔记切片 index=" + index, e);
+        }
+        JsonNode root = readTree(response, "bulk 笔记切片响应 index=" + index);
+        if (root.path("errors").asBoolean(false)) {
+            throw new IllegalStateException("bulk 笔记切片部分失败 index=" + index + "：" + firstBulkError(root));
+        }
+        return docs.size();
+    }
+
+    /** 个人私密笔记应用层 RRF 混合检索（双路强制 term(ownerId) 硬隔离，按 noteId 归并） */
+    public List<NoteChunkSearchHit> searchNoteChunksHybridRrf(String ownerId, String query,
+                                                              float[] queryVector, int rrfK, int limit) {
+        int depth = 24;
+        Map<String, Object> ownerFilter = Map.of("term", Map.of("ownerId", ownerId));
+
+        // 1. BM25 路
+        Map<String, Object> bm25Body = new LinkedHashMap<>();
+        bm25Body.put("size", depth);
+        bm25Body.put("track_total_hits", false);
+        bm25Body.put("query", Map.of("bool", Map.of(
+                "must", List.of(Map.of("multi_match", Map.of(
+                        "query", query,
+                        "fields", List.of("title^3", "chunkText^1"),
+                        "type", "best_fields"))),
+                "filter", List.of(ownerFilter))));
+        bm25Body.put("_source", List.of("noteId", "title", "chunkText", "updatedAt"));
+        String bm25Resp = postForBody(
+                uri -> uri.path("/{index}/_search").build(IndexNames.NOTE_CHUNK_READ),
+                write(bm25Body, "笔记 BM25 检索"), "笔记 BM25 检索");
+        List<NoteChunkSearchHit> bm25Hits = parseAndDedupeNoteHits(bm25Resp, depth);
+
+        // 2. kNN 路
+        Map<String, Object> knn = new LinkedHashMap<>();
+        knn.put("field", "embedding");
+        knn.put("query_vector", queryVector);
+        knn.put("k", depth);
+        knn.put("num_candidates", 48);
+        knn.put("filter", ownerFilter);
+        Map<String, Object> knnBody = new LinkedHashMap<>();
+        knnBody.put("size", depth);
+        knnBody.put("track_total_hits", false);
+        knnBody.put("knn", knn);
+        knnBody.put("_source", List.of("noteId", "title", "chunkText", "updatedAt"));
+        String knnResp = postForBody(
+                uri -> uri.path("/{index}/_search").build(IndexNames.NOTE_CHUNK_READ),
+                write(knnBody, "笔记 kNN 检索"), "笔记 kNN 检索");
+        List<NoteChunkSearchHit> knnHits = parseAndDedupeNoteHits(knnResp, depth);
+
+        // 3. RRF 融合
+        Map<String, Double> rrfScores = new LinkedHashMap<>();
+        Map<String, NoteChunkSearchHit> bestMeta = new LinkedHashMap<>();
+        for (int i = 0; i < bm25Hits.size(); i++) {
+            NoteChunkSearchHit h = bm25Hits.get(i);
+            rrfScores.merge(h.noteId(), 1.0 / (rrfK + (i + 1)), Double::sum);
+            bestMeta.putIfAbsent(h.noteId(), h);
+        }
+        for (int i = 0; i < knnHits.size(); i++) {
+            NoteChunkSearchHit h = knnHits.get(i);
+            rrfScores.merge(h.noteId(), 1.0 / (rrfK + (i + 1)), Double::sum);
+            bestMeta.putIfAbsent(h.noteId(), h);
+        }
+        return rrfScores.entrySet().stream()
+                .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
+                .limit(limit)
+                .map(e -> {
+                    NoteChunkSearchHit h = bestMeta.get(e.getKey());
+                    return new NoteChunkSearchHit(h.noteId(), h.title(), h.chunkText(), h.updatedAt(), e.getValue());
+                })
+                .toList();
+    }
+
+    private List<NoteChunkSearchHit> parseAndDedupeNoteHits(String response, int limit) {
+        JsonNode root = readTree(response, "笔记切片检索响应");
+        JsonNode rawHits = root.path("hits").path("hits");
+        Map<String, NoteChunkSearchHit> bestByNote = new LinkedHashMap<>();
+        for (JsonNode hit : rawHits) {
+            JsonNode source = hit.path("_source");
+            String nid = text(source, "noteId");
+            if (nid == null) {
+                continue;
+            }
+            double score = hit.path("_score").asDouble(0.0);
+            NoteChunkSearchHit existing = bestByNote.get(nid);
+            if (existing != null && existing.score() >= score) {
+                continue;
+            }
+            bestByNote.put(nid, new NoteChunkSearchHit(
+                    nid,
+                    text(source, "title"),
+                    text(source, "chunkText"),
+                    source.path("updatedAt").asLong(0L),
+                    score));
+        }
+        return bestByNote.values().stream()
+                .sorted(Comparator.comparingDouble(NoteChunkSearchHit::score).reversed())
+                .limit(limit)
+                .toList();
+    }
+
     private static String text(JsonNode node, String field) {
         JsonNode value = node.path(field);
         return value.isMissingNode() || value.isNull() ? null : value.asText();

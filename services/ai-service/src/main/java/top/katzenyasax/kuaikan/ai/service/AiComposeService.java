@@ -35,17 +35,20 @@ public class AiComposeService {
     private static final long HEARTBEAT_SECONDS = 15L;
 
     private final AiQuotaService quotaService;
+    private final AiProfileService profileService;
     private final LlmRouter llmRouter;
     private final ContentClient contentClient;
     private final CommunityClient communityClient;
     private final AiProperties props;
 
     public AiComposeService(AiQuotaService quotaService,
+                            AiProfileService profileService,
                             LlmRouter llmRouter,
                             ContentClient contentClient,
                             CommunityClient communityClient,
                             AiProperties props) {
         this.quotaService = quotaService;
+        this.profileService = profileService;
         this.llmRouter = llmRouter;
         this.contentClient = contentClient;
         this.communityClient = communityClient;
@@ -94,7 +97,7 @@ public class AiComposeService {
                 .subscribe(tick -> sendComment(emitter, sendLock, closed, cleanup, "ping"));
         hbSubRef.set(hb);
 
-        LlmChatRequest llmReq = buildComposeRequest(req);
+        LlmChatRequest llmReq = buildComposeRequest(userId, req);
         AtomicInteger pTok = new AtomicInteger(0);
         AtomicInteger cTok = new AtomicInteger(0);
 
@@ -142,9 +145,9 @@ public class AiComposeService {
         return emitter;
     }
 
-    private LlmChatRequest buildComposeRequest(ComposeRequest req) {
+    private LlmChatRequest buildComposeRequest(Long userId, ComposeRequest req) {
         String draft = req.draft() == null ? "" : req.draft().trim();
-        List<LlmMessage> messages = new ArrayList<>(3);
+        List<LlmMessage> messages = new ArrayList<>(4);
         String instruction = switch (req.mode()) {
             case "EXPAND" -> "你是社区写作助手。请基于用户提供的标题或草稿，扩写为结构清晰、有具体细节的中文 Markdown 正文，只输出可直接填入编辑器的正文内容，不要输出多余客套话。";
             case "POLISH" -> "你是社区写作助手。请润色用户提供的草稿，保持原意、提升表达流畅度与条理性，只输出润色后的内容，不要输出解释。";
@@ -154,6 +157,10 @@ public class AiComposeService {
             default -> "请协助优化文本。";
         };
         messages.add(LlmMessage.system(instruction));
+        String profileSection = profileService.renderSystemPromptSection(userId);
+        if (profileSection != null) {
+            messages.add(LlmMessage.system(profileSection));
+        }
 
         if ("RECOMMEND_COMMUNITY".equals(req.mode())) {
             try {
