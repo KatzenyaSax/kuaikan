@@ -72,7 +72,7 @@
 
 | 子阶段 | 核心内容 | 汇合验收 |
 |---|---|---|
-| **P9.0 契约闸门 + spike** | 4 个新错误码（`44007~44010`，全站 36 → 40 码）、`kuaikan_note_changed` topic、网关 GET 白名单 `/api/search/posts/[^/]+/related$`、Compose 接入 `tei-embedding`（`bge-small-zh-v1.5`，`mem_limit: 1g`）、`post_chunk_v*`/`note_chunk_v*` mapping、`search-service` embedding 客户端与存量 55 篇全量回填、~20 条评测集与相关帖阈值校准 | T0 全绿（`check-contract` / `check-openapi`）；TEI 健康；55 篇完成切片向量回填；BM25 vs 向量 vs RRF Recall@5 对比结论回写 `docs/project.md` |
+| ✅ **P9.0 契约闸门 + spike（已完成）** | 4 个新错误码（`44007~44010`，全站 36 → 40 码）、`kuaikan_note_changed` topic、网关 GET 白名单 `/api/search/posts/[^/]+/related$`、Compose 接入 `tei-embedding`（`cpu-1.8` + `bge-small-zh-v1.5`，`172.30.10.21`，`mem_limit: 1g`）、`post_chunk_v*`/`note_chunk_v*` mapping、`search-service` embedding 客户端与存量 56 篇全量回填、20 条评测集与相关帖阈值校准 | T0 全绿（`check-contract` / `check-openapi` / `check-scripts`）；TEI 健康（`183.3 MiB / 1 GiB`）；56 篇→60 切片回填完成（`12.6s`）；BM25（90%/0.704）vs 向量（100%/0.912）vs RRF（100%/0.925）对比结论及阈值 `0.78` 已回写 `docs/project.md` |
 | **P9.1 社区语义与相关帖** | `post_chunk` 独立 MQ 消费组、`search_posts` 升级应用层 RRF 混合检索、`GET /api/search/posts/{id}/related`、帖子页正文与评论区之间懒加载「相关帖子」 | 跨词语义可召回并附 `[社区帖子]` 引用；帖子页最多 5 篇相关帖且低于阈值/停 TEI 时静默隐藏；停 TEI 后 P6 `/search` 与发帖照常 |
 | **P9.2 个人 AI 档案** | `t_ai_profile_entry` + 档案 CRUD + 启用条目全量注入对话与帮写 system prompt + `propose_save_profile` / `SAVE_PROFILE_ENTRY` 确认卡 + `/me`「我的 AI 档案」UI | 档案优先级高于社区帖子；AI 提议未确认数据库零写入；停用不再注入；超 30 条返回 `44007` |
 | **P9.3 私密笔记与我的知识库** | `t_ai_note` + `t_outbox` + `/internal/notes/**` + `note_chunk` 消费与重建 + `search_my_knowledge(NOTE\|FAVORITE\|MY_POST)` + 三档 `retrievalScope` + 引用来源标签 + `/me`「我的笔记」与 Copilot「存为笔记」 | 语义检索本人笔记/收藏/发帖附准确标签；`MY_ONLY` 零社区帖子召回；跨用户零越权；删/停用笔记即刻零召回 |

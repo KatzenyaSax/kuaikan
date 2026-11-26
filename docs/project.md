@@ -443,6 +443,17 @@ V2 上线后的一段时间里，评论/@ 消息仍然点不动——因为**那
 2. **目标若是回复**，它藏在「展开 N 条回复」里 → 退化为停在帖子页，
    **不自动展开**。自动展开别人没要求的回复比不滚过去更打扰
 
+### P9 向量知识库与个人权威档案（P9.0 已完成，P9.1~P9.4 进行中）
+
+P9.0 契约闸门与容器化 spike 已落地验证（方案见 `docs/design/p9-knowledge-base.md`，评测脚本 `deploy/bin/eval-p9-rag.mjs`）：
+
+| 维度 | P9.0 实测落地状态 |
+|---|---|
+| 契约、Topic 与网关 | 错误码 `36 → 40` 码（新增 `44007~44010`）；RocketMQ 扩至 `9` 个 topic（新增 `kuaikan_note_changed` + `NoteChanged` 事件记录，只传 `noteId` 与 `ownerId`）；网关 `public-patterns` 追加 `GET ^/api/search/posts/[^/]+/related$`；T0（`check-contract` / `check-openapi` / `check-scripts` / `tsc --noEmit`）全绿 |
+| TEI Embedding 基础设施 | Compose `core` profile 新增 `tei-embedding`（`ghcr.io/huggingface/text-embeddings-inference:cpu-1.8`，`BAAI/bge-small-zh-v1.5` 512 维，固定内网 IP `172.30.10.21`，无宿主机端口，`mem_limit: 1g`，模型缓存 `/opt/kuaikan/data/tei`）；实测常驻内存 **`183.3 MiB / 1 GiB`（17.9%）**，容器内单次 `/v1/embeddings` 请求耗时约 **`70ms`** |
+| 双向量索引与存量回填 | `search-service` 新增 `EmbeddingClient`（OpenAI 兼容 `/v1/embeddings`）、`MarkdownChunker`（400 字目标 / 480 上限 / 80 重叠 / 前置标题）与物理双索引（`post_chunk_read`/`post_chunk_write`、`note_chunk_read`/`note_chunk_write`）；线上 56 篇有效帖全量回填至 `post_chunk_v20261126150122` 共 **60 个切片**，耗时 **`12.59s`**（`note_chunk_v20261126150116` 已就绪待 P9.3 写入） |
+| 检索评测与阈值校准 | 基于线上 56 篇真实帖子的 20 条跨词自然语言问法评测（小样本仅供方向参考）：**BM25** `Recall@5 = 18/20 (90.0%), MRR@5 = 0.704`；**VECTOR** `Recall@5 = 20/20 (100.0%), MRR@5 = 0.912`；**HYBRID（RRF k=60）** `Recall@5 = 20/20 (100.0%), MRR@5 = 0.925`。结合 ES `cosine` 得分抽样（同类强相关帖 `0.79~0.88`，跨类噪声帖 `0.73~0.76`），将 `kuaikan.search.embedding.related-min-score` 校准为 **`0.78`** |
+
 ### P8 AI 社区助手（已完成）
 
 `deploy/bin/verify-p8.sh` **48 条自动断言通过、0 失败、1 跳过**（L0 契约/静态/网关检查、L1 鉴权与跨用户隔离、L2 容器内 Stub 确定性 + 真实 ES/MySQL/Redis 全链路、L3 Playwright 浏览器 **13/13 通过**、L4 停 `ai-service` 主站首页/读帖/发帖删帖全正常且恢复 healthy；跳过项为「真实 DeepSeek 公网流式冒烟」，因服务器 `/opt/kuaikan/env/kuaikan.env` 尚未配置 `DEEPSEEK_API_KEY`）。前端主包 `index-Dnvy_dEN.js` / `index-CUluepZd.css` 与按需懒加载 AI 分包（`copilot-drawer-4q3iQuO9.js`、`ai-compose-bar-CVoI8Y3-.js`、`api-DFnnp9j2.js`、`ai-spike-panel-U1soZHb6.js`）已发布上线；全站 **16 个容器**（`gateway` + 8 个业务/增值服务 + 6 个基础设施 + `mailhog`）全部 healthy，线上 `kuaikan_ai`（0 行临时会话）与 ES/MySQL（55 条有效帖）零测试残留。

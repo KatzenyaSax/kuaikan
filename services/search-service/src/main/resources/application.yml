@@ -78,7 +78,7 @@ kuaikan:
       read-timeout: 15s
       batch-size: 16
       rrf-k: 60
-      related-min-score: 0.72
+      related-min-score: 0.78
 
 springdoc:
   api-docs:

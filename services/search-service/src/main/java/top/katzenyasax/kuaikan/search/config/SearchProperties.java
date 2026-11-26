@@ -56,7 +56,7 @@ public class SearchProperties {
         private Duration readTimeout = Duration.ofSeconds(15);
         private int batchSize = 16;
         private int rrfK = 60;
-        private double relatedMinScore = 0.72;
+        private double relatedMinScore = 0.78;
 
         public String getBaseUrl() {
             return baseUrl;
