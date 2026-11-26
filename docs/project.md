@@ -443,16 +443,20 @@ V2 上线后的一段时间里，评论/@ 消息仍然点不动——因为**那
 2. **目标若是回复**，它藏在「展开 N 条回复」里 → 退化为停在帖子页，
    **不自动展开**。自动展开别人没要求的回复比不滚过去更打扰
 
-### P9 向量知识库与个人权威档案（P9.0 已完成，P9.1~P9.4 进行中）
+### P9 向量知识库与个人权威档案（已完成）
 
-P9.0 契约闸门与容器化 spike 已落地验证（方案见 `docs/design/p9-knowledge-base.md`，评测脚本 `deploy/bin/eval-p9-rag.mjs`）：
+全阶段（P9.0~P9.4）已落地并通过 [`deploy/bin/verify-p9.sh`](../deploy/bin/verify-p9.sh) 全链路验收（**40 条断言全部通过，0 失败，0 跳过**；方案见 [`docs/design/p9-knowledge-base.md`](./design/p9-knowledge-base.md)，评测脚本 [`deploy/bin/eval-p9-rag.mjs`](../deploy/bin/eval-p9-rag.mjs)）：
 
-| 维度 | P9.0 实测落地状态 |
+| 维度 | 实测落地状态 |
 |---|---|
-| 契约、Topic 与网关 | 错误码 `36 → 40` 码（新增 `44007~44010`）；RocketMQ 扩至 `9` 个 topic（新增 `kuaikan_note_changed` + `NoteChanged` 事件记录，只传 `noteId` 与 `ownerId`）；网关 `public-patterns` 追加 `GET ^/api/search/posts/[^/]+/related$`；T0（`check-contract` / `check-openapi` / `check-scripts` / `tsc --noEmit`）全绿 |
-| TEI Embedding 基础设施 | Compose `core` profile 新增 `tei-embedding`（`ghcr.io/huggingface/text-embeddings-inference:cpu-1.8`，`BAAI/bge-small-zh-v1.5` 512 维，固定内网 IP `172.30.10.21`，无宿主机端口，`mem_limit: 1g`，模型缓存 `/opt/kuaikan/data/tei`）；实测常驻内存 **`183.3 MiB / 1 GiB`（17.9%）**，容器内单次 `/v1/embeddings` 请求耗时约 **`70ms`** |
-| 双向量索引与存量回填 | `search-service` 新增 `EmbeddingClient`（OpenAI 兼容 `/v1/embeddings`）、`MarkdownChunker`（400 字目标 / 480 上限 / 80 重叠 / 前置标题）与物理双索引（`post_chunk_read`/`post_chunk_write`、`note_chunk_read`/`note_chunk_write`）；线上 56 篇有效帖全量回填至 `post_chunk_v20261126150122` 共 **60 个切片**，耗时 **`12.59s`**（`note_chunk_v20261126150116` 已就绪待 P9.3 写入） |
-| 检索评测与阈值校准 | 基于线上 56 篇真实帖子的 20 条跨词自然语言问法评测（小样本仅供方向参考）：**BM25** `Recall@5 = 18/20 (90.0%), MRR@5 = 0.704`；**VECTOR** `Recall@5 = 20/20 (100.0%), MRR@5 = 0.912`；**HYBRID（RRF k=60）** `Recall@5 = 20/20 (100.0%), MRR@5 = 0.925`。结合 ES `cosine` 得分抽样（同类强相关帖 `0.79~0.88`，跨类噪声帖 `0.73~0.76`），将 `kuaikan.search.embedding.related-min-score` 校准为 **`0.78`** |
+| 契约、Topic 与网关 | 错误码 `36 → 40` 码（新增 `44007~44010`）；RocketMQ 扩至 `9` 个 topic（新增 `kuaikan_note_changed` + `NoteChanged` 事件记录，只传 `noteId` 与 `ownerId`）；网关 `public-patterns` 追加 `GET ^/api/search/posts/[^/]+/related$`；T0（`check-contract` / `check-openapi` / `check-scripts` / `web typecheck + lint + build`）全绿（40 码 / 95 operationId） |
+| TEI Embedding 基础设施 | Compose `core` profile 新增 `tei-embedding`（`ghcr.io/huggingface/text-embeddings-inference:cpu-1.8`，`BAAI/bge-small-zh-v1.5` 512 维，固定内网 IP `172.30.10.21`，无宿主机端口，`mem_limit: 1g`，模型缓存 `/opt/kuaikan/data/tei`）；实测常驻内存 **`183.3 MiB / 1 GiB`（17.9%）**，容器内单次 `/v1/embeddings` 请求耗时约 **`70ms`**，全站 17 容器健康 |
+| 双向量索引与存量回填 | `search-service` 新增 `EmbeddingClient`（OpenAI 兼容 `/v1/embeddings`）、`MarkdownChunker`（400 字目标 / 480 上限 / 80 重叠 / 前置标题）与物理双索引（`post_chunk_read`/`post_chunk_write`、`note_chunk_read`/`note_chunk_write`）；线上 56 篇有效帖全量回填至 `post_chunk_v20261126150122` 共 **60 个切片**（`12.59s`），P9.1 新增 `PostVectorCreatedConsumer` / `PostVectorDeletedConsumer` 独立消费组实时维护；P9.3 新增 `NoteVectorChangedConsumer` 消费 `kuaikan_note_changed` 维护私密笔记向量切片 |
+| 检索评测与阈值校准 | 基于线上 56 篇真实帖子的 20 条跨词自然语言问法评测：**BM25** `Recall@5 = 18/20 (90.0%), MRR@5 = 0.704`；**VECTOR** `Recall@5 = 20/20 (100.0%), MRR@5 = 0.912`；**HYBRID（RRF k=60）** `Recall@5 = 20/20 (100.0%), MRR@5 = 0.925`。结合 ES `cosine` 得分抽样（同类强相关帖 `0.79~0.88`，跨类噪声帖 `0.73~0.76`），`kuaikan.search.embedding.related-min-score` 校准为 **`0.78`** |
+| P9.1 社区语义与相关帖 | `search_posts` 升级应用层 RRF（`k=60`）混合检索，TEI 不可用时自动降级回 BM25；新增 `GET /api/search/posts/{postId}/related`（游客可读、kNN 向量召回、最多 5 篇、无结果或故障时静默隐藏）；帖子页正文与评论区之间懒加载「相关帖子」组件（`related-posts-D5_bCFxJ.js` 1.55 kB） |
+| P9.2 个人 AI 档案 | `ai-service` 新增 `t_ai_profile_entry`（`V3__ai_profile_entry.sql`）、`AiProfileService` / `AiProfileController`（单用户上限 30 条，超限 `44007`，跨用户 `44008`，单条≤200 字）；对话与帮写最高优先级全量注入已启用明文条目；新增 `propose_save_profile` 工具与 `SAVE_PROFILE_ENTRY` 确认卡（未确认零写库，停用即刻不注入）；`/me` 新增「我的 AI 档案」Tab（`profile-panel-BSTlxPx7.js` 5.55 kB） |
+| P9.3 私密笔记与我的知识库 | `ai-service` 新增 `t_ai_note` + `t_outbox`（`V4__ai_note_and_outbox.sql`）、Outbox→`kuaikan_note_changed` 事件、`/internal/notes/**` 读侧 MySQL 真值复核与回查接口；`search-service` 新增 `note_chunk_read` 强过滤 `ownerId` 混合检索与 `/internal/search/notes`；`ai-service` 新增 `search_my_knowledge(NOTE\|FAVORITE\|MY_POST)`、三档 `retrievalScope`（`ALL`/`MY_ONLY`/`CURRENT_COMMUNITY`）与引用来源标签；`/me` 新增「我的笔记」Tab（`notes-panel-BQfun8I5.js` 7.33 kB，含 Markdown 预览与硬删除二次确认）及 Copilot「存为笔记」一键保存（`copilot-drawer-BwcQhTEa.js` 24.42 kB） |
+| P9.4 全链路验收与线上清理 | `deploy/bin/verify-p9.sh` 在提交 `f5a0f17` 下通过 **40/40**：L0（契约/OpenAPI/脚本/前端构建 `index-B2X5t8jO.js`）、L1（11 条游客/越权/边界断言）、L2（14 条真实发帖切分、跨词 RRF、档案注入与未确认零写库、私密笔记 Outbox→MQ→零越权→停用/删除即刻零召回、`MY_ONLY` 工具隔离）、L3（`web/e2e/p9-kb.mjs` Playwright **11/11**）、L4（停 `tei-embedding` 主站/P6 搜索/`HYBRID` 降级 BM25 正常并恢复健康）；收尾后 `kuaikan_ai` 测试记录为 0、ES `post_read` 与 MySQL 有效帖同为 56、线上首页 HTTP 200 |
 
 ### P8 AI 社区助手（已完成）
 

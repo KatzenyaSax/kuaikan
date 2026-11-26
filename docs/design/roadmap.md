@@ -26,7 +26,7 @@
 | ✅ **P6 搜索（已完成）** | search-service + ES 8.17.4 + IK 8.17.4，异步三事件消费（发帖/删帖/改昵称同步）、零停机别名重建、对外 `/api/search/posts` 与面向未来 AI 助手的对内 `/internal/search/posts`、前端顶栏搜索与 `/search` 页 | 详见 [`p6-search.md`](./p6-search.md) | `verify-p6.sh` **100 条断言全绿**（L0~L4，0 产品缺陷；ES 停机降级 503 且不影响发帖与浏览） |
 | ✅ **P7 社群权限与治理（已完成）** | 单一社群管理员制（复用 `owner_id`）、管理员转让（直接生效）、社群内封禁/解封用户（踢出并禁入，支持 1/7/30 天或永久 + 原因）、编辑社群信息（简介/头像外链/公告）、管理员删本社群任意帖与评论、社群首页展示管理员、公开社群历史（创社/历代管理员/信息变更/治理记录） | 详见 [`p7-community-admin.md`](./p7-community-admin.md)；先完成核心业务权限闭环，原运维与压测后置至 P100 | `verify-p7.sh` **158 条断言全绿**（L0~L4，0 产品缺陷、线上零残留） |
 | ✅ **P8 AI 社区助手（已完成）**（细化见 [`p8-ai-assistant.md`](./p8-ai-assistant.md)） | 独立 `ai-service`（WebClient 自研 Agent 循环、MySQL `kuaikan_ai` 会话 + SSE 流式输出）+ 前端全局 Copilot 抽屉与场景触发入口；覆盖站内找帖问答与跨帖总结、未读消息速览与回复建议、单帖省流、发帖/回复起草润色、受控代办执行（确认卡由前端执行，覆盖发帖/收藏/改昵称与头像/快捷关注与入群） | 依赖 P6 `/internal/search/posts` 与完整业务闭环；作为独立增值服务，不污染现有业务服务，不影响主站稳定性 | `verify-p8.sh` **48 条自动断言通过、0 失败、1 跳过**（未配 `DEEPSEEK_API_KEY` 跳过真实 LLM 冒烟）；L3 Playwright **13/13 通过**；L4 停 `ai-service` 主站零影响；线上零测试残留 |
-| [**P9 向量知识库与个人权威档案（规划中）**](./p9-knowledge-base.md) | 详见 [`p9-knowledge-base.md`](./p9-knowledge-base.md)。本机 TEI（`bge-small-zh-v1.5`，512 维）+ 复用 ES 8.17 `dense_vector`/HNSW + 应用层 RRF；物理双索引（`post_chunk_v*` / `note_chunk_v*`）；三层知识体系（社区语义混合检索与帖子页「相关帖子」、明文全量注入的个人 AI 档案、Markdown 私密笔记与收藏/发帖语义检索）+ 三档检索范围切换 | 建立在 P8 AI 助手与 P6 内容事件流之上，补齐关键词检索盲区并实现“越用越懂你”的个性化问答、写作与帖子发现 | 语义查询可跨词召回且附来源标签（`社区帖子`/`我的笔记`/`我的收藏`/`我的帖子`）；个人权威档案优先级高于历史帖子且经确认卡入库；个人私密知识按 `ownerId` 硬隔离且删除/停用即刻零召回；TEI 停机不影响主站与 P6 搜索 |
+| ✅ [**P9 向量知识库与个人权威档案（已完成）**](./p9-knowledge-base.md) | 详见 [`p9-knowledge-base.md`](./p9-knowledge-base.md)。本机 TEI（`bge-small-zh-v1.5`，512 维）+ 复用 ES 8.17 `dense_vector`/HNSW + 应用层 RRF；物理双索引（`post_chunk_v*` / `note_chunk_v*`）；三层知识体系（社区语义混合检索与帖子页「相关帖子」、明文全量注入的个人 AI 档案、Markdown 私密笔记与收藏/发帖语义检索）+ 三档检索范围切换 | 建立在 P8 AI 助手与 P6 内容事件流之上，补齐关键词检索盲区并实现“越用越懂你”的个性化问答、写作与帖子发现 | 语义查询可跨词召回且附来源标签（`社区帖子`/`我的笔记`/`我的收藏`/`我的帖子`）；个人权威档案优先级高于历史帖子且经确认卡入库；个人私密知识按 `ownerId` 硬隔离且删除/停用即刻零召回；TEI 停机不影响主站与 P6 搜索（[`verify-p9.sh`](../../deploy/bin/verify-p9.sh) 40/40 通过） |
 | **P100 上线治理与压测（暂缓）** | 平台运维治理、SkyWalking + Prometheus + Grafana + Loki 可观测栈、JMeter 压测、Sentinel 限流规则、备份与恢复、镜像 tag 回滚演练 | 原 P7 非业务运维项统一后置，待业务主线全部完成后集中收口 | 全服务可观测、300 QPS 压测无错误、备份可恢复演练成功 |
 
 ## P2 细分
@@ -73,10 +73,10 @@
 | 子阶段 | 核心内容 | 汇合验收 |
 |---|---|---|
 | ✅ **P9.0 契约闸门 + spike（已完成）** | 4 个新错误码（`44007~44010`，全站 36 → 40 码）、`kuaikan_note_changed` topic、网关 GET 白名单 `/api/search/posts/[^/]+/related$`、Compose 接入 `tei-embedding`（`cpu-1.8` + `bge-small-zh-v1.5`，`172.30.10.21`，`mem_limit: 1g`）、`post_chunk_v*`/`note_chunk_v*` mapping、`search-service` embedding 客户端与存量 56 篇全量回填、20 条评测集与相关帖阈值校准 | T0 全绿（`check-contract` / `check-openapi` / `check-scripts`）；TEI 健康（`183.3 MiB / 1 GiB`）；56 篇→60 切片回填完成（`12.6s`）；BM25（90%/0.704）vs 向量（100%/0.912）vs RRF（100%/0.925）对比结论及阈值 `0.78` 已回写 `docs/project.md` |
-| **P9.1 社区语义与相关帖** | `post_chunk` 独立 MQ 消费组、`search_posts` 升级应用层 RRF 混合检索、`GET /api/search/posts/{id}/related`、帖子页正文与评论区之间懒加载「相关帖子」 | 跨词语义可召回并附 `[社区帖子]` 引用；帖子页最多 5 篇相关帖且低于阈值/停 TEI 时静默隐藏；停 TEI 后 P6 `/search` 与发帖照常 |
-| **P9.2 个人 AI 档案** | `t_ai_profile_entry` + 档案 CRUD + 启用条目全量注入对话与帮写 system prompt + `propose_save_profile` / `SAVE_PROFILE_ENTRY` 确认卡 + `/me`「我的 AI 档案」UI | 档案优先级高于社区帖子；AI 提议未确认数据库零写入；停用不再注入；超 30 条返回 `44007` |
-| **P9.3 私密笔记与我的知识库** | `t_ai_note` + `t_outbox` + `/internal/notes/**` + `note_chunk` 消费与重建 + `search_my_knowledge(NOTE\|FAVORITE\|MY_POST)` + 三档 `retrievalScope` + 引用来源标签 + `/me`「我的笔记」与 Copilot「存为笔记」 | 语义检索本人笔记/收藏/发帖附准确标签；`MY_ONLY` 零社区帖子召回；跨用户零越权；删/停用笔记即刻零召回 |
-| **P9.4 验收** | `verify-p9.sh`（L0~L4 全链路）+ 回写 `docs/project.md` | 笔记跨用户零越权、删/停用不再被召回、停 TEI 主站与关键词搜索照常、未确认档案零写入；工作区干净、线上零残留 |
+| ✅ **P9.1 社区语义与相关帖（已完成）** | `post_chunk` 独立 MQ 消费组、`search_posts` 升级应用层 RRF 混合检索、`GET /api/search/posts/{id}/related`、帖子页正文与评论区之间懒加载「相关帖子」 | 跨词语义可召回并附 `[社区帖子]` 引用；帖子页最多 5 篇相关帖且低于阈值/停 TEI 时静默隐藏；停 TEI 后 P6 `/search` 与发帖照常 |
+| ✅ **P9.2 个人 AI 档案（已完成）** | `t_ai_profile_entry` + 档案 CRUD + 启用条目全量注入对话与帮写 system prompt + `propose_save_profile` / `SAVE_PROFILE_ENTRY` 确认卡 + `/me`「我的 AI 档案」UI | 档案优先级高于社区帖子；AI 提议未确认数据库零写入；停用不再注入；超 30 条返回 `44007` |
+| ✅ **P9.3 私密笔记与我的知识库（已完成）** | `t_ai_note` + `t_outbox` + `/internal/notes/**` + `note_chunk` 消费与重建 + `search_my_knowledge(NOTE\|FAVORITE\|MY_POST)` + 三档 `retrievalScope` + 引用来源标签 + `/me`「我的笔记」与 Copilot「存为笔记」 | 语义检索本人笔记/收藏/发帖附准确标签；`MY_ONLY` 零社区帖子召回；跨用户零越权；删/停用笔记即刻零召回 |
+| ✅ **P9.4 验收（已完成）** | `verify-p9.sh`（L0~L4 全链路）+ 回写 `docs/project.md` | [`verify-p9.sh`](../../deploy/bin/verify-p9.sh) **40/40 通过**（L3 Playwright **11/11**、L4 停 TEI 故障隔离通过），工作区干净、线上零残留 |
 
 ## P0.5 的边界
 

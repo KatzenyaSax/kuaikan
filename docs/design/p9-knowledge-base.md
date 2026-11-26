@@ -1,6 +1,6 @@
 # P9 向量知识库与个人权威档案技术方案
 
-> 状态：方案已评审待实施（2026-11-26）。
+> 状态：已完成（2026-11-26，[`deploy/bin/verify-p9.sh`](../../deploy/bin/verify-p9.sh) **40/40 通过**，L3 Playwright **11/11 通过**，L4 断 TEI 故障隔离通过，线上零残留）。
 > 架构不变量见 [`architecture.md`](./architecture.md)，版本与运行事实见 [`../project.md`](../project.md)，前置 AI 助手设计见 [`p8-ai-assistant.md`](./p8-ai-assistant.md)。
 
 ---
