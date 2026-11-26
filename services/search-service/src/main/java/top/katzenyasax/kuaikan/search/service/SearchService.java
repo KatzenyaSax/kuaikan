@@ -323,36 +323,6 @@ public class SearchService {
         return chunkText;
     }
 
-    /**
-     * P9.1 相关帖子推荐（游客可读，基于既有帖子向量 kNN，不调用 TEI）。
-     * ES 异常或尚未建索引时静默返回空列表，绝不影响帖子详情页渲染。
-     */
-    public List<RelatedPostItem> relatedPosts(String postId, Integer limit) {
-        String safePostId = parseSnowflake(postId, "postId");
-        if (safePostId == null) {
-            throw new BizException(CommonErrorCode.PARAM_INVALID, "postId 不能为空");
-        }
-        int size = clampLimit(limit, 5, 10);
-        try {
-            List<ChunkSearchHit> hits = es.findRelatedPostsByVector(
-                    safePostId, size, props.getEmbedding().getRelatedMinScore());
-            return hits.stream()
-                    .map(h -> new RelatedPostItem(
-                            h.postId(),
-                            h.communityId(),
-                            h.communityName(),
-                            h.authorId(),
-                            h.authorNickname(),
-                            h.title(),
-                            h.createdAt(),
-                            h.score()))
-                    .toList();
-        } catch (RuntimeException e) {
-            log.warn("相关帖子推荐降级为空 postId={} reason={}", safePostId, e.toString());
-            return List.of();
-        }
-    }
-
     // ------------------------------------------------------------------ ES 调用与降级
 
     private PostSearchPage execute(PostSearchQuery query) {
