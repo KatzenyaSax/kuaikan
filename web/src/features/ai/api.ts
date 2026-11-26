@@ -13,6 +13,14 @@ export type QuotaView = OkData<'getAiQuota'>
 export type SendMessageBody = RequestBody<'streamAiMessage'>
 export type ComposeBody = RequestBody<'streamAiCompose'>
 export type ActionResultBody = RequestBody<'reportAiActionResult'>
+export type RetrievalScope = 'ALL' | 'MY_ONLY' | 'CURRENT_COMMUNITY'
+
+export type ProfileEntryView = OkData<'listAiProfileEntries'>[number]
+export type ProfileEntryRequest = RequestBody<'createAiProfileEntry'>
+export type NotePage = OkData<'listAiNotes'>
+export type NoteSummaryView = NonNullable<NotePage['items']>[number]
+export type NoteDetailView = OkData<'getAiNote'>
+export type NoteUpsertRequest = RequestBody<'createAiNote'>
 
 export type ActionProposalView = {
   actionId: string
@@ -23,6 +31,7 @@ export type ActionProposalView = {
     | 'JOIN_COMMUNITY'
     | 'UPDATE_NICKNAME'
     | 'UPDATE_AVATAR'
+    | 'SAVE_PROFILE_ENTRY'
     | string
   payload: Record<string, unknown>
   status: 'PROPOSED' | 'EXECUTED' | 'FAILED' | 'REJECTED' | 'EXPIRED' | string
@@ -73,6 +82,43 @@ export function deleteConversation(conversationId: string) {
 
 export function getQuota() {
   return api.get<QuotaView>(`${BASE}/quota`)
+}
+
+export function listProfileEntries() {
+  return api.get<ProfileEntryView[]>(`${BASE}/profile/entries`)
+}
+
+export function createProfileEntry(body: ProfileEntryRequest) {
+  return api.post<ProfileEntryView>(`${BASE}/profile/entries`, body)
+}
+
+export function updateProfileEntry(id: string, body: ProfileEntryRequest) {
+  return api.put<ProfileEntryView>(`${BASE}/profile/entries/${encodeURIComponent(id)}`, body)
+}
+
+export function deleteProfileEntry(id: string) {
+  return api.del<unknown>(`${BASE}/profile/entries/${encodeURIComponent(id)}`)
+}
+
+export function listNotes(cursor?: string | null) {
+  const qs = cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''
+  return api.get<NotePage>(`${BASE}/notes${qs}`)
+}
+
+export function getNote(id: string) {
+  return api.get<NoteDetailView>(`${BASE}/notes/${encodeURIComponent(id)}`)
+}
+
+export function createNote(body: NoteUpsertRequest) {
+  return api.post<NoteDetailView>(`${BASE}/notes`, body)
+}
+
+export function updateNote(id: string, body: NoteUpsertRequest) {
+  return api.put<NoteDetailView>(`${BASE}/notes/${encodeURIComponent(id)}`, body)
+}
+
+export function deleteNote(id: string) {
+  return api.del<unknown>(`${BASE}/notes/${encodeURIComponent(id)}`)
 }
 
 export async function readSsePost(

@@ -27,6 +27,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/posts/{postId}/related": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 帖子页相关帖子推荐（游客可读） */
+        get: operations["relatedPosts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ping": {
         parameters: {
             query?: never;
@@ -77,6 +94,27 @@ export interface components {
             /** Format: date-time */
             createdAt?: string;
         };
+        RelatedPostItem: {
+            /** @description 帖子 ID */
+            postId?: string;
+            /** @description 社群 ID */
+            communityId?: string;
+            communityName?: string;
+            /** @description 作者 ID */
+            authorId?: string;
+            authorNickname?: string;
+            title?: string;
+            /** Format: int64 */
+            createdAt?: number;
+            /** Format: double */
+            score?: number;
+        };
+        ResultListRelatedPostItem: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: components["schemas"]["RelatedPostItem"][];
+        };
         ResultMapStringObject: {
             /** Format: int32 */
             code?: number;
@@ -116,6 +154,30 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ResultPageResultSearchPostItem"];
+                };
+            };
+        };
+    };
+    relatedPosts: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                postId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultListRelatedPostItem"];
                 };
             };
         };

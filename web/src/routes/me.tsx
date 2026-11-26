@@ -1,13 +1,15 @@
-import { useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { lazy, Suspense, useMemo, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 import {
   Bookmark,
   Edit3,
   ExternalLink,
+  FileText,
   KeyRound,
   Laptop,
   LogOut,
   Shield,
+  Sparkles,
   Trash2,
 } from 'lucide-react'
 import { useSession } from '@/features/auth/session'
@@ -32,8 +34,20 @@ import { Skeleton } from '@/shared/ui/skeleton'
 import { Toast } from '@/shared/ui/toast'
 import { absoluteDateTime } from '@/shared/lib/time'
 
+const ProfilePanel = lazy(() =>
+  import('@/features/ai/profile-panel').then((m) => ({ default: m.ProfilePanel })),
+)
+const NotesPanel = lazy(() =>
+  import('@/features/ai/notes-panel').then((m) => ({ default: m.NotesPanel })),
+)
+
 export function MePage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const rawTab = searchParams.get('tab')
+  const activeTab: 'account' | 'profile' | 'notes' =
+    rawTab === 'profile' || rawTab === 'notes' ? rawTab : 'account'
+  const noteIdParam = searchParams.get('noteId') ?? undefined
   const user = useSession((s) => s.user)
   const logout = useLogout()
   const updateProfile = useUpdateProfile()
@@ -273,6 +287,57 @@ export function MePage() {
         </div>
       </Card>
 
+      {/* ====================================================================
+          分段切换：账号与收藏 / 我的 AI 档案 / 我的笔记（P9）
+         ==================================================================== */}
+      <div
+        data-testid="me-tabs"
+        className="glass-panel inline-flex flex-wrap items-center gap-1 rounded-2xl p-1"
+      >
+        {(
+          [
+            { id: 'account', label: '资料与收藏', testId: 'me-tab-account', icon: Bookmark },
+            { id: 'profile', label: '我的 AI 档案', testId: 'me-tab-profile', icon: Sparkles },
+            { id: 'notes', label: '我的笔记', testId: 'me-tab-notes', icon: FileText },
+          ] as const
+        ).map((tab) => {
+          const Icon = tab.icon
+          const active = activeTab === tab.id
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              data-testid={tab.testId}
+              onClick={() =>
+                setSearchParams(tab.id === 'account' ? {} : { tab: tab.id }, { replace: true })
+              }
+              className={
+                active
+                  ? 'inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-[var(--color-primary-soft)] px-3.5 py-2 text-xs font-semibold text-primary'
+                  : 'inline-flex cursor-pointer items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-medium text-secondary-foreground hover:text-foreground'
+              }
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {tab.label}
+            </button>
+          )
+        })}
+      </div>
+
+      {activeTab === 'profile' && (
+        <Suspense fallback={<Skeleton className="h-64 w-full rounded-3xl" />}>
+          <ProfilePanel />
+        </Suspense>
+      )}
+
+      {activeTab === 'notes' && (
+        <Suspense fallback={<Skeleton className="h-64 w-full rounded-3xl" />}>
+          <NotesPanel initialNoteId={noteIdParam} />
+        </Suspense>
+      )}
+
+      {activeTab === 'account' && (
+        <>
       {/* ====================================================================
           2. 我的收藏（支持已删帖灰色占位 + 一键取消收藏）
          ==================================================================== */}
@@ -552,6 +617,8 @@ export function MePage() {
           </form>
         )}
       </Card>
+        </>
+      )}
     </div>
   )
 }

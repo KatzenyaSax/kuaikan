@@ -10,6 +10,79 @@
  */
 
 export interface paths {
+    "/profile/entries/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** 更新 AI 档案条目 */
+        put: operations["updateAiProfileEntry"];
+        post?: never;
+        /** 删除 AI 档案条目 */
+        delete: operations["deleteAiProfileEntry"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 获取单篇私密笔记详情 */
+        get: operations["getAiNote"];
+        /** 更新私密笔记 */
+        put: operations["updateAiNote"];
+        post?: never;
+        /** 硬删除私密笔记并同步清理向量 */
+        delete: operations["deleteAiNote"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profile/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询我的 AI 档案条目 */
+        get: operations["listAiProfileEntries"];
+        put?: never;
+        /** 新增 AI 档案条目 */
+        post: operations["createAiProfileEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 分页查询我的私密笔记 */
+        get: operations["listAiNotes"];
+        put?: never;
+        /** 新建私密笔记 */
+        post: operations["createAiNote"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/conversations": {
         parameters: {
             query?: never;
@@ -134,6 +207,52 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ProfileEntryRequest: {
+            category?: string;
+            content?: string;
+            enabled?: boolean;
+            source?: string;
+        };
+        ProfileEntryView: {
+            /** @description 档案条目 ID */
+            id?: string;
+            category?: string;
+            content?: string;
+            enabled?: boolean;
+            source?: string;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+        };
+        ResultProfileEntryView: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: components["schemas"]["ProfileEntryView"];
+        };
+        NoteUpsertRequest: {
+            title?: string;
+            content?: string;
+            enabled?: boolean;
+        };
+        NoteDetailView: {
+            /** @description 笔记 ID */
+            id?: string;
+            title?: string;
+            content?: string;
+            enabled?: boolean;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+        };
+        ResultNoteDetailView: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: components["schemas"]["NoteDetailView"];
+        };
         ConversationView: {
             /** @description 会话 ID */
             id?: string;
@@ -159,6 +278,7 @@ export interface components {
             content: string;
             intent?: string;
             pageContext?: components["schemas"]["PageContextDto"];
+            retrievalScope?: string;
         };
         SseEmitter: {
             /** Format: int64 */
@@ -190,6 +310,12 @@ export interface components {
             message?: string;
             data?: components["schemas"]["QuotaView"];
         };
+        ResultListProfileEntryView: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: components["schemas"]["ProfileEntryView"][];
+        };
         ResultMapStringObject: {
             /** Format: int32 */
             code?: number;
@@ -197,6 +323,30 @@ export interface components {
             data?: {
                 [key: string]: unknown;
             };
+        };
+        NoteSummaryView: {
+            /** @description 笔记 ID */
+            id?: string;
+            title?: string;
+            excerpt?: string;
+            /** Format: int32 */
+            length?: number;
+            enabled?: boolean;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+        };
+        PageResultNoteSummaryView: {
+            items?: components["schemas"]["NoteSummaryView"][];
+            nextCursor?: string;
+            hasMore?: boolean;
+        };
+        ResultPageResultNoteSummaryView: {
+            /** Format: int32 */
+            code?: number;
+            message?: string;
+            data?: components["schemas"]["PageResultNoteSummaryView"];
         };
         PageResultConversationView: {
             items?: components["schemas"]["ConversationView"][];
@@ -226,6 +376,8 @@ export interface components {
             /** Format: int32 */
             n?: number;
             postId?: string;
+            noteId?: string;
+            sourceType?: string;
             title?: string;
             communityName?: string;
             authorNickname?: string;
@@ -267,6 +419,215 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    updateAiProfileEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileEntryRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultProfileEntryView"];
+                };
+            };
+        };
+    };
+    deleteAiProfileEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultVoid"];
+                };
+            };
+        };
+    };
+    getAiNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultNoteDetailView"];
+                };
+            };
+        };
+    };
+    updateAiNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoteUpsertRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultNoteDetailView"];
+                };
+            };
+        };
+    };
+    deleteAiNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultVoid"];
+                };
+            };
+        };
+    };
+    listAiProfileEntries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultListProfileEntryView"];
+                };
+            };
+        };
+    };
+    createAiProfileEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileEntryRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultProfileEntryView"];
+                };
+            };
+        };
+    };
+    listAiNotes: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultPageResultNoteSummaryView"];
+                };
+            };
+        };
+    };
+    createAiNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoteUpsertRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ResultNoteDetailView"];
+                };
+            };
+        };
+    };
     listAiConversations: {
         parameters: {
             query?: {

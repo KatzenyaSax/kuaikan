@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router'
-import { History, Loader2, Plus, Send, Sparkles, Trash2, X } from 'lucide-react'
+import { Link, useLocation, useNavigate } from 'react-router'
+import { BookmarkPlus, Check, History, Loader2, Plus, Send, Sparkles, Trash2, X } from 'lucide-react'
 import {
   createConversation,
+  createNote,
   deleteConversation,
   getQuota,
   listConversations,
@@ -10,7 +11,13 @@ import {
   streamActionResult,
   streamConversationMessage,
 } from '@/features/ai/api'
-import type { ActionResultBody, ConversationView, QuotaView, UiAiMessage } from '@/features/ai/api'
+import type {
+  ActionResultBody,
+  ConversationView,
+  QuotaView,
+  RetrievalScope,
+  UiAiMessage,
+} from '@/features/ai/api'
 import { ActionCard } from '@/features/ai/action-card'
 import { CitationAnswer } from '@/features/ai/citation-renderer'
 import { useAiStore } from '@/features/ai/ai-store'
@@ -85,12 +92,18 @@ export function CopilotDrawer({
   const [busy, setBusy] = useState(false)
   const [errorBanner, setErrorBanner] = useState<string | null>(null)
   const [dismissedPath, setDismissedPath] = useState<string | null>(null)
+  const [retrievalScope, setRetrievalScope] = useState<RetrievalScope>('ALL')
+  const [savingNoteMsgId, setSavingNoteMsgId] = useState<string | null>(null)
+  const [savedNoteIds, setSavedNoteIds] = useState<Record<string, string>>({})
 
   const abortRef = useRef<AbortController | null>(null)
   const endRef = useRef<HTMLDivElement | null>(null)
 
   const routeCtx = useMemo(() => resolvePageContext(location.pathname), [location.pathname])
   const contextDismissed = dismissedPath === location.pathname
+  const hasCommunityCtx = Boolean(routeCtx.communityName)
+  const effectiveScope: RetrievalScope =
+    retrievalScope === 'CURRENT_COMMUNITY' && !hasCommunityCtx ? 'ALL' : retrievalScope
 
   const refreshQuotaAndList = useCallback(async () => {
     try {
@@ -134,13 +147,18 @@ export function CopilotDrawer({
         id: m.id ?? String(Date.now()),
         role: m.role === 'user' ? 'user' : 'assistant',
         content: m.content ?? '',
-        citations: (m.citations ?? []).map((c, idx) => ({
-          n: c.n ?? idx + 1,
-          postId: c.postId ?? '',
-          title: c.title ?? '',
-          communityName: c.communityName ?? '',
-          authorNickname: c.authorNickname ?? '',
-        })),
+        citations: (m.citations ?? []).map((c, idx) => {
+          const raw = c as Record<string, unknown>
+          return {
+            n: c.n ?? idx + 1,
+            postId: c.postId ?? null,
+            noteId: typeof raw['noteId'] === 'string' ? raw['noteId'] : null,
+            sourceType: typeof raw['sourceType'] === 'string' ? raw['sourceType'] : 'POST',
+            title: c.title ?? '',
+            communityName: c.communityName ?? '',
+            authorNickname: c.authorNickname ?? '',
+          }
+        }),
         actions: (m.actions ?? []).map((a) => ({
           actionId: a.actionId ?? '',
           type: a.type ?? '',
@@ -246,6 +264,7 @@ export function CopilotDrawer({
           convId,
           {
             content: text,
+            retrievalScope: effectiveScope,
             ...(opts?.intent ? { intent: opts.intent } : {}),
             ...(ctxPayload ? { pageContext: ctxPayload } : {}),
           },
@@ -329,7 +348,7 @@ export function CopilotDrawer({
         setBusy(false)
       }
     },
-    [activeConvId, busy, contextDismissed, refreshQuotaAndList, routeCtx],
+    [activeConvId, busy, contextDismissed, effectiveScope, refreshQuotaAndList, routeCtx],
   )
 
   // 响应帖子页「AI 总结」/ 消息抽屉「AI 速览」预设意图
@@ -373,6 +392,33 @@ export function CopilotDrawer({
         )
       },
     })
+  }
+
+  const handleSaveAsNote = async (msgId: string, content: string) => {
+    const clean = content.trim()
+    if (!clean || savingNoteMsgId) return
+    setSavingNoteMsgId(msgId)
+    setErrorBanner(null)
+    try {
+      const firstLine =
+        clean
+          .split('\n')
+          .map((l) => l.replace(/^#+\s*/, '').trim())
+          .find((l) => l.length > 0) ?? 'Copilot 笔记'
+      const title = firstLine.length > 40 ? `${firstLine.slice(0, 40)}…` : firstLine
+      const created = await createNote({
+        title,
+        content: clean.slice(0, 20000),
+        enabled: true,
+      })
+      if (created.id) {
+        setSavedNoteIds((prev) => ({ ...prev, [msgId]: created.id! }))
+      }
+    } catch (err) {
+      setErrorBanner(err instanceof Error ? err.message : '存为笔记失败')
+    } finally {
+      setSavingNoteMsgId(null)
+    }
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -524,22 +570,45 @@ export function CopilotDrawer({
                         onReportResult={handleReportActionResult}
                       />
                     ))}
-                    {!m.streaming && routeCtx.postId && m.content && (
-                      <div className="pt-1">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDraftCommentPrefill(routeCtx.postId!, m.content.slice(0, 1800))
-                            if (routeCtx.communityName && routeCtx.postId) {
-                              void navigate(
-                                `/c/${encodeURIComponent(routeCtx.communityName)}/p/${encodeURIComponent(routeCtx.postId)}`,
-                              )
-                            }
-                          }}
-                          className="cursor-pointer text-[11px] font-medium text-primary hover:underline"
-                        >
-                          填入当前帖子评论框
-                        </button>
+                    {!m.streaming && m.content && (
+                      <div className="flex flex-wrap items-center gap-3 pt-1">
+                        {savedNoteIds[m.id] ? (
+                          <Link
+                            to={`/me?tab=notes&noteId=${encodeURIComponent(savedNoteIds[m.id]!)}`}
+                            data-testid="ai-saved-note-link"
+                            className="inline-flex items-center gap-1 text-[11px] font-medium text-success hover:underline"
+                          >
+                            <Check className="h-3 w-3" />
+                            已存为笔记，去查看
+                          </Link>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={savingNoteMsgId === m.id}
+                            data-testid="ai-save-as-note"
+                            onClick={() => void handleSaveAsNote(m.id, m.content)}
+                            className="inline-flex cursor-pointer items-center gap-1 text-[11px] font-medium text-secondary-foreground hover:text-primary disabled:opacity-50"
+                          >
+                            <BookmarkPlus className="h-3 w-3" />
+                            {savingNoteMsgId === m.id ? '保存中…' : '存为笔记'}
+                          </button>
+                        )}
+                        {routeCtx.postId && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDraftCommentPrefill(routeCtx.postId!, m.content.slice(0, 1800))
+                              if (routeCtx.communityName && routeCtx.postId) {
+                                void navigate(
+                                  `/c/${encodeURIComponent(routeCtx.communityName)}/p/${encodeURIComponent(routeCtx.postId)}`,
+                                )
+                              }
+                            }}
+                            className="cursor-pointer text-[11px] font-medium text-primary hover:underline"
+                          >
+                            填入当前帖子评论框
+                          </button>
+                        )}
                       </div>
                     )}
                   </>
@@ -559,8 +628,42 @@ export function CopilotDrawer({
           </div>
         )}
 
-        {/* 上下文标签 + 输入区 */}
+        {/* 检索范围切换 + 上下文标签 + 输入区 */}
         <div className="space-y-2 border-t border-[var(--border-glass)] pt-3">
+          <div className="flex flex-wrap items-center gap-1.5" data-testid="ai-scope-bar">
+            {(
+              [
+                { id: 'ALL', label: '全部', testId: 'ai-scope-all', disabled: false },
+                { id: 'MY_ONLY', label: '仅我的', testId: 'ai-scope-my', disabled: false },
+                {
+                  id: 'CURRENT_COMMUNITY',
+                  label: '仅当前社群',
+                  testId: 'ai-scope-community',
+                  disabled: !hasCommunityCtx,
+                },
+              ] as const
+            ).map((opt) => {
+              const active = effectiveScope === opt.id
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  disabled={opt.disabled || busy}
+                  data-testid={opt.testId}
+                  title={opt.disabled ? '进入社群或帖子页后可用' : undefined}
+                  onClick={() => setRetrievalScope(opt.id)}
+                  className={
+                    active
+                      ? 'cursor-pointer rounded-full border border-[rgba(var(--accent-rgb),0.45)] bg-[var(--color-primary-soft)] px-2.5 py-0.5 text-[11px] font-semibold text-primary'
+                      : 'cursor-pointer rounded-full border border-[var(--border-glass)] bg-[var(--bg-input)] px-2.5 py-0.5 text-[11px] text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40'
+                  }
+                >
+                  {opt.label}
+                </button>
+              )
+            })}
+          </div>
+
           {!contextDismissed && routeCtx.type !== 'OTHER' && (
             <div
               data-testid="ai-context-pill"

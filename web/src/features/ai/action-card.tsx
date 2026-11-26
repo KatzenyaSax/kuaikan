@@ -24,6 +24,8 @@ function actionTitle(type: string): string {
       return '修改个人昵称'
     case 'UPDATE_AVATAR':
       return '修改个人头像'
+    case 'SAVE_PROFILE_ENTRY':
+      return '保存个人 AI 档案'
     default:
       return '操作提议'
   }
@@ -83,6 +85,12 @@ export function ActionCard({
     }
     return init
   })
+
+  // UPDATE_AVATAR / SAVE_PROFILE_ENTRY
+  const [profileCategory, setProfileCategory] = useState(() =>
+    String(payload['category'] ?? 'PREFERENCE'),
+  )
+  const [profileContent, setProfileContent] = useState(() => String(payload['content'] ?? ''))
 
   const isProposed = status === 'PROPOSED'
   const badge = statusBadge(status)
@@ -167,6 +175,23 @@ export function ActionCard({
           const avatarUrl = String(payload['avatarUrl'] ?? '')
           await updateProfile.mutateAsync({ avatarUrl })
           report = { status: 'EXECUTED', resultRef: avatarUrl }
+          break
+        }
+        case 'SAVE_PROFILE_ENTRY': {
+          const cleanContent = profileContent.trim()
+          if (!cleanContent) {
+            setErrMsg('档案内容不能为空')
+            setBusy(false)
+            return
+          }
+          const created = await api.post<{ id?: string }>('/api/ai/profile/entries', {
+            category: profileCategory,
+            content: cleanContent,
+            enabled: true,
+            source: 'AI_CONFIRMED',
+          })
+          report = { status: 'EXECUTED', resultRef: created.id ?? '' }
+          void qc.invalidateQueries({ queryKey: ['ai', 'profile'] })
           break
         }
         default:
@@ -310,6 +335,32 @@ export function ActionCard({
           <div>
             变更为：<strong className="text-foreground">{String(payload['avatarUrl'] ?? '') || '清空头像'}</strong>
           </div>
+        </div>
+      )}
+
+      {action.type === 'SAVE_PROFILE_ENTRY' && (
+        <div className="space-y-2">
+          <select
+            value={profileCategory}
+            disabled={!isProposed || busy}
+            onChange={(e) => setProfileCategory(e.target.value)}
+            data-testid="ai-action-profile-category"
+            className="w-full rounded-xl border border-[var(--border-glass)] bg-[var(--bg-input)] px-2.5 py-1.5 text-xs text-foreground"
+          >
+            <option value="IDENTITY">身份背景</option>
+            <option value="PREFERENCE">技术与偏好</option>
+            <option value="STYLE">写作风格</option>
+            <option value="OTHER">其他</option>
+          </select>
+          <Textarea
+            value={profileContent}
+            disabled={!isProposed || busy}
+            onChange={(e) => setProfileContent(e.target.value)}
+            rows={2}
+            maxLength={200}
+            data-testid="ai-action-profile-content"
+            className="text-xs"
+          />
         </div>
       )}
 

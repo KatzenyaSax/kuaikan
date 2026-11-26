@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { Check, Share2, Sparkles } from 'lucide-react'
 import { useAiStore } from '@/features/ai/ai-store'
@@ -23,6 +23,10 @@ import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
 import { Empty } from '@/shared/ui/empty'
 import { Skeleton } from '@/shared/ui/skeleton'
+
+const RelatedPosts = lazy(() =>
+  import('@/features/search/related-posts').then((m) => ({ default: m.RelatedPosts })),
+)
 
 export function PostPage() {
   const { name, postId } = useParams()
@@ -196,6 +200,11 @@ export function PostPage() {
           </div>
         </div>
       </Card>
+
+      {/* P9.1 跨社群相关帖子（懒加载，无结果或降级静默隐藏） */}
+      <Suspense fallback={null}>
+        <RelatedPosts postId={postId} />
+      </Suspense>
 
       {/* 两级评论区 */}
       <CommentSection

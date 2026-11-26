@@ -1,9 +1,10 @@
-import { useInfiniteQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { api } from '@/shared/api/client'
 import type { OkData } from '@/shared/api/typed'
 
 export type SearchPageResult = OkData<'searchPosts'>
 export type SearchItem = NonNullable<SearchPageResult['items']>[number]
+export type RelatedPostItem = OkData<'relatedPosts'>[number]
 
 /** 排序：相关性（默认）/ 最新。未知值会被后端判 40010 */
 export type SearchSort = 'relevance' | 'latest'
@@ -48,5 +49,26 @@ export function useSearchPosts({
     enabled: keyword.length > 0,
     // 搜索结果只有"新帖入索引"会变，没必要切回来就重查
     staleTime: 60_000,
+  })
+}
+
+/**
+ * 帖子详情页「相关帖子」推荐（P9.1）：游客可读，失败或降级时静默返回空数组。
+ */
+export function useRelatedPosts(postId: string | undefined) {
+  return useQuery({
+    queryKey: ['search', 'related', postId],
+    queryFn: async () => {
+      try {
+        return await api.get<RelatedPostItem[]>(
+          `/api/search/posts/${encodeURIComponent(postId!)}/related?limit=5`,
+        )
+      } catch {
+        return []
+      }
+    },
+    enabled: Boolean(postId),
+    staleTime: 120_000,
+    retry: false,
   })
 }
