@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Eye, FileText, Pencil, Plus, ShieldAlert, Trash2 } from 'lucide-react'
+import { Eye, FileText, Lock, Pencil, Plus, Trash2 } from 'lucide-react'
 import {
   createNote,
   deleteNote,
@@ -56,7 +56,7 @@ function NoteEditor({
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         maxLength={100}
-        placeholder="笔记标题（最多 100 字）"
+        placeholder="文档标题（最多 100 字）"
         data-testid="ai-note-title"
       />
 
@@ -102,7 +102,7 @@ function NoteEditor({
           onChange={(e) => setContent(e.target.value)}
           rows={10}
           maxLength={20000}
-          placeholder="支持 Markdown 语法记录个人学习笔记、总结或资料…"
+          placeholder="支持 Markdown 语法存放学习总结、排查清单或参考资料…"
           data-testid="ai-note-content"
         />
       )}
@@ -128,7 +128,7 @@ function NoteEditor({
           disabled={isSaving || !title.trim() || !content.trim()}
           data-testid="ai-note-save"
         >
-          {selectedId ? '保存修改' : '保存新建笔记'}
+          {selectedId ? '保存修改' : '保存到知识库'}
         </Button>
       </div>
     </form>
@@ -171,11 +171,11 @@ export function NotesPanel({ initialNoteId }: { initialNoteId?: string | undefin
     mutationFn: (data: { title: string; content: string; enabled: boolean }) => createNote(data),
     onSuccess: (created) => {
       setErrorMsg(null)
-      setNotice('已新建私密笔记并加入同步队列')
+      setNotice('已新建知识库文档并加入同步队列')
       if (created.id) setSelectedId(created.id)
       invalidate(created.id)
     },
-    onError: (err) => setErrorMsg(err instanceof ApiError ? err.message : '新建笔记失败'),
+    onError: (err) => setErrorMsg(err instanceof ApiError ? err.message : '新建文档失败'),
   })
 
   const updateMut = useMutation({
@@ -183,10 +183,10 @@ export function NotesPanel({ initialNoteId }: { initialNoteId?: string | undefin
       updateNote(selectedId!, data),
     onSuccess: () => {
       setErrorMsg(null)
-      setNotice('已保存笔记修改并同步更新向量')
+      setNotice('已保存文档修改并同步更新向量')
       invalidate(selectedId)
     },
-    onError: (err) => setErrorMsg(err instanceof ApiError ? err.message : '保存笔记失败'),
+    onError: (err) => setErrorMsg(err instanceof ApiError ? err.message : '保存文档失败'),
   })
 
   const deleteMut = useMutation({
@@ -196,7 +196,7 @@ export function NotesPanel({ initialNoteId }: { initialNoteId?: string | undefin
       setSelectedId(null)
       setDraftNonce((n) => n + 1)
       setErrorMsg(null)
-      setNotice('已彻底删除笔记及对应向量切片')
+      setNotice('已彻底删除文档及对应向量切片')
       void qc.invalidateQueries({ queryKey: ['ai', 'notes'] })
     },
     onError: (err) => setErrorMsg(err instanceof ApiError ? err.message : '删除失败'),
@@ -219,23 +219,27 @@ export function NotesPanel({ initialNoteId }: { initialNoteId?: string | undefin
   return (
     <Card padding="md" data-testid="ai-notes-panel" className="rounded-3xl space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <FileText className="h-4 w-4 text-primary" />
-          <h2 className="font-display text-base font-bold text-foreground">我的私密笔记</h2>
+          <h2 className="font-display text-base font-bold text-foreground">知识库</h2>
           <span className="tabular-nums text-xs text-muted-foreground">
             ({String(notes.length)}/200)
           </span>
+          <Pill tone="success" data-testid="ai-notes-private-badge">
+            <Lock className="h-3 w-3" />
+            完全私密
+          </Pill>
         </div>
         <Button type="button" variant="secondary" size="sm" data-testid="ai-note-new" onClick={startNew}>
           <Plus className="h-3.5 w-3.5" />
-          新建笔记
+          新建文档
         </Button>
       </div>
 
       <div className="flex items-start gap-2 rounded-2xl border border-[var(--border-glass)] bg-[var(--bg-input)] px-3.5 py-2.5 text-xs text-muted-foreground">
-        <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
+        <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
         <span>
-          私密笔记严格按本人隔离，不会进入社区公共搜索。已启用的笔记在被 Copilot 检索命中时，相关片段会随对话发送至第三方模型服务。
+          完全私密，仅自己可见，严格按本人隔离，绝不公开展示或进入社区搜索。这里存放你的 Markdown 参考资料，提问时 Copilot 会按需语义检索这里的文档（以及你的收藏与发帖）；命中片段仅随你本人的对话发送至模型服务。
         </span>
       </div>
 
@@ -251,7 +255,7 @@ export function NotesPanel({ initialNoteId }: { initialNoteId?: string | undefin
             </div>
           ) : notes.length === 0 ? (
             <div className="rounded-2xl border border-[var(--border-glass)] bg-[var(--bg-input)] py-8 text-center text-xs text-muted-foreground">
-              暂无私密笔记，可在右侧编写或从 Copilot 回答一键存为笔记。
+              暂无知识库文档，可在右侧编写或从 Copilot 回答一键存入知识库。
             </div>
           ) : (
             notes.map((n) => {
@@ -301,7 +305,7 @@ export function NotesPanel({ initialNoteId }: { initialNoteId?: string | undefin
         open={Boolean(deleteTargetId)}
         onClose={() => setDeleteTargetId(null)}
         onConfirm={() => deleteTargetId && deleteMut.mutate(deleteTargetId)}
-        title="确认彻底删除这篇笔记？"
+        title="确认彻底删除这篇文档？"
         description="删除后原文与对应向量切片将被永久清除，无法恢复。"
         confirmLabel="彻底删除"
         danger

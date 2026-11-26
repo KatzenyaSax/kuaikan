@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Edit3, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { Edit3, Lock, Plus, Sparkles, Trash2 } from 'lucide-react'
 import {
   createProfileEntry,
   deleteProfileEntry,
@@ -107,15 +107,26 @@ export function ProfilePanel() {
   return (
     <Card padding="md" data-testid="ai-profile-panel" className="rounded-3xl space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Sparkles className="h-4 w-4 text-primary" />
           <h2 className="font-display text-base font-bold text-foreground">我的 AI 档案</h2>
           <span className="tabular-nums text-xs text-muted-foreground">
             ({String(entries.length)}/30)
           </span>
+          <Pill tone="success" data-testid="ai-profile-private-badge">
+            <Lock className="h-3 w-3" />
+            完全私密
+          </Pill>
         </div>
         <span className="text-xs text-muted-foreground">
-          已启用条目将在每次 Copilot 对话与 AI 帮写中优先遵循
+          最高优先级个人偏好
+        </span>
+      </div>
+
+      <div className="flex items-start gap-2 rounded-2xl border border-[var(--border-glass)] bg-[var(--bg-input)] px-3.5 py-2.5 text-xs text-muted-foreground">
+        <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
+        <span>
+          完全私密，仅自己可见，不会在个人主页公开展示，也不会被其他用户或搜索看到。已启用条目将在你的每次 Copilot 对话与 AI 帮写中作为最高优先级偏好生效。
         </span>
       </div>
 

@@ -404,7 +404,7 @@ export function CopilotDrawer({
         clean
           .split('\n')
           .map((l) => l.replace(/^#+\s*/, '').trim())
-          .find((l) => l.length > 0) ?? 'Copilot 笔记'
+          .find((l) => l.length > 0) ?? 'Copilot 知识库文档'
       const title = firstLine.length > 40 ? `${firstLine.slice(0, 40)}…` : firstLine
       const created = await createNote({
         title,
@@ -415,7 +415,7 @@ export function CopilotDrawer({
         setSavedNoteIds((prev) => ({ ...prev, [msgId]: created.id! }))
       }
     } catch (err) {
-      setErrorBanner(err instanceof Error ? err.message : '存为笔记失败')
+      setErrorBanner(err instanceof Error ? err.message : '存入知识库失败')
     } finally {
       setSavingNoteMsgId(null)
     }
@@ -579,7 +579,7 @@ export function CopilotDrawer({
                             className="inline-flex items-center gap-1 text-[11px] font-medium text-success hover:underline"
                           >
                             <Check className="h-3 w-3" />
-                            已存为笔记，去查看
+                            已存入知识库，去查看
                           </Link>
                         ) : (
                           <button
@@ -590,7 +590,7 @@ export function CopilotDrawer({
                             className="inline-flex cursor-pointer items-center gap-1 text-[11px] font-medium text-secondary-foreground hover:text-primary disabled:opacity-50"
                           >
                             <BookmarkPlus className="h-3 w-3" />
-                            {savingNoteMsgId === m.id ? '保存中…' : '存为笔记'}
+                            {savingNoteMsgId === m.id ? '保存中…' : '存入知识库'}
                           </button>
                         )}
                         {routeCtx.postId && (

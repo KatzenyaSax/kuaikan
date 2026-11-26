@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Check, Loader2, Sparkles, X } from 'lucide-react'
+import { Check, Loader2, Lock, Sparkles, X } from 'lucide-react'
 import { useSession } from '@/features/auth/session'
 import { useUpdateProfile } from '@/features/auth/session-api'
 import { useMyCommunities } from '@/features/community/api'
@@ -361,6 +361,10 @@ export function ActionCard({
             data-testid="ai-action-profile-content"
             className="text-xs"
           />
+          <p className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+            <Lock className="h-3 w-3 shrink-0 text-success" />
+            <span>完全私密 · 仅自己可见，仅用于你的 Copilot 对话与帮写</span>
+          </p>
         </div>
       )}
 

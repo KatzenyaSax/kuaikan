@@ -298,7 +298,7 @@ export function MePage() {
           [
             { id: 'account', label: '资料与收藏', testId: 'me-tab-account', icon: Bookmark },
             { id: 'profile', label: '我的 AI 档案', testId: 'me-tab-profile', icon: Sparkles },
-            { id: 'notes', label: '我的笔记', testId: 'me-tab-notes', icon: FileText },
+            { id: 'notes', label: '知识库', testId: 'me-tab-notes', icon: FileText },
           ] as const
         ).map((tab) => {
           const Icon = tab.icon

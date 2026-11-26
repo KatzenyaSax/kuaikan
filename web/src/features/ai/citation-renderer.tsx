@@ -17,7 +17,7 @@ function sourceBadge(sourceType?: string): { label: string; cls: string } {
   switch (sourceType) {
     case 'NOTE':
       return {
-        label: '我的笔记',
+        label: '知识库',
         cls: 'bg-[var(--color-primary-soft)] text-primary',
       }
     case 'FAVORITE':
@@ -98,7 +98,7 @@ export function CitationAnswer({
                     </div>
                     <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
                       {isNote
-                        ? '个人私密笔记'
+                        ? '知识库 · 完全私密'
                         : (
                             <>
                               {c.communityName ? `#${c.communityName}` : ''}
