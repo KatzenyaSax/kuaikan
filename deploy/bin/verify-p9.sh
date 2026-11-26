@@ -348,7 +348,7 @@ if want_layer l0; then
   fi
 
   gw_yml="$APP_DIR/services/gateway/src/main/resources/application.yml"
-  if grep -q "GET \^/api/search/posts/\[\^/\]+/related\$" "$gw_yml" && ! grep -q "/api/ai/" <(grep -E "^\s*- .*\/api\/" "$gw_yml" | grep -v "Path="); then
+  if grep -qF 'GET ^/api/search/posts/[^/]+/related$' "$gw_yml" && ! grep -q "/api/ai/" <(grep -E "^\s*- .*\/api\/" "$gw_yml" | grep -v "Path="); then
     ok "网关已放行相关帖子 GET 正则且 /api/ai/** 无白名单"
   else
     ng "网关白名单规则异常"
@@ -392,7 +392,7 @@ if [ "$NEED_FIXTURE" = "1" ]; then
 
   POST_A_ID=$(site_curl -s --max-time 20 -X POST "${SITE}/api/content/posts" \
     -H "Authorization: Bearer ${TOK_A}" -H 'Content-Type: application/json' \
-    -d "$(json_obj communityId "$COMM_A_ID" title "JVM 容器冷启动加速实战_${STAMP}" body "通过精简镜像层与类数据共享，把服务启动耗时从三秒降到三十毫秒以内。")" | json_field 'data.id')
+    -d "$(json_obj communityId "$COMM_A_ID" title "JVM 容器冷启动加速实战_${STAMP}" body "通过精简镜像层与类数据共享，把服务开机初始化耗时压缩到三十毫秒以内。")" | json_field 'data.id')
   P9_POST_IDS=$(remember_ids "$P9_POST_IDS" "$POST_A_ID")
 
   if [ -n "$UID_A" ] && [ -n "$UID_B" ] && [ -n "$TOK_A" ] && [ -n "$TOK_B" ] && [ -n "$POST_A_ID" ]; then
@@ -458,7 +458,7 @@ if want_layer l2; then
   CONV_HYBRID=$(site_curl -s --max-time 20 -X POST "${SITE}/api/ai/conversations" \
     -H "Authorization: Bearer ${TOK_A}" | json_field 'data.id')
   hybrid_sse=$(ai_internal_sse "$UID_A" "/conversations/${CONV_HYBRID}/messages" \
-    "{\"content\":\"请搜索 kw=为什么应用刚拉起来的时候这么慢\"}" "search_citation")
+    "{\"content\":\"请搜索 kw=如何缩短后端容器开机初始化延迟\"}" "search_citation")
   if printf '%s' "$hybrid_sse" | grep -q "$POST_A_ID" && printf '%s' "$hybrid_sse" | grep -q '"sourceType":"POST"'; then
     ok "Copilot search_posts 跨词语义混合召回成功且附 sourceType=POST"
   else

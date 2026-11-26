@@ -124,7 +124,15 @@ try {
   await page.getByTestId('ai-scope-my').click()
   ok('Copilot 可切换至「仅我的」检索范围')
 
-  await page.goto(`/c/${encodeURIComponent(COMMUNITY)}`, { waitUntil: 'networkidle' })
+  await page.goto(`/c/${encodeURIComponent(COMMUNITY)}`, { waitUntil: 'domcontentloaded' })
+  await page.getByTestId('ai-scope-community').waitFor({ state: 'visible', timeout: 15000 })
+  await page.waitForFunction(
+    () => {
+      const el = document.querySelector('[data-testid="ai-scope-community"]')
+      return el && !el.hasAttribute('disabled')
+    },
+    { timeout: 15000 },
+  )
   const commDisabledInCommunity = await page.getByTestId('ai-scope-community').isDisabled()
   if (!commDisabledInCommunity) {
     await page.getByTestId('ai-scope-community').click()
@@ -135,7 +143,8 @@ try {
   await page.keyboard.press('Escape')
 
   // /me 我的 AI 档案 CRUD
-  await page.goto('/me', { waitUntil: 'networkidle' })
+  await page.goto('/me', { waitUntil: 'domcontentloaded' })
+  await page.getByTestId('me-tab-profile').waitFor({ state: 'visible', timeout: 15000 })
   await page.getByTestId('me-tab-profile').click()
   await page.getByTestId('ai-profile-panel').waitFor({ state: 'visible', timeout: 15000 })
   await page.getByTestId('ai-profile-category').selectOption('PREFERENCE')
