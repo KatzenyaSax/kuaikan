@@ -16,6 +16,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -111,6 +112,78 @@ public class ElasticsearchGateway {
             "postId", "communityId", "authorId", "title", "body",
             "authorNickname", "communityName", "createdAt");
 
+    /** P9.0 公共帖子切片索引 mapping（512 维 cosine HNSW + IK） */
+    private static final String POST_CHUNK_INDEX_BODY = """
+            {
+              "settings": {
+                "number_of_shards": 1,
+                "number_of_replicas": 0
+              },
+              "mappings": {
+                "properties": {
+                  "chunkId":       { "type": "keyword" },
+                  "postId":        { "type": "keyword" },
+                  "communityId":   { "type": "keyword" },
+                  "authorId":      { "type": "keyword" },
+                  "chunkIndex":    { "type": "integer" },
+                  "title":         { "type": "text", "analyzer": "ik_max_word", "search_analyzer": "ik_smart" },
+                  "chunkText":     { "type": "text", "analyzer": "ik_max_word", "search_analyzer": "ik_smart" },
+                  "authorNickname": {
+                    "type": "text", "analyzer": "ik_max_word", "search_analyzer": "ik_smart",
+                    "fields": { "keyword": { "type": "keyword" } }
+                  },
+                  "communityName": {
+                    "type": "text", "analyzer": "ik_max_word", "search_analyzer": "ik_smart",
+                    "fields": { "keyword": { "type": "keyword" } }
+                  },
+                  "embedding": {
+                    "type": "dense_vector",
+                    "dims": 512,
+                    "index": true,
+                    "similarity": "cosine",
+                    "index_options": { "type": "hnsw", "m": 16, "ef_construction": 100 }
+                  },
+                  "createdAt":     { "type": "date" }
+                }
+              }
+            }
+            """;
+
+    /** P9.0 个人私密笔记切片索引 mapping（物理隔离于公共帖子索引） */
+    private static final String NOTE_CHUNK_INDEX_BODY = """
+            {
+              "settings": {
+                "number_of_shards": 1,
+                "number_of_replicas": 0
+              },
+              "mappings": {
+                "properties": {
+                  "chunkId":    { "type": "keyword" },
+                  "noteId":     { "type": "keyword" },
+                  "ownerId":    { "type": "keyword" },
+                  "chunkIndex": { "type": "integer" },
+                  "title":      { "type": "text", "analyzer": "ik_max_word", "search_analyzer": "ik_smart" },
+                  "chunkText":  { "type": "text", "analyzer": "ik_max_word", "search_analyzer": "ik_smart" },
+                  "embedding": {
+                    "type": "dense_vector",
+                    "dims": 512,
+                    "index": true,
+                    "similarity": "cosine",
+                    "index_options": { "type": "hnsw", "m": 16, "ef_construction": 100 }
+                  },
+                  "updatedAt":  { "type": "date" }
+                }
+              }
+            }
+            """;
+
+    private static final List<String> CHUNK_MULTI_MATCH_FIELDS = List.of(
+            "title^3", "authorNickname^2", "communityName^2", "chunkText^1");
+
+    private static final List<String> CHUNK_SOURCE_FIELDS = List.of(
+            "postId", "communityId", "communityName", "authorId",
+            "authorNickname", "title", "chunkText", "createdAt");
+
     /**
      * 高亮占位符：U+E000 / U+E001（Unicode 私有使用区）。
      *
@@ -169,12 +242,28 @@ public class ElasticsearchGateway {
         put("/{index}", index, INDEX_BODY, "创建索引 " + index);
     }
 
+    public void createPostChunkIndex(String index) {
+        put("/{index}", index, POST_CHUNK_INDEX_BODY, "创建帖子切片索引 " + index);
+    }
+
+    public void createNoteChunkIndex(String index) {
+        put("/{index}", index, NOTE_CHUNK_INDEX_BODY, "创建笔记切片索引 " + index);
+    }
+
     /** 新建索引后把读写两个别名一起挂上（一次请求，避免只挂上一个的中间态） */
     public void attachAliases(String index) {
+        attachAliases(index, IndexNames.READ_ALIAS, IndexNames.WRITE_ALIAS);
+    }
+
+    public void attachAliases(String index, String readAlias, String writeAlias) {
         List<Map<String, Object>> actions = new ArrayList<>(2);
-        actions.add(addAliasAction(index, IndexNames.READ_ALIAS));
-        actions.add(addAliasAction(index, IndexNames.WRITE_ALIAS));
+        actions.add(addAliasAction(index, readAlias));
+        actions.add(addAliasAction(index, writeAlias));
         postJson("/_aliases", Map.of("actions", actions), "绑定别名 " + index);
+    }
+
+    public void switchAliases(String newIndex, Collection<String> oldIndices) {
+        switchAliases(newIndex, oldIndices, IndexNames.READ_ALIAS, IndexNames.WRITE_ALIAS);
     }
 
     /**
@@ -183,17 +272,18 @@ public class ElasticsearchGateway {
      * ES 把一次 _aliases 请求当作一个集群状态变更，所以读请求要么全看到旧索引、
      * 要么全看到新索引，不存在"读别名已切、写别名没切"的窗口。
      */
-    public void switchAliases(String newIndex, Collection<String> oldIndices) {
+    public void switchAliases(String newIndex, Collection<String> oldIndices,
+                              String readAlias, String writeAlias) {
         List<Map<String, Object>> actions = new ArrayList<>();
         for (String old : oldIndices) {
             if (old == null || old.equals(newIndex)) {
                 continue;
             }
-            actions.add(removeAliasAction(old, IndexNames.READ_ALIAS));
-            actions.add(removeAliasAction(old, IndexNames.WRITE_ALIAS));
+            actions.add(removeAliasAction(old, readAlias));
+            actions.add(removeAliasAction(old, writeAlias));
         }
-        actions.add(addAliasAction(newIndex, IndexNames.READ_ALIAS));
-        actions.add(addAliasAction(newIndex, IndexNames.WRITE_ALIAS));
+        actions.add(addAliasAction(newIndex, readAlias));
+        actions.add(addAliasAction(newIndex, writeAlias));
         postJson("/_aliases", Map.of("actions", actions), "切换别名 -> " + newIndex);
     }
 
@@ -424,6 +514,238 @@ public class ElasticsearchGateway {
                     hit.path("sort")));
         }
         return new PostSearchPage(hits, rawHits.size() > query.limit());
+    }
+
+    // ------------------------------------------------------------------ P9.0 切片索引写入与混合检索
+
+    /** 批量写入帖子切片（{@code _id = chunkId}） */
+    public int bulkIndexPostChunks(String index, List<PostChunkDocument> docs) {
+        if (docs == null || docs.isEmpty()) {
+            return 0;
+        }
+        int written = 0;
+        int chunk = Math.max(1, props.getBulkSize());
+        for (int from = 0; from < docs.size(); from += chunk) {
+            List<PostChunkDocument> slice = docs.subList(from, Math.min(from + chunk, docs.size()));
+            written += bulkPostChunkSlice(index, slice);
+        }
+        return written;
+    }
+
+    private int bulkPostChunkSlice(String index, List<PostChunkDocument> docs) {
+        StringBuilder ndjson = new StringBuilder(docs.size() * 2048);
+        for (PostChunkDocument doc : docs) {
+            ndjson.append("{\"index\":{\"_index\":")
+                    .append(quote(index))
+                    .append(",\"_id\":")
+                    .append(quote(doc.chunkId()))
+                    .append("}}\n")
+                    .append(write(doc, "序列化切片文档 chunkId=" + doc.chunkId()))
+                    .append('\n');
+        }
+        String response;
+        try {
+            response = decode(rest.post().uri("/_bulk")
+                    .contentType(MediaType.APPLICATION_NDJSON)
+                    .body(utf8(ndjson.toString()))
+                    .retrieve().body(byte[].class));
+        } catch (RestClientResponseException e) {
+            throw wrapped("bulk 写入切片 index=" + index, e);
+        }
+        JsonNode root = readTree(response, "bulk 切片响应 index=" + index);
+        if (root.path("errors").asBoolean(false)) {
+            throw new IllegalStateException("bulk 切片部分失败 index=" + index + "：" + firstBulkError(root));
+        }
+        return docs.size();
+    }
+
+    /** 切片索引纯 BM25 检索，按 postId 归并保留最高分片段 */
+    public List<ChunkSearchHit> searchPostChunksBm25(String query, List<Map<String, Object>> filters,
+                                                     int topChunks, int limit) {
+        Map<String, Object> bool = new LinkedHashMap<>();
+        bool.put("must", List.of(Map.of("multi_match", Map.of(
+                "query", query,
+                "fields", CHUNK_MULTI_MATCH_FIELDS,
+                "type", "best_fields"))));
+        if (filters != null && !filters.isEmpty()) {
+            bool.put("filter", filters);
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("size", Math.max(limit, topChunks));
+        body.put("track_total_hits", false);
+        body.put("query", Map.of("bool", bool));
+        body.put("_source", CHUNK_SOURCE_FIELDS);
+
+        String response = postForBody(
+                uri -> uri.path("/{index}/_search").build(IndexNames.POST_CHUNK_READ),
+                write(body, "切片 BM25 检索"), "切片 BM25 检索");
+        return parseAndDedupeChunkHits(response, limit);
+    }
+
+    /** 切片索引纯 kNN 向量检索，按 postId 归并保留最高分片段 */
+    public List<ChunkSearchHit> searchPostChunksKnn(float[] queryVector, List<Map<String, Object>> filters,
+                                                    int k, int numCandidates, int limit) {
+        Map<String, Object> knn = new LinkedHashMap<>();
+        knn.put("field", "embedding");
+        knn.put("query_vector", queryVector);
+        knn.put("k", k);
+        knn.put("num_candidates", numCandidates);
+        if (filters != null && !filters.isEmpty()) {
+            knn.put("filter", Map.of("bool", Map.of("filter", filters)));
+        }
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("size", k);
+        body.put("track_total_hits", false);
+        body.put("knn", knn);
+        body.put("_source", CHUNK_SOURCE_FIELDS);
+
+        String response = postForBody(
+                uri -> uri.path("/{index}/_search").build(IndexNames.POST_CHUNK_READ),
+                write(body, "切片 kNN 检索"), "切片 kNN 检索");
+        return parseAndDedupeChunkHits(response, limit);
+    }
+
+    /** 应用层 RRF 混合检索（BM25 + kNN），按 postId 归并 */
+    public List<ChunkSearchHit> searchPostChunksHybridRrf(String query, float[] queryVector,
+                                                          List<Map<String, Object>> filters,
+                                                          int rrfK, int limit) {
+        int candidateDepth = 30;
+        List<ChunkSearchHit> bm25Hits = searchPostChunksBm25(query, filters, candidateDepth, candidateDepth);
+        List<ChunkSearchHit> knnHits = searchPostChunksKnn(queryVector, filters, candidateDepth, 60, candidateDepth);
+
+        Map<String, Double> rrfScores = new LinkedHashMap<>();
+        Map<String, ChunkSearchHit> bestMeta = new LinkedHashMap<>();
+
+        for (int i = 0; i < bm25Hits.size(); i++) {
+            ChunkSearchHit hit = bm25Hits.get(i);
+            rrfScores.merge(hit.postId(), 1.0 / (rrfK + (i + 1)), Double::sum);
+            bestMeta.putIfAbsent(hit.postId(), hit);
+        }
+        for (int i = 0; i < knnHits.size(); i++) {
+            ChunkSearchHit hit = knnHits.get(i);
+            rrfScores.merge(hit.postId(), 1.0 / (rrfK + (i + 1)), Double::sum);
+            // 若 BM25 未命中或片段来自更语义相关的 chunk，保留已有；也可按需优先高向量片段
+            bestMeta.putIfAbsent(hit.postId(), hit);
+        }
+
+        return rrfScores.entrySet().stream()
+                .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
+                .limit(limit)
+                .map(e -> {
+                    ChunkSearchHit h = bestMeta.get(e.getKey());
+                    return new ChunkSearchHit(
+                            h.postId(), h.communityId(), h.communityName(),
+                            h.authorId(), h.authorNickname(), h.title(),
+                            h.chunkText(), h.createdAt(), e.getValue());
+                })
+                .toList();
+    }
+
+    /** 基于本帖已有切片向量（取前最多 5 片平均并 L2 归一化）做跨社群 kNN 相关帖推荐，不调用 TEI */
+    public List<ChunkSearchHit> findRelatedPostsByVector(String postId, int limit, double minScore) {
+        float[] anchor = fetchPostMeanVector(postId);
+        if (anchor == null) {
+            return List.of();
+        }
+        int k = Math.max(20, limit * 5);
+        Map<String, Object> knn = new LinkedHashMap<>();
+        knn.put("field", "embedding");
+        knn.put("query_vector", anchor);
+        knn.put("k", k);
+        knn.put("num_candidates", Math.max(60, k * 2));
+        knn.put("filter", Map.of("bool", Map.of("must_not", List.of(Map.of("term", Map.of("postId", postId))))));
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("size", k);
+        body.put("track_total_hits", false);
+        body.put("knn", knn);
+        body.put("_source", CHUNK_SOURCE_FIELDS);
+
+        String response = postForBody(
+                uri -> uri.path("/{index}/_search").build(IndexNames.POST_CHUNK_READ),
+                write(body, "相关帖子 kNN postId=" + postId), "相关帖子 kNN postId=" + postId);
+        return parseAndDedupeChunkHits(response, limit).stream()
+                .filter(hit -> hit.score() >= minScore)
+                .toList();
+    }
+
+    private float[] fetchPostMeanVector(String postId) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("size", 5);
+        body.put("track_total_hits", false);
+        body.put("query", Map.of("term", Map.of("postId", postId)));
+        body.put("sort", List.of(Map.of("chunkIndex", Map.of("order", "asc"))));
+        body.put("_source", List.of("embedding"));
+
+        String response = postForBody(
+                uri -> uri.path("/{index}/_search").build(IndexNames.POST_CHUNK_READ),
+                write(body, "读取帖子向量 postId=" + postId), "读取帖子向量 postId=" + postId);
+        JsonNode hits = readTree(response, "读取帖子向量").path("hits").path("hits");
+        if (!hits.isArray() || hits.isEmpty()) {
+            return null;
+        }
+        float[] sum = null;
+        int count = 0;
+        for (JsonNode hit : hits) {
+            JsonNode emb = hit.path("_source").path("embedding");
+            if (!emb.isArray() || emb.isEmpty()) {
+                continue;
+            }
+            if (sum == null) {
+                sum = new float[emb.size()];
+            }
+            for (int i = 0; i < Math.min(sum.length, emb.size()); i++) {
+                sum[i] += (float) emb.get(i).asDouble();
+            }
+            count++;
+        }
+        if (sum == null || count == 0) {
+            return null;
+        }
+        double normSq = 0.0;
+        for (float v : sum) {
+            normSq += (double) v * v;
+        }
+        double norm = Math.sqrt(normSq);
+        if (norm > 1e-12) {
+            for (int i = 0; i < sum.length; i++) {
+                sum[i] = (float) (sum[i] / norm);
+            }
+        }
+        return sum;
+    }
+
+    private List<ChunkSearchHit> parseAndDedupeChunkHits(String response, int limit) {
+        JsonNode root = readTree(response, "切片检索响应");
+        JsonNode rawHits = root.path("hits").path("hits");
+        Map<String, ChunkSearchHit> bestByPost = new LinkedHashMap<>();
+        for (JsonNode hit : rawHits) {
+            JsonNode source = hit.path("_source");
+            String pid = text(source, "postId");
+            if (pid == null) {
+                continue;
+            }
+            double score = hit.path("_score").asDouble(0.0);
+            ChunkSearchHit existing = bestByPost.get(pid);
+            if (existing != null && existing.score() >= score) {
+                continue;
+            }
+            bestByPost.put(pid, new ChunkSearchHit(
+                    pid,
+                    text(source, "communityId"),
+                    text(source, "communityName"),
+                    text(source, "authorId"),
+                    text(source, "authorNickname"),
+                    text(source, "title"),
+                    text(source, "chunkText"),
+                    source.path("createdAt").asLong(0L),
+                    score));
+        }
+        return bestByPost.values().stream()
+                .sorted(Comparator.comparingDouble(ChunkSearchHit::score).reversed())
+                .limit(limit)
+                .toList();
     }
 
     private static String text(JsonNode node, String field) {

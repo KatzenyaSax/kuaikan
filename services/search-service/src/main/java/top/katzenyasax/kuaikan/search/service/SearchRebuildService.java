@@ -5,9 +5,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import top.katzenyasax.kuaikan.common.api.PageResult;
 import top.katzenyasax.kuaikan.common.api.Result;
+import top.katzenyasax.kuaikan.search.chunk.MarkdownChunker;
 import top.katzenyasax.kuaikan.search.config.SearchProperties;
+import top.katzenyasax.kuaikan.search.embedding.EmbeddingClient;
 import top.katzenyasax.kuaikan.search.es.ElasticsearchGateway;
 import top.katzenyasax.kuaikan.search.es.IndexNames;
+import top.katzenyasax.kuaikan.search.es.PostChunkDocument;
 import top.katzenyasax.kuaikan.search.es.PostDocument;
 import top.katzenyasax.kuaikan.search.feign.ContentIndexClient;
 import top.katzenyasax.kuaikan.search.feign.dto.InternalSearchPostItemView;
@@ -63,15 +66,21 @@ public class SearchRebuildService {
     private final DirectoryService directory;
     private final ContentIndexClient contentClient;
     private final SearchProperties props;
+    private final MarkdownChunker chunker;
+    private final EmbeddingClient embeddingClient;
 
     public SearchRebuildService(ElasticsearchGateway es,
                                 DirectoryService directory,
                                 ContentIndexClient contentClient,
-                                SearchProperties props) {
+                                SearchProperties props,
+                                MarkdownChunker chunker,
+                                EmbeddingClient embeddingClient) {
         this.es = es;
         this.directory = directory;
         this.contentClient = contentClient;
         this.props = props;
+        this.chunker = chunker;
+        this.embeddingClient = embeddingClient;
     }
 
     public RebuildResult rebuild() {
@@ -109,6 +118,130 @@ public class SearchRebuildService {
             }
             throw e;
         }
+    }
+
+    /** P9.0 零停机全量重建帖子切片向量索引 {@code post_chunk_v*} */
+    public RebuildResult rebuildPostChunks() {
+        long startedAt = System.currentTimeMillis();
+        String index = IndexNames.physicalPostChunkIndexNow();
+        log.info("帖子切片向量重建开始 index={}", index);
+        es.createPostChunkIndex(index);
+
+        boolean switched = false;
+        try {
+            long indexed = loadAllPostChunks(index);
+            es.refresh(index);
+
+            Set<String> oldIndices = new LinkedHashSet<>();
+            oldIndices.addAll(es.indicesOfAlias(IndexNames.POST_CHUNK_READ));
+            oldIndices.addAll(es.indicesOfAlias(IndexNames.POST_CHUNK_WRITE));
+            oldIndices.remove(index);
+
+            es.switchAliases(index, oldIndices, IndexNames.POST_CHUNK_READ, IndexNames.POST_CHUNK_WRITE);
+            switched = true;
+
+            for (String old : oldIndices) {
+                es.deleteIndexQuietly(old);
+            }
+
+            long elapsed = System.currentTimeMillis() - startedAt;
+            log.info("帖子切片向量重建完成 index={} chunks={} elapsedMs={} 旧索引={}",
+                    index, indexed, elapsed, oldIndices);
+            return new RebuildResult(index, indexed, elapsed);
+        } catch (RuntimeException e) {
+            if (!switched) {
+                log.warn("帖子切片向量重建失败，清理新索引 index={}：{}", index, e.toString());
+                es.deleteIndexQuietly(index);
+            }
+            throw e;
+        }
+    }
+
+    /** P9.0 笔记切片索引初始化/空重建兜底（笔记 CRUD 在 P9.3 落地） */
+    public RebuildResult ensureNoteChunkIndex() {
+        long startedAt = System.currentTimeMillis();
+        Set<String> existing = es.indicesOfAlias(IndexNames.NOTE_CHUNK_READ);
+        if (!existing.isEmpty()) {
+            return new RebuildResult(String.join(",", existing), 0, System.currentTimeMillis() - startedAt);
+        }
+        String index = IndexNames.physicalNoteChunkIndexNow();
+        es.createNoteChunkIndex(index);
+        es.attachAliases(index, IndexNames.NOTE_CHUNK_READ, IndexNames.NOTE_CHUNK_WRITE);
+        return new RebuildResult(index, 0, System.currentTimeMillis() - startedAt);
+    }
+
+    private long loadAllPostChunks(String index) {
+        int pageSize = Math.max(1, props.getRebuildPageSize());
+        long indexed = 0;
+        String cursor = null;
+
+        for (int page = 0; page < MAX_PAGES; page++) {
+            Result<PageResult<InternalSearchPostItemView>> result =
+                    contentClient.posts(cursor, pageSize);
+            PageResult<InternalSearchPostItemView> body = result == null ? null : result.data();
+            if (body == null) {
+                throw new IllegalStateException("全量拉帖返回空 body cursor=" + cursor);
+            }
+            List<InternalSearchPostItemView> items = body.items();
+            if (items == null || items.isEmpty()) {
+                break;
+            }
+
+            List<PostChunkDocument> docs = toChunkDocuments(items);
+            indexed += es.bulkIndexPostChunks(index, docs);
+            log.debug("切片重建写入一批 index={} page={} 本批切片={} 累计={}",
+                    index, page, docs.size(), indexed);
+
+            if (!body.hasMore() || body.nextCursor() == null || body.nextCursor().isBlank()) {
+                break;
+            }
+            cursor = body.nextCursor();
+        }
+        return indexed;
+    }
+
+    private List<PostChunkDocument> toChunkDocuments(List<InternalSearchPostItemView> items) {
+        Set<Long> authorIds = new LinkedHashSet<>();
+        Set<Long> communityIds = new LinkedHashSet<>();
+        for (InternalSearchPostItemView item : items) {
+            authorIds.add(item.authorId());
+            communityIds.add(item.communityId());
+        }
+        Map<Long, String> nicknames = directory.nicknames(authorIds);
+        Map<Long, String> communityNames = directory.communityNames(communityIds);
+
+        record PendingChunk(InternalSearchPostItemView item, MarkdownChunker.Chunk chunk,
+                            String nickname, String communityName) {}
+        List<PendingChunk> pending = new ArrayList<>();
+        List<String> texts = new ArrayList<>();
+        for (InternalSearchPostItemView item : items) {
+            String nickname = nicknames.getOrDefault(item.authorId(), DirectoryService.DELETED_NICKNAME);
+            String communityName = communityNames.getOrDefault(item.communityId(), DirectoryService.MISSING_COMMUNITY);
+            List<MarkdownChunker.Chunk> chunks = chunker.chunk(item.title(), item.body());
+            for (MarkdownChunker.Chunk c : chunks) {
+                pending.add(new PendingChunk(item, c, nickname, communityName));
+                texts.add(c.text());
+            }
+        }
+        List<float[]> vectors = embeddingClient.embed(texts);
+        List<PostChunkDocument> docs = new ArrayList<>(pending.size());
+        for (int i = 0; i < pending.size(); i++) {
+            PendingChunk p = pending.get(i);
+            String postId = String.valueOf(p.item().postId());
+            docs.add(new PostChunkDocument(
+                    postId + "_" + p.chunk().index(),
+                    postId,
+                    String.valueOf(p.item().communityId()),
+                    String.valueOf(p.item().authorId()),
+                    p.chunk().index(),
+                    p.item().title(),
+                    p.chunk().text(),
+                    p.nickname(),
+                    p.communityName(),
+                    vectors.get(i),
+                    p.item().createdAt()));
+        }
+        return docs;
     }
 
     /** 游标遍历全量，边拉边写。返回写入文档总数 */

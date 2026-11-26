@@ -40,6 +40,10 @@ export const ERROR_MESSAGES: Readonly<Record<number, string>> = {
   44004: '对话不存在或无权访问', // AI_CONVERSATION_NOT_FOUND
   44005: '该操作提议已过期，请重新发起', // AI_ACTION_EXPIRED
   44006: '操作提议状态不允许此操作', // AI_ACTION_STATE_INVALID
+  44007: '个人 AI 档案条目已达上限（最多 30 条）', // AI_PROFILE_LIMIT_EXCEEDED
+  44008: '档案条目不存在或无权访问', // AI_PROFILE_NOT_FOUND
+  44009: '个人笔记数量已达上限（最多 200 篇）', // AI_NOTE_LIMIT_EXCEEDED
+  44010: '笔记不存在或无权访问', // AI_NOTE_NOT_FOUND
   50000: '服务内部错误', // INTERNAL
   50300: '服务暂时不可用', // UPSTREAM_UNAVAILABLE
 } as const
@@ -80,6 +84,10 @@ export const ERROR_HTTP_STATUS: Readonly<Record<number, number>> = {
   44004: 404,
   44005: 200,
   44006: 409,
+  44007: 200,
+  44008: 404,
+  44009: 200,
+  44010: 404,
   50000: 500,
   50300: 503,
 } as const

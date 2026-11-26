@@ -69,6 +69,16 @@ kuaikan:
     post-created-consumer-group: kuaikan-search-post-created-consumer
     post-deleted-consumer-group: kuaikan-search-post-deleted-consumer
     user-updated-consumer-group: kuaikan-search-user-updated-consumer
+    # P9.0 Embedding 推理（OpenAI 兼容 /v1/embeddings，默认指向内网 TEI）
+    embedding:
+      base-url: ${EMBEDDING_BASE_URL:http://127.0.0.1:8089}
+      model: ${EMBEDDING_MODEL:BAAI/bge-small-zh-v1.5}
+      api-key: ${EMBEDDING_API_KEY:}
+      connect-timeout: 3s
+      read-timeout: 15s
+      batch-size: 16
+      rrf-k: 60
+      related-min-score: 0.72
 
 springdoc:
   api-docs:

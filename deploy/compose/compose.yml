@@ -232,6 +232,32 @@ services:
       retries: 30
       start_period: 60s
 
+  tei-embedding:
+    profiles: ["core"]
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.8
+    command:
+      - --model-id
+      - BAAI/bge-small-zh-v1.5
+      - --auto-truncate
+      - --port
+      - "80"
+    restart: unless-stopped
+    logging: *default-logging
+    mem_limit: 1g
+    volumes:
+      - /opt/kuaikan/data/tei:/data
+    networks:
+      kuaikan:
+        ipv4_address: 172.30.10.16
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -fsS http://127.0.0.1:80/health >/dev/null || exit 1
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 120s
+
   # ============================================================
   # devtools（仅开发期启用，生产 up.sh all 不带它）
   # ============================================================
@@ -484,6 +510,8 @@ services:
       # ES 只是**派生存储**：search-service 无 datasource，也不把 ES 放进
       # readiness 的判定里。ES 停机时本服务照常启动与存活，只有检索/索引写降级。
       ELASTICSEARCH_URI: http://elasticsearch:9200
+      # TEI 向量推理（P9.0）：同样不放进 depends_on，TEI 停机时自动降级纯 BM25
+      EMBEDDING_BASE_URL: http://tei-embedding:80
     depends_on:
       <<: *default-app-depends
       rmq-broker:

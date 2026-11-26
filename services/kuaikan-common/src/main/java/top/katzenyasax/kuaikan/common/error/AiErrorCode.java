@@ -13,7 +13,11 @@ public enum AiErrorCode implements ErrorCode {
     AI_UNAVAILABLE(44003, "AI 服务暂时不可用"),
     AI_CONVERSATION_NOT_FOUND(44004, "对话不存在或无权访问"),
     AI_ACTION_EXPIRED(44005, "该操作提议已过期，请重新发起"),
-    AI_ACTION_STATE_INVALID(44006, "操作提议状态不允许此操作");
+    AI_ACTION_STATE_INVALID(44006, "操作提议状态不允许此操作"),
+    AI_PROFILE_LIMIT_EXCEEDED(44007, "个人 AI 档案条目已达上限（最多 30 条）"),
+    AI_PROFILE_NOT_FOUND(44008, "档案条目不存在或无权访问"),
+    AI_NOTE_LIMIT_EXCEEDED(44009, "个人笔记数量已达上限（最多 200 篇）"),
+    AI_NOTE_NOT_FOUND(44010, "笔记不存在或无权访问");
 
     private final int code;
     private final String message;

@@ -48,7 +48,9 @@ public class IndexBootstrap {
         executor.execute(() -> {
             try {
                 postIndexService.ensureReady();
-                log.info("ES 索引自检通过");
+                postIndexService.ensurePostChunkReady();
+                postIndexService.ensureNoteChunkReady();
+                log.info("ES 索引自检通过（含 P9 向量切片索引）");
             } catch (Exception e) {
                 // ES 不可用是允许的状态：服务照常活着，只是索引暂时不可写
                 log.warn("ES 索引自检失败，服务继续运行（首次写入 / rebuild 时会再试）：{}", e.toString());

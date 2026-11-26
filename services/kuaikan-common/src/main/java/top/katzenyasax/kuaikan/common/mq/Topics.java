@@ -87,6 +87,14 @@ public final class Topics {
      */
     public static final String USER_PROFILE_UPDATED = "kuaikan_user_profile_updated";
 
+    /**
+     * 个人私密笔记变更（P9.0）。载荷见 {@link NoteChanged}。
+     *
+     * 载荷只含 {@code noteId} 与 {@code ownerId}，严禁携带正文。
+     * search-service 收到后回查 ai-service 内部读接口决定全量重切写入或删除。
+     */
+    public static final String NOTE_CHANGED = "kuaikan_note_changed";
+
     private Topics() {
     }
 }

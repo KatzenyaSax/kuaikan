@@ -136,7 +136,7 @@ git -C "$REPO" fetch -q origin
 git -C "$REPO" reset -q --hard origin/main
 git -C "$REPO" log --oneline -1
 
-CORE="mysql redis nacos rmq-namesrv rmq-broker elasticsearch"
+CORE="mysql redis nacos rmq-namesrv rmq-broker elasticsearch tei-embedding"
 APP="gateway user-service community-service content-service interaction-service notification-service search-service rank-service ai-service"
 
 # ES 的数据目录必须**预先存在且属主为 1000:0**（镜像内 elasticsearch 用户的 uid）。
@@ -146,6 +146,10 @@ ES_DATA="${ES_DATA_DIR:-/opt/kuaikan/data/elasticsearch}"
 mkdir -p "$ES_DATA"
 chown 1000:0 "$ES_DATA"
 chmod 775 "$ES_DATA"
+
+# TEI 模型权重缓存目录（P9.0）
+TEI_DATA="${TEI_DATA_DIR:-/opt/kuaikan/data/tei}"
+mkdir -p "$TEI_DATA"
 
 case "$TARGET" in
   core)

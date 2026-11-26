@@ -28,6 +28,16 @@ public final class IndexNames {
     /** 物理索引前缀：post_v{yyyyMMddHHmmss} */
     public static final String PREFIX = "post_v";
 
+    /** P9.0 公共帖子切片向量索引 */
+    public static final String POST_CHUNK_READ = "post_chunk_read";
+    public static final String POST_CHUNK_WRITE = "post_chunk_write";
+    public static final String POST_CHUNK_PREFIX = "post_chunk_v";
+
+    /** P9.0 个人私密笔记切片向量索引 */
+    public static final String NOTE_CHUNK_READ = "note_chunk_read";
+    public static final String NOTE_CHUNK_WRITE = "note_chunk_write";
+    public static final String NOTE_CHUNK_PREFIX = "note_chunk_v";
+
     /** 索引名里的时间戳按北京时间，便于和 MySQL 里的 created_at 对照排查 */
     public static final ZoneId ZONE = ZoneId.of("Asia/Shanghai");
 
@@ -35,6 +45,14 @@ public final class IndexNames {
 
     public static String physicalIndexNow() {
         return PREFIX + FORMAT.format(java.time.LocalDateTime.now(ZONE));
+    }
+
+    public static String physicalPostChunkIndexNow() {
+        return POST_CHUNK_PREFIX + FORMAT.format(java.time.LocalDateTime.now(ZONE));
+    }
+
+    public static String physicalNoteChunkIndexNow() {
+        return NOTE_CHUNK_PREFIX + FORMAT.format(java.time.LocalDateTime.now(ZONE));
     }
 
     private IndexNames() {

@@ -45,6 +45,8 @@ public class PostIndexService {
 
     /** 别名已就绪。只为省掉每条消息一次 {@code GET /_alias}；丢了也只是多查一次 */
     private volatile boolean aliasesReady;
+    private volatile boolean postChunkAliasesReady;
+    private volatile boolean noteChunkAliasesReady;
 
     public PostIndexService(ElasticsearchGateway es, DirectoryService directory) {
         this.es = es;
@@ -71,6 +73,40 @@ public class PostIndexService {
         aliasesReady = true;
         log.info("ES 索引已初始化 index={} aliases={},{}",
                 index, IndexNames.READ_ALIAS, IndexNames.WRITE_ALIAS);
+    }
+
+    /** 确保 {@code post_chunk_read} / {@code post_chunk_write} 存在 */
+    public synchronized void ensurePostChunkReady() {
+        if (postChunkAliasesReady) {
+            return;
+        }
+        if (es.aliasExists(IndexNames.POST_CHUNK_READ) || es.aliasExists(IndexNames.POST_CHUNK_WRITE)) {
+            postChunkAliasesReady = true;
+            return;
+        }
+        String index = IndexNames.physicalPostChunkIndexNow();
+        es.createPostChunkIndex(index);
+        es.attachAliases(index, IndexNames.POST_CHUNK_READ, IndexNames.POST_CHUNK_WRITE);
+        postChunkAliasesReady = true;
+        log.info("ES 帖子切片索引已初始化 index={} aliases={},{}",
+                index, IndexNames.POST_CHUNK_READ, IndexNames.POST_CHUNK_WRITE);
+    }
+
+    /** 确保 {@code note_chunk_read} / {@code note_chunk_write} 存在 */
+    public synchronized void ensureNoteChunkReady() {
+        if (noteChunkAliasesReady) {
+            return;
+        }
+        if (es.aliasExists(IndexNames.NOTE_CHUNK_READ) || es.aliasExists(IndexNames.NOTE_CHUNK_WRITE)) {
+            noteChunkAliasesReady = true;
+            return;
+        }
+        String index = IndexNames.physicalNoteChunkIndexNow();
+        es.createNoteChunkIndex(index);
+        es.attachAliases(index, IndexNames.NOTE_CHUNK_READ, IndexNames.NOTE_CHUNK_WRITE);
+        noteChunkAliasesReady = true;
+        log.info("ES 笔记切片索引已初始化 index={} aliases={},{}",
+                index, IndexNames.NOTE_CHUNK_READ, IndexNames.NOTE_CHUNK_WRITE);
     }
 
     /** 消费 {@code PostCreated}：补齐昵称与社群名后覆盖写 */

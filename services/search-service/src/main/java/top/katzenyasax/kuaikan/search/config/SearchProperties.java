@@ -37,6 +37,92 @@ public class SearchProperties {
     /** 重建时一次 bulk 写多少条。ES 对单次体积敏感，500 是保守值 */
     private int bulkSize = 500;
 
+    /** P9.0 Embedding 推理与混合检索参数 */
+    private Embedding embedding = new Embedding();
+
+    public Embedding getEmbedding() {
+        return embedding;
+    }
+
+    public void setEmbedding(Embedding embedding) {
+        this.embedding = embedding;
+    }
+
+    public static class Embedding {
+        private String baseUrl = "http://127.0.0.1:8089";
+        private String model = "BAAI/bge-small-zh-v1.5";
+        private String apiKey = "";
+        private Duration connectTimeout = Duration.ofSeconds(3);
+        private Duration readTimeout = Duration.ofSeconds(15);
+        private int batchSize = 16;
+        private int rrfK = 60;
+        private double relatedMinScore = 0.72;
+
+        public String getBaseUrl() {
+            return baseUrl;
+        }
+
+        public void setBaseUrl(String baseUrl) {
+            this.baseUrl = baseUrl;
+        }
+
+        public String getModel() {
+            return model;
+        }
+
+        public void setModel(String model) {
+            this.model = model;
+        }
+
+        public String getApiKey() {
+            return apiKey;
+        }
+
+        public void setApiKey(String apiKey) {
+            this.apiKey = apiKey;
+        }
+
+        public Duration getConnectTimeout() {
+            return connectTimeout;
+        }
+
+        public void setConnectTimeout(Duration connectTimeout) {
+            this.connectTimeout = connectTimeout;
+        }
+
+        public Duration getReadTimeout() {
+            return readTimeout;
+        }
+
+        public void setReadTimeout(Duration readTimeout) {
+            this.readTimeout = readTimeout;
+        }
+
+        public int getBatchSize() {
+            return batchSize;
+        }
+
+        public void setBatchSize(int batchSize) {
+            this.batchSize = batchSize;
+        }
+
+        public int getRrfK() {
+            return rrfK;
+        }
+
+        public void setRrfK(int rrfK) {
+            this.rrfK = rrfK;
+        }
+
+        public double getRelatedMinScore() {
+            return relatedMinScore;
+        }
+
+        public void setRelatedMinScore(double relatedMinScore) {
+            this.relatedMinScore = relatedMinScore;
+        }
+    }
+
     public String getElasticsearchUri() {
         return elasticsearchUri;
     }

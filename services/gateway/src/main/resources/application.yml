@@ -150,6 +150,8 @@ kuaikan:
       # 以上一律需要登录。
       - GET ^/api/community/communities/[^/]+/history$
       - GET ^/api/community/communities/[^/]+/admins/history$
+      # P9.0：帖子页相关帖子推荐对游客公开（仅放行 GET，路径钉死）
+      - GET ^/api/search/posts/[^/]+/related$
       # 以下 P5.5 端点**一律需要登录，绝不进白名单**：
       #   POST/DELETE /api/user/users/{id}/follow、POST /api/user/auth/password、
       #   GET /api/user/follows/states、GET /api/user/me/following/ids、

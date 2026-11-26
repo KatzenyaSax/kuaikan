@@ -41,6 +41,10 @@ public final class ErrorHttpStatus {
             Map.entry(44004, 404),  // 对话不存在或无权访问（P8）
             // 44005 AI_ACTION_EXPIRED 是业务规则，HTTP 200，不登记
             Map.entry(44006, 409),  // 操作提议状态不允许此操作（P8）
+            // 44007 AI_PROFILE_LIMIT_EXCEEDED 是业务规则，HTTP 200，不登记
+            Map.entry(44008, 404),  // 档案条目不存在或无权访问（P9）
+            // 44009 AI_NOTE_LIMIT_EXCEEDED 是业务规则，HTTP 200，不登记
+            Map.entry(44010, 404),  // 笔记不存在或无权访问（P9）
             Map.entry(50000, 500),  // 服务内部错误
             Map.entry(50300, 503)   // 依赖不可用（fail-closed）
     );

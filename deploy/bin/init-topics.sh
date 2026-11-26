@@ -36,6 +36,8 @@ TOPICS=(
   "kuaikan_post_created"
   "kuaikan_post_deleted"
   "kuaikan_user_profile_updated"
+  # P9.0：个人私密笔记向量索引同步事件（ai-service → search-service，只传 ID）。
+  "kuaikan_note_changed"
 )
 
 mqadmin() {

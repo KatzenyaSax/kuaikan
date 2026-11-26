@@ -35,6 +35,10 @@
     { "code": 44004, "name": "AI_CONVERSATION_NOT_FOUND",  "http": 404, "owner": "ai", "message": "对话不存在或无权访问" },
     { "code": 44005, "name": "AI_ACTION_EXPIRED",          "http": 200, "owner": "ai", "message": "该操作提议已过期，请重新发起" },
     { "code": 44006, "name": "AI_ACTION_STATE_INVALID",    "http": 409, "owner": "ai", "message": "操作提议状态不允许此操作" },
+    { "code": 44007, "name": "AI_PROFILE_LIMIT_EXCEEDED",  "http": 200, "owner": "ai", "message": "个人 AI 档案条目已达上限（最多 30 条）" },
+    { "code": 44008, "name": "AI_PROFILE_NOT_FOUND",       "http": 404, "owner": "ai", "message": "档案条目不存在或无权访问" },
+    { "code": 44009, "name": "AI_NOTE_LIMIT_EXCEEDED",     "http": 200, "owner": "ai", "message": "个人笔记数量已达上限（最多 200 篇）" },
+    { "code": 44010, "name": "AI_NOTE_NOT_FOUND",          "http": 404, "owner": "ai", "message": "笔记不存在或无权访问" },
     { "code": 42900, "name": "RATE_LIMITED",          "http": 429, "owner": "common", "message": "请求过于频繁" },
     { "code": 50000, "name": "INTERNAL",              "http": 500, "owner": "common", "message": "服务内部错误" },
     { "code": 50300, "name": "UPSTREAM_UNAVAILABLE",  "http": 503, "owner": "common", "message": "服务暂时不可用" }
