@@ -153,18 +153,18 @@ try {
   await page.getByTestId('ai-profile-category').selectOption('PREFERENCE')
   await page.getByTestId('ai-profile-content').fill('E2E浏览器档案验证条目')
   await page.getByTestId('ai-profile-save').click()
-  await page.getByTestId('ai-profile-item').filter({ hasText: 'E2E浏览器档案验证条目' }).waitFor({
-    state: 'visible',
-    timeout: 15000,
-  })
+  const targetEntry = page
+    .getByTestId('ai-profile-item')
+    .filter({ hasText: 'E2E浏览器档案验证条目' })
+  await targetEntry.waitFor({ state: 'visible', timeout: 15000 })
   ok('/me 我的 AI 档案可新增并立即展示')
 
-  await page.getByTestId('ai-profile-toggle').first().click()
-  await page.getByText('已停用').waitFor({ state: 'visible', timeout: 10000 })
+  await targetEntry.getByTestId('ai-profile-toggle').click()
+  await targetEntry.getByText('已停用').waitFor({ state: 'visible', timeout: 10000 })
   ok('/me 我的 AI 档案支持一键停用')
 
-  await page.getByTestId('ai-profile-delete').first().click()
-  await page.getByTestId('ai-profile-item').waitFor({ state: 'detached', timeout: 10000 })
+  await targetEntry.getByTestId('ai-profile-delete').click()
+  await targetEntry.waitFor({ state: 'detached', timeout: 10000 })
   ok('/me 我的 AI 档案支持删除且从列表移除')
 
   // /me 我的笔记 CRUD + Markdown 预览 + 硬删除弹窗
@@ -179,16 +179,14 @@ try {
   })
   await page.getByTestId('ai-note-preview-toggle').click()
   await page.getByTestId('ai-note-save').click()
-  await page.getByTestId('ai-note-item').filter({ hasText: 'E2E私密笔记标题' }).waitFor({
-    state: 'visible',
-    timeout: 15000,
-  })
+  const targetNote = page.getByTestId('ai-note-item').filter({ hasText: 'E2E私密笔记标题' })
+  await targetNote.waitFor({ state: 'visible', timeout: 15000 })
   ok('/me 我的笔记支持 Markdown 预览并成功新建')
 
   await page.getByTestId('ai-note-delete').click()
   await page.getByTestId('ai-note-delete-dialog').waitFor({ state: 'visible', timeout: 10000 })
   await page.getByTestId('ai-note-confirm-delete').click()
-  await page.getByTestId('ai-note-item').waitFor({ state: 'detached', timeout: 10000 })
+  await targetNote.waitFor({ state: 'detached', timeout: 10000 })
   ok('/me 我的笔记支持硬删除确认并从列表彻底清除')
 
   if (userErrors.length === 0) {
