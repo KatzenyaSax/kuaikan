@@ -30,7 +30,7 @@
 
 | # | 决策 | 理由 |
 |---|---|---|
-| D1 Embedding | 本机自托管 **TEI（Text Embeddings Inference，CPU 镜像）** 容器 + **`BAAI/bge-small-zh-v1.5`**（512 维），归入 `core` profile，固定内网 IP `172.30.10.16`，**无宿主机端口**，`mem_limit: 1g`。`search-service` 仅依赖 OpenAI 兼容 `/v1/embeddings` 协议，`kuaikan.embedding.*` 全配置化 | 约 400 MB 内存适配当前 15 GiB 服务器余量，CPU 单条约 10~30ms；无需外部 API key 即可在离线/验收环境下稳定运行；私密笔记向量化不出服务器；协议解耦使日后切换云端只改配置 |
+| D1 Embedding | 本机自托管 **TEI（Text Embeddings Inference，CPU 镜像）** 容器 + **`BAAI/bge-small-zh-v1.5`**（512 维），归入 `core` profile，固定内网 IP `172.30.10.21`，**无宿主机端口**，`mem_limit: 1g`。`search-service` 仅依赖 OpenAI 兼容 `/v1/embeddings` 协议，`kuaikan.embedding.*` 全配置化 | 约 400 MB 内存适配当前 15 GiB 服务器余量，CPU 单条约 10~30ms；无需外部 API key 即可在离线/验收环境下稳定运行；私密笔记向量化不出服务器；协议解耦使日后切换云端只改配置 |
 | D2 向量存储与混合检索 | 复用既有 **Elasticsearch 8.17.4 + IK 8.17.4** 原生 `dense_vector`（512 维、`similarity: cosine`、HNSW）+ IK BM25。**应用层自写 RRF（Reciprocal Rank Fusion，`k = 60`）** | ES 8.17 内置 `rrf` retriever 属于付费商业订阅能力，Basic 免费版不可用；复用 ES 避免引入 Qdrant 带来的额外容器运维与跨库删帖一致性成本，可直接使用 P6 别名与零停机重建机制 |
 | D3 物理双索引与切片 | 物理拆分为两个独立切片索引：**`post_chunk_v{ts}`**（公共，别名 `post_chunk_read`/`post_chunk_write`）与 **`note_chunk_v{ts}`**（私密，别名 `note_chunk_read`/`note_chunk_write`）；既有 `post_v*` 保持不动。切片策略：按 Markdown 标题与段落切分，约 **400 字/片**、相邻重叠 **80 字**，每片文本前拼接 `标题：{title}\n`；检索归并时同一 `postId` / `noteId` 仅保留得分最高的一片 | 公共检索链路物理上碰不到 `note_chunk_*`，杜绝漏加过滤条件导致的跨用户泄露；公共索引重建不波及私密笔记；以 `postId` 归并使返回结果天然兼容 P8 引用白名单与卡片形态 |
 | D4 服务归属与同步 | **`ai-service` 持有档案与笔记的 MySQL 真相**（`kuaikan_ai`），笔记变更同事务写 `t_outbox` 发送 `kuaikan_note_changed`（**载荷仅含 `noteId` 与 `ownerId`，不放正文**）。**`search-service` 是全站唯一 ES 客户端与唯一 TEI 调用方**：<br>① 帖子向量使用**独立消费组**消费 `kuaikan_post_created` / `kuaikan_post_deleted`；<br>② 笔记消费组收到 `kuaikan_note_changed` 后回查 `ai-service` `GET /internal/notes/{noteId}`：存在且启用则全量重切写入，不存在或停用则按 `noteId` 删除；<br>③ **读侧强一致兜底**：`ai-service` 拿到 `note_chunk` 召回后回查 MySQL 过滤已删除或已停用条目；<br>④ 扩展 `POST /internal/admin/rebuild` 支持重建 `post_chunk` / `note_chunk` | 严格遵守 P6 建立的读侧投影边界；独立消费组保证 TEI 故障时 P6 关键词索引零阻塞；MQ 不落私密正文且天然防乱序；读侧回查 MySQL 消除异步 1 秒窗口内的“已删/停用仍被召回”风险 |
@@ -69,7 +69,7 @@
 - **Compose 新增 TEI 容器**（`deploy/compose/compose.yml`）：
   - 服务名：`tei-embedding`（或 `tei`），归入 `core` profile。
   - 镜像：`ghcr.io/huggingface/text-embeddings-inference:cpu-1.x`（具体固定版本标签在 P9.0 spike 实测锁定，预置或持久化挂载 `BAAI/bge-small-zh-v1.5` 模型缓存至 `/opt/kuaikan/data/tei`）。
-  - 网络与端口：固定内网 IP `172.30.10.16`（`kuaikan` bridge），**严禁映射宿主机端口**。
+  - 网络与端口：固定内网 IP `172.30.10.21`（`kuaikan` bridge），**严禁映射宿主机端口**。
   - 内存：`mem_limit: 1g`；健康检查探针检测 `/health`。
 
 ---

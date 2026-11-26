@@ -146,7 +146,7 @@
 定位：**为 P8 AI 助手接入语义级混合检索与透明可控的个人权威记忆，形成“公共知识自动沉淀 + 个人权威自主掌控 + 私有笔记/收藏精准召回”的三层知识体系**（完整技术方案、数据模型与接口契约见 [`p9-knowledge-base.md`](./p9-knowledge-base.md)）。
 
 1. **向量基础设施与存储架构**
-   - **Embedding**：本机自托管 TEI（CPU 镜像，`mem_limit: 1g`，内网 `172.30.10.16`）+ `BAAI/bge-small-zh-v1.5`（512 维），`search-service` 经 OpenAI 兼容 `/v1/embeddings` 协议接入。
+   - **Embedding**：本机自托管 TEI（CPU 镜像，`mem_limit: 1g`，内网 `172.30.10.21`）+ `BAAI/bge-small-zh-v1.5`（512 维），`search-service` 经 OpenAI 兼容 `/v1/embeddings` 协议接入。
    - **存储与混合检索**：复用既有 ES 8.17.4 + IK 8.17.4 原生 `dense_vector`（HNSW cosine）+ 应用层 RRF 融合（`k=60`）；物理拆分为公共切片索引 `post_chunk_v*` 与私密切片索引 `note_chunk_v*`（既有 `post_v*` 不动）。
 2. **三层知识模型与核心场景**
    - **社区公共语义知识库（系统自动维护，全站共享）**：`search-service` 独立消费组对公开帖子按 Markdown 标题/段落切片向量化，升级 Copilot `search_posts` 为混合检索；新增 `GET /api/search/posts/{id}/related` 在帖子页正文与评论间懒加载展示最多 5 篇跨社群相关帖（不做发帖查重、不改公开 `/search` 页）。

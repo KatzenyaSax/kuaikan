@@ -248,7 +248,7 @@ services:
       - /opt/kuaikan/data/tei:/data
     networks:
       kuaikan:
-        ipv4_address: 172.30.10.16
+        ipv4_address: 172.30.10.21
     healthcheck:
       test:
         - CMD-SHELL
