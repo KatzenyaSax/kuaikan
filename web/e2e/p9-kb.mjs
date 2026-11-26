@@ -125,6 +125,9 @@ try {
   ok('Copilot 可切换至「仅我的」检索范围')
 
   await page.goto(`/c/${encodeURIComponent(COMMUNITY)}`, { waitUntil: 'domcontentloaded' })
+  await page.getByTestId('nav-user').waitFor({ state: 'visible', timeout: 15000 })
+  await page.getByTestId('nav-ai').click()
+  await page.getByTestId('copilot-drawer').waitFor({ state: 'visible', timeout: 15000 })
   await page.getByTestId('ai-scope-community').waitFor({ state: 'visible', timeout: 15000 })
   await page.waitForFunction(
     () => {
